@@ -72,14 +72,9 @@ build: $(SRC_DIRS)
 	@echo "::: Package $(NAME) build complete :::"
 	
 install::
-	mkdir -p $(ROOT)/$(PKGROOT)
 	( \
-	  echo Using python $(PYPATH) version $(PYVERSION); \
-	  export PYTHONPATH=$(REDHAT.ROOT)/src/site-packages/$(PYVERSION):$${PYTHONPATH} ; \
-	  echo Using python from $(PYTHONPATH); \
 	  cd $(SOURCE_DIR); \
-#	  $(PYPATH) setup.py install --prefix=$(ROOT)/$(PKGROOT) \
-	  $(PYPATH) setup.py install --root=$(ROOT) \
+	  $(PY.PATH) setup.py install --root=$(ROOT) \
 	)
 	@echo "::: Package $(NAME) install complete :::"
 
