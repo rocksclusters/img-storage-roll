@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/opt/rocks/bin/python
 import pika
 
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))

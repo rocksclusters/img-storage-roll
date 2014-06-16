@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/opt/rocks/bin/python
 import logging
 import pika
 
