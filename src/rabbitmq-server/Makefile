@@ -57,6 +57,8 @@
 
 REDHAT.ROOT = $(CURDIR)/../../
 
+MAKE.iscontrib = 1
+
 -include $(ROCKSROOT)/etc/Rules.mk
 include Rules.mk
 
@@ -65,7 +67,7 @@ build:
 	mkdir -p ../../RPMS/x86_64
 	cd ../../RPMS/x86_64 && curl http://www.scidrive.org/vospace-2.0/data/51a70d3e-954f-4e41-aad9-196e84c125d5 | tar xvz
 	
-install::
+rpm:: build
 
 clean::
 	rm -rf $(NAME)-$(VERSION)
