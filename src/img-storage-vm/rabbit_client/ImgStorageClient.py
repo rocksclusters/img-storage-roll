@@ -315,7 +315,7 @@ class ImgStorageConsumer:
     EXCHANGE_TYPE = 'direct'
     ROUTING_KEY = 'compute-0-0'
 
-    def __init__(self, amqp_url):
+    def __init__(self, amqp_url, process_message=None):
         """Create a new instance of the consumer class, passing in the AMQP
         URL used to connect to RabbitMQ.
 
@@ -327,6 +327,7 @@ class ImgStorageConsumer:
         self._closing = False
         self._consumer_tag = None
         self._url = amqp_url
+        self.process_message = process_message
 
     def connect(self):
         """This method connects to RabbitMQ, returning the connection handle.
@@ -528,6 +529,8 @@ class ImgStorageConsumer:
         LOGGER.info('Received message # %s from %s: %s',
                     basic_deliver.delivery_tag, properties.app_id, body)
         self.acknowledge_message(basic_deliver.delivery_tag)
+        if self.process_message:
+            self.process_message(body)
 
     def on_cancelok(self, unused_frame):
         """This method is invoked by pika when RabbitMQ acknowledges the

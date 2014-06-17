@@ -60,6 +60,10 @@ import logging
 from threading import Thread
 
 import time
+import json
+
+def process_message(message):
+    print "Received message %s"%json.loads(message)
 
 LOG_FORMAT = ('%(levelname) -10s %(asctime)s %(name) -30s %(funcName) '
               '-35s %(lineno) -5d: %(message)s')
@@ -71,7 +75,7 @@ rabbitmq_url = 'amqp://guest:guest@localhost:5672/%2F?connection_attempts=3&hear
 
 # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
 storagePublisher = ImgStoragePublisher(rabbitmq_url)
-storageConsumer = ImgStorageConsumer(rabbitmq_url)
+storageConsumer = ImgStorageConsumer(rabbitmq_url, process_message)
 
 t_publish = Thread(target=storagePublisher.run)
 t_publish.start()
