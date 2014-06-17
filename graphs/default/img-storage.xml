@@ -26,4 +26,11 @@
 	  <tail>server</tail>
 	</order>
 
+	<edge from="compute">
+	  <to>img-storage-vm</to>
+	</edge>
+
+	<edge from="nas">
+	  <to>img-storage-nas</to>
+	</edge>
 </graph>

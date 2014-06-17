@@ -4,7 +4,7 @@
 
 
 	<description>
-	Your img-storage roll description here
+	Your img-storage-vm roll description here
 	</description>
 
 	<copyright>
@@ -18,11 +18,9 @@
 	</changelog>
 
 	<package>pika</package>
-	<package>rabbitmq-server</package>
+	<package>img-storage-vm</package>
 
 <post>
-/sbin/chkconfig rabbitmq-server on
-/usr/lib/rabbitmq/bin/rabbitmq-plugins enable rabbitmq_management
 </post>
 
 </kickstart>

@@ -18,11 +18,9 @@
 	</changelog>
 
 	<package>pika</package>
-	<package>rabbitmq-server</package>
+	<package>img-storage-nas</package>
 
 <post>
-/sbin/chkconfig rabbitmq-server on
-/usr/lib/rabbitmq/bin/rabbitmq-plugins enable rabbitmq_management
 </post>
 
 </kickstart>
