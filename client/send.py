@@ -1,4 +1,5 @@
-#!/opt/rocks/bin/python
+#!/usr/bin/python
+#/opt/rocks/bin/python
 import pika
 
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
@@ -11,4 +12,3 @@ channel.basic_publish(exchange='',
                       body='Hello World!')
 print " [x] Sent 'Hello World!'"
 connection.close()
-
