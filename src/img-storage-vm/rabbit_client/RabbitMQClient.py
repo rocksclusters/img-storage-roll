@@ -15,7 +15,7 @@ class RabbitMQPublisher(object):
 
     messages = Queue.Queue()
 
-    def __init__(self, amqp_url, exchange, exchange_type, routing_key):
+    def __init__(self, amqp_url, exchange, exchange_type):
         """Setup the example publisher object, passing in the URL we will use
         to connect to RabbitMQ.
 
@@ -34,7 +34,6 @@ class RabbitMQPublisher(object):
 
         self.exchange = exchange
         self.exchange_type = exchange_type
-        self.routing_key = routing_key
 
     def connect(self):
         """This method connects to RabbitMQ, returning the connection handle.
@@ -224,10 +223,10 @@ class RabbitMQPublisher(object):
 
         properties = pika.BasicProperties(app_id='rocks.ImgStorageClient',
                                           content_type='application/json',
-                                          headers=message)
+                                          headers=message['message'])
 
-        self._channel.basic_publish(self.exchange, self.routing_key,
-                                    json.dumps(message, ensure_ascii=False),
+        self._channel.basic_publish(self.exchange, message['routing_key'],
+                                    json.dumps(message['message'], ensure_ascii=False),
                                     properties)
         self._message_number += 1
         self._deliveries.append(self._message_number)

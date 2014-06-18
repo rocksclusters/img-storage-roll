@@ -74,7 +74,7 @@ logging.basicConfig(filename='log',level=logging.INFO, format=LOG_FORMAT)
 rabbitmq_url = 'amqp://guest:guest@localhost:5672/%2F?connection_attempts=3&heartbeat_interval=3600'
 
 # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
-vmPublisher = RabbitMQPublisher(rabbitmq_url, 'rocks.vm-manage', 'direct', 'compute-0-0')
+vmPublisher = RabbitMQPublisher(rabbitmq_url, 'rocks.vm-manage', 'direct')
 vmConsumer = RabbitMQConsumer(rabbitmq_url, 'rocks.vm-manage', 'direct', 'compute-0-0', process_message)
 
 t_publish = Thread(target=vmPublisher.run)
@@ -88,10 +88,7 @@ print 'started consumer'
 time.sleep(2)
 
 print 'publishing'
-vmPublisher.messages.put({'command': 'allocate_drive', 'requestor':'node_name'})
-vmPublisher.messages.put({'command': 'allocate_drive', 'requestor':'node_name'})
-vmPublisher.messages.put({'command': 'allocate_drive', 'requestor':'node_name'})
-vmPublisher.messages.put({'command': 'allocate_drive', 'requestor':'node_name'})
+vmPublisher.messages.put({'message': {'command': 'allocate_drive', 'requestor':'node_name'}, 'routing_key': 'compute-0-0'})
 
 raw_input('Enter to quit\n')
 vmPublisher.stop()
