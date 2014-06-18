@@ -11,14 +11,11 @@ LOGGER = logging.getLogger(__name__)
 
 
 class VmManagePublisher(object):
-    EXCHANGE = 'rocks.vm-manage'
-    EXCHANGE_TYPE = 'direct'
-    ROUTING_KEY = 'compute-0-0'
     PUBLISH_INTERVAL = 1
 
     messages = Queue.Queue()
 
-    def __init__(self, amqp_url):
+    def __init__(self, amqp_url, exchange, exchange_type, routing_key):
         """Setup the example publisher object, passing in the URL we will use
         to connect to RabbitMQ.
 
@@ -34,6 +31,10 @@ class VmManagePublisher(object):
         self._stopping = False
         self._url = amqp_url
         self._closing = False
+
+        self.exchange = exchange
+        self.exchange_type = exchange_type
+        self.routing_key = routing_key
 
     def connect(self):
         """This method connects to RabbitMQ, returning the connection handle.
@@ -144,7 +145,7 @@ class VmManagePublisher(object):
         LOGGER.info('Channel opened')
         self._channel = channel
         self.add_on_channel_close_callback()
-        self.setup_exchange(self.EXCHANGE)
+        self.setup_exchange(self.exchange)
 
     def setup_exchange(self, exchange_name):
         """Setup the exchange on RabbitMQ by invoking the Exchange.Declare RPC
@@ -157,7 +158,7 @@ class VmManagePublisher(object):
         LOGGER.info('Declaring exchange %s', exchange_name)
         self._channel.exchange_declare(self.on_exchange_declareok,
                                        exchange_name,
-                                       self.EXCHANGE_TYPE)
+                                       self.exchange_type)
 
     def on_exchange_declareok(self, unused_frame):
         """Invoked by pika when RabbitMQ has finished the Exchange.Declare RPC
@@ -225,7 +226,7 @@ class VmManagePublisher(object):
                                           content_type='application/json',
                                           headers=message)
 
-        self._channel.basic_publish(self.EXCHANGE, self.ROUTING_KEY,
+        self._channel.basic_publish(self.exchange, self.routing_key,
                                     json.dumps(message, ensure_ascii=False),
                                     properties)
         self._message_number += 1
@@ -311,11 +312,8 @@ class VmManagePublisher(object):
 
 
 class VmManageConsumer:
-    EXCHANGE = 'rocks.vm-manage'
-    EXCHANGE_TYPE = 'direct'
-    ROUTING_KEY = 'compute-0-0'
 
-    def __init__(self, amqp_url, process_message=None):
+    def __init__(self, amqp_url, exchange, exchange_type, routing_key, process_message=None):
         """Create a new instance of the consumer class, passing in the AMQP
         URL used to connect to RabbitMQ.
 
@@ -328,6 +326,10 @@ class VmManageConsumer:
         self._consumer_tag = None
         self._url = amqp_url
         self.process_message = process_message
+
+        self.exchange = exchange
+        self.exchange_type = exchange_type
+        self.routing_key = routing_key
 
     def connect(self):
         """This method connects to RabbitMQ, returning the connection handle.
@@ -437,7 +439,7 @@ class VmManageConsumer:
         LOGGER.info('Channel opened')
         self._channel = channel
         self.add_on_channel_close_callback()
-        self.setup_exchange(self.EXCHANGE)
+        self.setup_exchange(self.exchange)
 
     def setup_exchange(self, exchange_name):
         """Setup the exchange on RabbitMQ by invoking the Exchange.Declare RPC
@@ -450,7 +452,7 @@ class VmManageConsumer:
         LOGGER.info('Declaring exchange %s', exchange_name)
         self._channel.exchange_declare(self.on_exchange_declareok,
                                        exchange_name,
-                                       self.EXCHANGE_TYPE)
+                                       self.exchange_type)
 
     def on_exchange_declareok(self, unused_frame):
         """Invoked by pika when RabbitMQ has finished the Exchange.Declare RPC
@@ -477,9 +479,9 @@ class VmManageConsumer:
         self.QUEUE = method_frame.method.queue
 
         LOGGER.info('Binding %s to %s with %s',
-                    self.EXCHANGE, self.QUEUE, self.ROUTING_KEY)
+                    self.exchange, self.QUEUE, self.routing_key)
         self._channel.queue_bind(self.on_bindok, self.QUEUE,
-                                 self.EXCHANGE, self.ROUTING_KEY)
+                                 self.exchange, self.routing_key)
 
     def add_on_cancel_callback(self):
         """Add a callback that will be invoked if RabbitMQ cancels the consumer

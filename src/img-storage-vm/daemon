@@ -74,8 +74,8 @@ logging.basicConfig(filename='log',level=logging.INFO, format=LOG_FORMAT)
 rabbitmq_url = 'amqp://guest:guest@localhost:5672/%2F?connection_attempts=3&heartbeat_interval=3600'
 
 # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
-vmPublisher = VmManagePublisher(rabbitmq_url)
-vmConsumer = VmManageConsumer(rabbitmq_url, process_message)
+vmPublisher = VmManagePublisher(rabbitmq_url, 'rocks.vm-manage', 'direct', 'compute-0-0')
+vmConsumer = VmManageConsumer(rabbitmq_url, 'rocks.vm-manage', 'direct', 'compute-0-0', process_message)
 
 t_publish = Thread(target=vmPublisher.run)
 t_publish.start()
