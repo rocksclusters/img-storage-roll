@@ -62,44 +62,49 @@ from threading import Thread
 import time
 import json
 
-NODE_NAME = 'compute-0-0' # this node's name
+NODE_NAME = 'zfs-0-0' # this node's name
 RABBITMQ_URL = 'amqp://guest:guest@localhost:5672/%2F?connection_attempts=3&heartbeat_interval=3600'
 
-"""
-Received start_vm command from FE
-"""
-def start_vm(node_name, zvol_name):
-    print "Starting VM from zvol %s"%zvol_name
 
 """
-Received stop_vm command from FE
-"""
-def stop_vm(node_name, zvol_name):
-    print "Stoping VM from zvol %s"%zvol_name
-
-"""
-Received set_zvol command from nas
+Received set_zvol command from frontend, passing to compute node
 """
 def set_zvol(node_name, zvol_name):
     print "Setting zvol %s"%zvol_name
-    vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': 'zfs-0-0'})
+    vmPublisher.messages.put({'message': {'action': 'set_zvol', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': node_name})
 
 """
-Received zvol tear_down command from nas
+Received zvol tear_down command from frontend, passing to compute node
 """
 def tear_down(node_name, zvol_name):
     print "Tearing down zvol %s"%zvol_name
-    vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': 'zfs-0-0'})
+    vmPublisher.messages.put({'message': {'action': 'tear_down', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': node_name})
+
+"""
+Received zvol_attached notification from compute node, passing to frontend
+"""
+def zvol_attached(node_name, zvol_name):
+    print "Zvol attached %s at %s"%(zvol_name,node_name)
+    vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': 'campfire'})
+
+"""
+Received zvol_detached notification from compute node, passing to frontend
+"""
+def zvol_detached(node_name, zvol_name):
+    print "Zvol detached %s at %s"%(zvol_name,node_name)
+    vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': 'campfire'})
 
 
 
 
 
-function_dict = {'start_vm':start_vm, 'stop_vm':stop_vm, 'set_zvol':set_zvol, 'tear_down':tear_down }
+function_dict = {'set_zvol':set_zvol, 'tear_down':tear_down, 'zvol_attached':zvol_attached, 'zvol_detached': zvol_detached }
 
 def process_message(message):
     print "Received message %s"%message
     function_dict[message['action']](message['node_name'],message['target'])
+
+
 
 
 LOG_FORMAT = ('%(levelname) -10s %(asctime)s %(name) -30s %(funcName) '
@@ -111,6 +116,7 @@ logging.basicConfig(filename='log',level=logging.INFO, format=LOG_FORMAT)
 # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
 vmPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.vm-manage', 'direct')
 vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, process_message)
+storageConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.img-storage', 'fanout', NODE_NAME, process_message)
 
 t_publish = Thread(target=vmPublisher.run)
 t_publish.start()
@@ -120,8 +126,15 @@ t_consume = Thread(target=vmConsumer.run)
 t_consume.start()
 print 'started consumer'
 
+t_st_consume = Thread(target=vmConsumer.run)
+t_st_consume.start()
+print 'started storage consumer'
+
+
 raw_input('Enter to quit\n')
 vmPublisher.stop()
 vmConsumer.stop()
+storageConsumer.stop()
 t_publish.join()
 t_consume.join()
+t_st_consume.join()

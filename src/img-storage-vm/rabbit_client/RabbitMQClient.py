@@ -531,7 +531,7 @@ class RabbitMQConsumer:
                     basic_deliver.delivery_tag, properties.app_id, body)
         self.acknowledge_message(basic_deliver.delivery_tag)
         if self.process_message:
-            self.process_message(body)
+            self.process_message(json.loads(body))
 
     def on_cancelok(self, unused_frame):
         """This method is invoked by pika when RabbitMQ acknowledges the
