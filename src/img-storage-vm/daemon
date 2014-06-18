@@ -54,7 +54,7 @@
 #
 # @Copyright@
 #
-from imgstoragevm.ImgStorageClient import ImgStoragePublisher, ImgStorageConsumer
+from rabbit_client.VmManageClient import VmManagePublisher, VmManageConsumer
 import logging
 
 from threading import Thread
@@ -74,27 +74,27 @@ logging.basicConfig(filename='log',level=logging.INFO, format=LOG_FORMAT)
 rabbitmq_url = 'amqp://guest:guest@localhost:5672/%2F?connection_attempts=3&heartbeat_interval=3600'
 
 # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
-storagePublisher = ImgStoragePublisher(rabbitmq_url)
-storageConsumer = ImgStorageConsumer(rabbitmq_url, process_message)
+vmPublisher = VmManagePublisher(rabbitmq_url)
+vmConsumer = VmManageConsumer(rabbitmq_url, process_message)
 
-t_publish = Thread(target=storagePublisher.run)
+t_publish = Thread(target=vmPublisher.run)
 t_publish.start()
 print 'started publisher'
 
-t_consume = Thread(target=storageConsumer.run)
+t_consume = Thread(target=vmConsumer.run)
 t_consume.start()
 print 'started consumer'
 
 time.sleep(2)
 
 print 'publishing'
-storagePublisher.messages.put({'command': 'allocate_drive', 'requestor':'node_name'})
-storagePublisher.messages.put({'command': 'allocate_drive', 'requestor':'node_name'})
-storagePublisher.messages.put({'command': 'allocate_drive', 'requestor':'node_name'})
-storagePublisher.messages.put({'command': 'allocate_drive', 'requestor':'node_name'})
+vmPublisher.messages.put({'command': 'allocate_drive', 'requestor':'node_name'})
+vmPublisher.messages.put({'command': 'allocate_drive', 'requestor':'node_name'})
+vmPublisher.messages.put({'command': 'allocate_drive', 'requestor':'node_name'})
+vmPublisher.messages.put({'command': 'allocate_drive', 'requestor':'node_name'})
 
 raw_input('Enter to quit\n')
-storagePublisher.stop()
-storageConsumer.stop()
+vmPublisher.stop()
+vmConsumer.stop()
 t_publish.join()
 t_consume.join()

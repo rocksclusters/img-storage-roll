@@ -10,7 +10,7 @@ LOG_FORMAT = ('%(levelname) -10s %(asctime)s %(name) -30s %(funcName) '
 LOGGER = logging.getLogger(__name__)
 
 
-class ImgStoragePublisher(object):
+class VmManagePublisher(object):
     EXCHANGE = 'rocks.vm-manage'
     EXCHANGE_TYPE = 'direct'
     ROUTING_KEY = 'compute-0-0'
@@ -310,7 +310,7 @@ class ImgStoragePublisher(object):
 
 
 
-class ImgStorageConsumer:
+class VmManageConsumer:
     EXCHANGE = 'rocks.vm-manage'
     EXCHANGE_TYPE = 'direct'
     ROUTING_KEY = 'compute-0-0'
