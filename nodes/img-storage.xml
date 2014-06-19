@@ -19,6 +19,7 @@
 
 	<package>pika</package>
 	<package>rabbitmq-server</package>
+	<package>img-storage-fe</package>
 
 <post>
 /sbin/chkconfig rabbitmq-server on
