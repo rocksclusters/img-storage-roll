@@ -83,28 +83,12 @@ myenv = ROCKS_VERSION=$(ROCKS_VERSION)
 ROOT ?= /
 
 build:: rocks-copyright.txt
-	echo aaaaa $(myenv)
-	#$(myenv) $(PY.PATH) setup.py build
 
 install:: build
 	#test "$(ROOT)" && \
 	#  $(myenv) $(PY.PATH) setup.py install --root=$(ROOT) || \
 	#  $(myenv) $(PY.PATH) setup.py install --root=/
 	$(myenv) $(PY.PATH) setup.py install --root=$(ROOT)
-	# TODO this is really hugly but for now it does the job
-	# @echo "version = \"$(ROCKS_VERSION)\"" > \
-	# 	$(ROOT)/$(PY.ROCKS)/rocks/__init__.py
-	# @echo "release = \"$(VERSION_NAME)\"" >> \
-	# 	$(ROOT)/$(PY.ROCKS)/rocks/__init__.py
-	# @echo "version_major = \"$(VERSION.MAJOR)\"" >> \
-	# 	$(ROOT)/$(PY.ROCKS)/rocks/__init__.py
-	# @echo "version_minor = \"$(VERSION.MINOR)\"" >> \
-	# 	$(ROOT)/$(PY.ROCKS)/rocks/__init__.py
-	# @echo "version_micro = \"$(VERSION.MICRO)\"" >> \
-	# 	$(ROOT)/$(PY.ROCKS)/rocks/__init__.py
-	# $(INSTALL) -m0444 rocks-copyright.txt \
-	# 	$(ROOT)/$(PY.ROCKS)/rocks/commands/list/license/license.txt
-	#find $(ROOT)/$(PY.ROCKS)/rocks -name "*.pyc" -delete
 
 
 clean::
