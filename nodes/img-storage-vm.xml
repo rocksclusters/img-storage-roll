@@ -20,7 +20,4 @@
 	<package>pika</package>
 	<package>img-storage-vm</package>
 
-<post>
-</post>
-
 </kickstart>
