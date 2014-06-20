@@ -56,7 +56,7 @@
 
 PKGROOT		= /opt/rocks
 REDHAT.ROOT     = $(CURDIR)/../../
-ROCKSROOT       = $(CURDIR)/../../src/devel/devel
+#ROCKSROOT       = $(CURDIR)/../../src/devel/devel
 -include $(ROCKSROOT)/etc/Rules.mk
 include Rules.mk
 
