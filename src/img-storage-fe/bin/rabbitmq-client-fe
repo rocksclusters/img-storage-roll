@@ -54,78 +54,67 @@
 #
 # @Copyright@
 #
-from rabbit_client.RabbitMQClient import RabbitMQPublisher, RabbitMQConsumer
+import pika
+
 import logging
+import sys
 
-from threading import Thread
-
-import time
 import json
 
 NODE_NAME = 'campfire' # this node's name
-RABBITMQ_URL = 'amqp://guest:guest@localhost:5672/%2F?connection_attempts=3&heartbeat_interval=3600'
+
+RABBITMQ_SERVER = 'localhost'
+
+try:
+    import rocks.db.helper
+
+    db = rocks.db.helper.DatabaseHelper()
+    db.connect()
+    RABBITMQ_SERVER = db.getHostAttr(db.getHostname('localhost'), 'Kickstart_PrivateHostname')
+    db.close()
+except ImportError:
+    pass
+
+RABBITMQ_URL = 'amqp://guest:guest@%s:5672/%%2F?connection_attempts=3&heartbeat_interval=3600'%RABBITMQ_SERVER
+
+# Open a connection to RabbitMQ on localhost using all default parameters
+connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
+
+# Open the channel
+channel = connection.channel()
+
+zvol_name = 'test_zvol'
+if len(sys.argv) > 1:
+    zvol_name = sys.argv[1]
+
+# Declare the queue
+method_frame = channel.queue_declare(exclusive=True, auto_delete=True)
+zvol_manage_queue = method_frame.method.queue
+channel.queue_bind(queue=zvol_manage_queue, exchange = 'rocks.zvol-manage', routing_key = zvol_name)
+
+# Turn on delivery confirmations
+channel.confirm_delivery()
+
+message = {'action': 'set_zvol', 'target':zvol_name, 'node_name':'compute-0-0'}
+
+def on_message(channel, method_frame, header_frame, body):
+    print method_frame.delivery_tag
+    print body
+    print
+    channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+    channel.stop_consuming()
+    connection.close()
 
 
-"""
-Received zvol_attached notification from nas, now starting VM
-"""
-def zvol_attached(node_name, zvol_name):
-    print "Zvol attached %s at %s"%(zvol_name,node_name)
-    storagePublisher.messages.put({'message': {'action': 'start_vm', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': 'compute-0-0'})
+# Send a message
+if channel.basic_publish(exchange='rocks.vm-manage',
+                         routing_key='zfs-0-0',
+                         body=json.dumps(message, ensure_ascii=False),
+                         properties=pika.BasicProperties(content_type='application/json', delivery_mode=1)):
+    print 'Message publish was confirmed'
 
 
-"""
-Received zvol_detached notification from NAS
-"""
-def zvol_detached(node_name, zvol_name):
-    print "Zvol detached %s at %s"%(zvol_name,node_name)
-
-
-
-function_dict = {'zvol_attached':zvol_attached, 'zvol_detached':zvol_detached }
-
-def process_message(message):
-    print "Received message %s"%message
-    function_dict[message['action']](message['node_name'],message['target'])
-
-
-
-
-
-LOG_FORMAT = ('%(levelname) -10s %(asctime)s %(name) -30s %(funcName) '
-              '-35s %(lineno) -5d: %(message)s')
-LOGGER = logging.getLogger(__name__)
-
-logging.basicConfig(filename='log',level=logging.INFO, format=LOG_FORMAT)
-
-# Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
-vmPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.vm-manage', 'direct')
-vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, process_message)
-storagePublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.img-storage', 'fanout')
-
-t_publish = Thread(target=vmPublisher.run)
-t_publish.start()
-print 'started publisher'
-
-t_consume = Thread(target=vmConsumer.run)
-t_consume.start()
-print 'started consumer'
-
-t_st_publish = Thread(target=vmPublisher.run)
-t_st_publish.start()
-print 'started publisher'
-
-
-
-time.sleep(2)
-
-print 'publishing'
-vmPublisher.messages.put({'message': {'action': 'set_zvol', 'target':'vm_zvol_000', 'node_name':'compute-0-0'}, 'routing_key': 'zfs-0-0'})
-
-raw_input('Enter to quit\n')
-vmPublisher.stop()
-vmConsumer.stop()
-storagePublisher.stop()
-t_publish.join()
-t_consume.join()
-t_st_publish.join()
+    channel.basic_consume(on_message, zvol_manage_queue)
+    channel.start_consuming()
+else:
+    print 'Message could not be confirmed'

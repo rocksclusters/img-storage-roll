@@ -85,14 +85,14 @@ Received zvol_attached notification from compute node, passing to frontend
 """
 def zvol_attached(node_name, zvol_name):
     print "Zvol attached %s at %s"%(zvol_name,node_name)
-    vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': 'campfire'})
+    zvolPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': zvol_name})
 
 """
 Received zvol_detached notification from compute node, passing to frontend
 """
 def zvol_detached(node_name, zvol_name):
     print "Zvol detached %s at %s"%(zvol_name,node_name)
-    vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': 'campfire'})
+    zvolPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': zvol_name})
 
 
 
@@ -116,7 +116,7 @@ logging.basicConfig(filename='log',level=logging.INFO, format=LOG_FORMAT)
 # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
 vmPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.vm-manage', 'direct')
 vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, process_message)
-storageConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.img-storage', 'fanout', NODE_NAME, process_message)
+zvolPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.zvol-manage', 'direct')
 
 t_publish = Thread(target=vmPublisher.run)
 t_publish.start()
@@ -126,15 +126,15 @@ t_consume = Thread(target=vmConsumer.run)
 t_consume.start()
 print 'started consumer'
 
-t_st_consume = Thread(target=vmConsumer.run)
-t_st_consume.start()
-print 'started storage consumer'
+t_z_publish = Thread(target=zvolPublisher.run)
+t_z_publish.start()
+print 'started zvol manage publisher'
 
 
 raw_input('Enter to quit\n')
 vmPublisher.stop()
 vmConsumer.stop()
-storageConsumer.stop()
+zvolPublisher.stop()
 t_publish.join()
 t_consume.join()
-t_st_consume.join()
+t_z_publish.join()

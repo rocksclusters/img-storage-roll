@@ -1,3 +1,4 @@
 RPMS
 SRPMS
 **/*.pyc
+**/log
