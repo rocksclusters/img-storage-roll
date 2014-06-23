@@ -109,6 +109,7 @@ def on_message(channel, method_frame, header_frame, body):
 # Send a message
 if channel.basic_publish(exchange='rocks.vm-manage',
                          routing_key='zfs-0-0',
+                         mandatory=True,
                          body=json.dumps(message, ensure_ascii=False),
                          properties=pika.BasicProperties(content_type='application/json', delivery_mode=1)):
     print 'Message publish was confirmed'
