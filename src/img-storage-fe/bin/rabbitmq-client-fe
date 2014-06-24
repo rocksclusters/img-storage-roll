@@ -58,6 +58,7 @@ import pika
 
 import logging
 import sys
+import uuid
 
 import json
 
@@ -84,18 +85,23 @@ connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
 channel = connection.channel()
 
 zvol_name = 'test_zvol'
+
+action = 'set_zvol'
+
 if len(sys.argv) > 1:
     zvol_name = sys.argv[1]
+
+if len(sys.argv) > 2:
+    action = sys.argv[2]
 
 # Declare the queue
 method_frame = channel.queue_declare(exclusive=True, auto_delete=True)
 zvol_manage_queue = method_frame.method.queue
-channel.queue_bind(queue=zvol_manage_queue, exchange = 'rocks.zvol-manage', routing_key = zvol_name)
 
 # Turn on delivery confirmations
 channel.confirm_delivery()
 
-message = {'action': 'set_zvol', 'target':zvol_name, 'node_name':'compute-0-0'}
+message = {'action': action, 'target':zvol_name, 'node_name':'compute-0-0'}
 
 def on_message(channel, method_frame, header_frame, body):
     print method_frame.delivery_tag
@@ -111,9 +117,13 @@ if channel.basic_publish(exchange='rocks.vm-manage',
                          routing_key='zfs-0-0',
                          mandatory=True,
                          body=json.dumps(message, ensure_ascii=False),
-                         properties=pika.BasicProperties(content_type='application/json', delivery_mode=1)):
+                         properties=pika.BasicProperties(content_type='application/json',
+                                                         delivery_mode=1,
+                                                         correlation_id = str(uuid.uuid4()),
+                                                         reply_to = zvol_manage_queue
+                                                        )
+                        ):
     print 'Message publish was confirmed'
-
 
     channel.basic_consume(on_message, zvol_manage_queue)
     channel.start_consuming()

@@ -54,7 +54,7 @@
 #
 # @Copyright@
 #
-from rabbit_client.RabbitMQClient import RabbitMQPublisher, RabbitMQConsumer
+from rabbit_client.RabbitMQClient import RabbitMQPublisher, RabbitMQConsumer, SyncRabbitMQPublisher
 import logging
 
 from threading import Thread
@@ -62,47 +62,94 @@ from threading import Thread
 import time
 import json
 
+import sqlite3
+import sys
+
+import pika
+
 NODE_NAME = 'zfs-0-0' # this node's name
 RABBITMQ_URL = 'amqp://guest:guest@localhost:5672/%2F?connection_attempts=3&heartbeat_interval=3600'
 
+with sqlite3.connect('calls.db') as con:
+    cur = con.cursor()
+    cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, corr_id TEXT NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
 
 """
 Received set_zvol command from frontend, passing to compute node
 """
-def set_zvol(node_name, zvol_name):
+def set_zvol(node_name, zvol_name, props):
     print "Setting zvol %s"%zvol_name
-    vmPublisher.messages.put({'message': {'action': 'set_zvol', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': node_name})
+
+    with sqlite3.connect('calls.db') as con:
+        cur = con.cursor()
+        try :
+            cur.execute('INSERT INTO zvol_calls VALUES ("%s","%s","%s",%i)'%(zvol_name, props.correlation_id, props.reply_to, time.time()))
+            con.commit()
+            vmPublisher.messages.put({'message': {'action': 'set_zvol', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': node_name})
+            print "Setting zvol %s sent"%zvol_name
+        except sqlite3.IntegrityError, msg:
+            print "%s"%msg
+            SyncRabbitMQPublisher(RABBITMQ_URL).publish(routing_key=props.reply_to,
+                        body = {'action': 'zvol_attached', 'target':zvol_name, 'node_name': NODE_NAME, 'status': 'error', 'error':'zvol_busy'},
+                        correlation_id = props.correlation_id)
+
 
 """
 Received zvol tear_down command from frontend, passing to compute node
 """
-def tear_down(node_name, zvol_name):
+def tear_down(node_name, zvol_name, props):
     print "Tearing down zvol %s"%zvol_name
-    vmPublisher.messages.put({'message': {'action': 'tear_down', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': node_name})
+    with sqlite3.connect('calls.db') as con:
+        cur = con.cursor()
+        try :
+            cur.execute('INSERT INTO zvol_calls VALUES ("%s","%s","%s",%i)'%(zvol_name, props.correlation_id, props.reply_to, time.time()))
+            con.commit()
+            vmPublisher.messages.put({'message': {'action': 'tear_down', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': node_name})
+            print "Tearing down zvol %s sent"%zvol_name
+        except sqlite3.IntegrityError, msg:
+            print "%s"%msg
+            SyncRabbitMQPublisher(RABBITMQ_URL).publish(routing_key=props.reply_to,
+                        body = {'action': 'zvol_detached', 'target':zvol_name, 'node_name': NODE_NAME, 'status': 'error', 'error':'zvol_busy'},
+                        correlation_id = props.correlation_id)
+
 
 """
 Received zvol_attached notification from compute node, passing to frontend
 """
-def zvol_attached(node_name, zvol_name):
+def zvol_attached(node_name, zvol_name, props):
     print "Zvol attached %s at %s"%(zvol_name,node_name)
-    zvolPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': zvol_name})
+    with sqlite3.connect('calls.db') as con:
+        cur = con.cursor()
+        cur.execute('SELECT corr_id, reply_to FROM zvol_calls WHERE zvol = "%s"'%zvol_name)
+        row = cur.fetchone()
+        if row != None:
+            SyncRabbitMQPublisher(RABBITMQ_URL).publish(routing_key=row[1],
+                        body = {'action': 'zvol_attached', 'target':zvol_name, 'node_name': NODE_NAME, 'status':'success'},
+                        correlation_id = row[0])
+            cur.execute('DELETE FROM zvol_calls WHERE zvol = "%s"'%zvol_name)
+            con.commit()
 
 """
 Received zvol_detached notification from compute node, passing to frontend
 """
-def zvol_detached(node_name, zvol_name):
+def zvol_detached(node_name, zvol_name, props):
     print "Zvol detached %s at %s"%(zvol_name,node_name)
-    zvolPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': zvol_name})
-
-
-
-
+    with sqlite3.connect('calls.db') as con:
+        cur = con.cursor()
+        cur.execute('SELECT corr_id, reply_to FROM zvol_calls WHERE zvol = "%s"'%zvol_name)
+        row = cur.fetchone()
+        if row != None:
+            SyncRabbitMQPublisher(RABBITMQ_URL).publish(routing_key=row[1],
+                        body = {'action': 'zvol_detached', 'target':zvol_name, 'node_name': NODE_NAME, 'status':'success'},
+                        correlation_id = row[0])
+            cur.execute('DELETE FROM zvol_calls WHERE zvol = "%s"'%zvol_name)
+            con.commit()
 
 function_dict = {'set_zvol':set_zvol, 'tear_down':tear_down, 'zvol_attached':zvol_attached, 'zvol_detached': zvol_detached }
 
-def process_message(message):
+def process_message(properties, message):
     print "Received message %s"%message
-    function_dict[message['action']](message['node_name'],message['target'])
+    function_dict[message['action']](message['node_name'],message['target'], properties)
 
 
 
@@ -116,7 +163,6 @@ logging.basicConfig(filename='log',level=logging.INFO, format=LOG_FORMAT)
 # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
 vmPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.vm-manage', 'direct')
 vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, process_message)
-zvolPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.zvol-manage', 'direct')
 
 t_publish = Thread(target=vmPublisher.run)
 t_publish.start()
@@ -126,15 +172,9 @@ t_consume = Thread(target=vmConsumer.run)
 t_consume.start()
 print 'started consumer'
 
-t_z_publish = Thread(target=zvolPublisher.run)
-t_z_publish.start()
-print 'started zvol manage publisher'
-
 
 raw_input('Enter to quit\n')
 vmPublisher.stop()
 vmConsumer.stop()
-zvolPublisher.stop()
 t_publish.join()
 t_consume.join()
-t_z_publish.join()
