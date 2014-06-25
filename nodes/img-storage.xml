@@ -10,7 +10,7 @@
 	<copyright>
 	Copyright (c) 2000 - 2012 The Regents of the University of California.
 	All rights reserved. Rocks(r) v5.5/v6.0 www.rocksclusters.org
-	
+
 	</copyright>
 
 	<changelog>
@@ -20,6 +20,7 @@
 	<package>pika</package>
 	<package>rabbitmq-server</package>
 	<package>img-storage-fe</package>
+	<package>rocks-command-imgstorage</package>
 
 <post>
 /sbin/chkconfig rabbitmq-server on

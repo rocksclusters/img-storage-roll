@@ -62,7 +62,12 @@ import uuid
 
 import json
 
-NODE_NAME = 'campfire' # this node's name
+#params from user
+nas = 'zfs-0-0'
+zvol_name = sys.argv[2]
+hosting = 'compute-0-0'
+size = '10'
+action = sys.argv[1]
 
 RABBITMQ_SERVER = 'localhost'
 
@@ -78,54 +83,45 @@ except ImportError:
 
 RABBITMQ_URL = 'amqp://guest:guest@%s:5672/%%2F?connection_attempts=3&heartbeat_interval=3600'%RABBITMQ_SERVER
 
-# Open a connection to RabbitMQ on localhost using all default parameters
-connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
+def callAddHostStoragemap(nas, volume, hosting, size, action):
+    connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
 
-# Open the channel
-channel = connection.channel()
+    channel = connection.channel()
 
-zvol_name = 'test_zvol'
+    # Declare the queue
+    method_frame = channel.queue_declare(exclusive=True, auto_delete=True)
+    zvol_manage_queue = method_frame.method.queue
 
-action = 'set_zvol'
+    # Turn on delivery confirmations
+    channel.confirm_delivery()
 
-if len(sys.argv) > 1:
-    zvol_name = sys.argv[1]
+    message = {'action': action, 'zvol': volume, 'hosting': hosting, 'size': size}
 
-if len(sys.argv) > 2:
-    action = sys.argv[2]
-
-# Declare the queue
-method_frame = channel.queue_declare(exclusive=True, auto_delete=True)
-zvol_manage_queue = method_frame.method.queue
-
-# Turn on delivery confirmations
-channel.confirm_delivery()
-
-message = {'action': action, 'target':zvol_name, 'node_name':'compute-0-0'}
-
-def on_message(channel, method_frame, header_frame, body):
-    print method_frame.delivery_tag
-    print body
-    print
-    channel.basic_ack(delivery_tag=method_frame.delivery_tag)
-    channel.stop_consuming()
-    connection.close()
+    def on_message(channel, method_frame, header_frame, body):
+        print method_frame.delivery_tag
+        print body
+        print
+        channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+        channel.stop_consuming()
+        connection.close()
+        #returning from command call
 
 
-# Send a message
-if channel.basic_publish(exchange='rocks.vm-manage',
-                         routing_key='zfs-0-0',
-                         mandatory=True,
-                         body=json.dumps(message, ensure_ascii=False),
-                         properties=pika.BasicProperties(content_type='application/json',
-                                                         delivery_mode=1,
-                                                         correlation_id = str(uuid.uuid4()),
-                                                         reply_to = zvol_manage_queue
-                                                        )
-                        ):
-    print 'Message publish was confirmed'
+    # Send a message
+    if channel.basic_publish(exchange='rocks.vm-manage',
+                             routing_key=nas,
+                             mandatory=True,
+                             body=json.dumps(message, ensure_ascii=False),
+                             properties=pika.BasicProperties(content_type='application/json',
+                                                             delivery_mode=1,
+                                                             correlation_id = str(uuid.uuid4()),
+                                                             reply_to = zvol_manage_queue
+                                                            )
+                            ):
+        channel.basic_consume(on_message, zvol_manage_queue)
+        channel.start_consuming()
+    else:
+        print 'Message could not be delivered'
+        # raise error
 
-    channel.basic_consume(on_message, zvol_manage_queue)
-    channel.start_consuming()
-else:
-    print 'Message could not be confirmed'
+callAddHostStoragemap(nas, zvol_name, hosting, size, action)

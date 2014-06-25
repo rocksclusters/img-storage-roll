@@ -223,9 +223,10 @@ class RabbitMQPublisher(object):
 
         properties = pika.BasicProperties(app_id='rocks.ImgStorageClient',
                                           content_type='application/json',
-                                          headers=message['message'])
+                                          headers=message['message'],
+                                          reply_to=message.get('reply_to'))
 
-        self._channel.basic_publish(self.exchange, message['routing_key'],
+        self._channel.basic_publish(self.exchange, message.get('routing_key'),
                                     json.dumps(message['message'], ensure_ascii=False),
                                     properties)
         self._message_number += 1

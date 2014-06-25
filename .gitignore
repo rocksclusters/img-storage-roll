@@ -1,4 +1,5 @@
 RPMS
 SRPMS
-**/*.pyc
-**/log
+*.pyc
+log
+*.db

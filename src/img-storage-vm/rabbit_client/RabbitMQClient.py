@@ -223,9 +223,10 @@ class RabbitMQPublisher(object):
 
         properties = pika.BasicProperties(app_id='rocks.ImgStorageClient',
                                           content_type='application/json',
-                                          headers=message['message'])
+                                          headers=message['message'],
+                                          reply_to=message.get('reply_to'))
 
-        self._channel.basic_publish(self.exchange, message['routing_key'],
+        self._channel.basic_publish(self.exchange, message.get('routing_key'),
                                     json.dumps(message['message'], ensure_ascii=False),
                                     properties)
         self._message_number += 1
@@ -531,7 +532,7 @@ class RabbitMQConsumer:
                     basic_deliver.delivery_tag, properties.app_id, body)
         self.acknowledge_message(basic_deliver.delivery_tag)
         if self.process_message:
-            self.process_message(json.loads(body))
+            self.process_message(properties, json.loads(body))
 
     def on_cancelok(self, unused_frame):
         """This method is invoked by pika when RabbitMQ acknowledges the
@@ -621,3 +622,26 @@ class RabbitMQConsumer:
         self.stop_consuming()
         self._connection.ioloop.start()
         LOGGER.info('Stopped')
+
+class SyncRabbitMQPublisher(object):
+    def __init__(self, amqp_url):
+        """Setup the publisher object, passing in the URL we will use to connect to RabbitMQ.
+
+        :param str amqp_url: The URL for connecting to RabbitMQ
+
+        """
+        self._url = amqp_url
+
+    def publish(self, exchange = '', routing_key = '', body = '', correlation_id = None):
+        connection = None
+        try:
+            connection = pika.BlockingConnection(pika.URLParameters(self._url))
+            channel = connection.channel()
+            channel.basic_publish(exchange=exchange,
+                                  routing_key=routing_key,
+                                  body=json.dumps(body, ensure_ascii=False),
+                                  properties=pika.BasicProperties(content_type='application/json',
+                                                                  delivery_mode=1,
+                                                                  correlation_id = correlation_id))
+        finally:
+            if connection: connection.close()

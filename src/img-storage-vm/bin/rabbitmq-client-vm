@@ -80,41 +80,26 @@ except ImportError:
 RABBITMQ_URL = 'amqp://guest:guest@%s:5672/%%2F?connection_attempts=3&heartbeat_interval=3600'%RABBITMQ_SERVER
 
 """
-Received start_vm command from FE
-"""
-def start_vm(node_name, zvol_name):
-    print "Starting VM from zvol %s"%zvol_name
-
-"""
-Received stop_vm command from FE
-"""
-def stop_vm(node_name, zvol_name):
-    print "Stoping VM from zvol %s"%zvol_name
-
-"""
 Received set_zvol command from nas
 """
-def set_zvol(node_name, zvol_name):
-    print "Setting zvol %s"%zvol_name
+def set_zvol(message, props):
+    print "Setting zvol %s"%message['target']
     time.sleep(random.randint(2, 7))
-    vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': 'zfs-0-0'})
+    bdev = '/dev/sdb'
+    vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'bdev':bdev}, 'routing_key': props.reply_to})
 
 """
 Received zvol tear_down command from nas
 """
-def tear_down(node_name, zvol_name):
-    print "Tearing down zvol %s"%zvol_name
-    vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':zvol_name, 'node_name': NODE_NAME}, 'routing_key': 'zfs-0-0'})
+def tear_down(message, props):
+    print "Tearing down zvol %s"%message['target']
+    vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target']}, 'routing_key': props.reply_to})
 
+function_dict = {'set_zvol':set_zvol, 'tear_down':tear_down }
 
-
-
-
-function_dict = {'start_vm':start_vm, 'stop_vm':stop_vm, 'set_zvol':set_zvol, 'tear_down':tear_down }
-
-def process_message(message):
+def process_message(properties, message):
     print "Received message %s"%message
-    function_dict[message['action']](message['node_name'],message['target'])
+    function_dict[message['action']](message, properties)
 
 
 LOG_FORMAT = ('%(levelname) -10s %(asctime)s %(name) -30s %(funcName) '
