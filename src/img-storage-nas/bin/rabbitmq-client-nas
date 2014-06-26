@@ -162,11 +162,11 @@ def zvol_detached(message, props):
         cur.execute('SELECT corr_id, reply_to FROM zvol_calls WHERE iscsi_target = ?',[target])
         row = cur.fetchone()
         if row != None:
+            cur.execute('DELETE FROM zvol_calls WHERE iscsi_target = ?',[target])
+            con.commit()
             SyncRabbitMQPublisher(RABBITMQ_URL).publish(routing_key=row[1],
                         body = {'action': 'zvol_detached', 'status':'success'},
                         correlation_id = row[0])
-            cur.execute('DELETE FROM zvol_calls WHERE iscsi_target = ?',[target])
-            con.commit()
 
 function_dict = {'set_zvol':set_zvol, 'tear_down':tear_down, 'zvol_attached':zvol_attached, 'zvol_detached': zvol_detached }
 
