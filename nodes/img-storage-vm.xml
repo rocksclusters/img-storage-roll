@@ -21,5 +21,7 @@
 	<package>python-daemon</package>
 	<package>lockfile</package>
 	<package>img-storage-vm</package>
-
+	<post>
+	    mkdir /var/log/rocks
+	</post>
 </kickstart>

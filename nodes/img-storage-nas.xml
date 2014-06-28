@@ -25,6 +25,7 @@
 	<post>
 		yum install foundation-sqlite
 		yum install foundation-pysqlite
+		mkdir /var/log/rocks
 	</post>
 
 </kickstart>
