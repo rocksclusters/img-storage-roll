@@ -72,7 +72,7 @@ import pika
 NODE_NAME = 'zfs-0-0' # this node's name
 RABBITMQ_URL = 'amqp://guest:guest@localhost:5672/%2F?connection_attempts=3&heartbeat_interval=3600'
 
- 
+
 with sqlite3.connect('calls.db') as con:
     cur = con.cursor()
     cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE NOT NULL, corr_id TEXT NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
@@ -102,10 +102,6 @@ class RabbitClientDaemonNas():
         t_consume.start()
         logger.debug('started consumer')
 
-
-        raw_input('Enter to quit\n')
-        # vmPublisher.stop()
-        # vmConsumer.stop()
         t_publish.join()
         t_consume.join()
 
