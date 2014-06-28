@@ -18,6 +18,8 @@
 	</changelog>
 
 	<package>pika</package>
+	<package>python-daemon</package>
+	<package>lockfile</package>
 	<package>img-storage-vm</package>
 
 </kickstart>
