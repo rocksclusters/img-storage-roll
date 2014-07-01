@@ -115,7 +115,7 @@ class RabbitClientDaemonVm():
     def run(self):
         # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
         vmPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.vm-manage', 'direct')
-        vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, process_message)
+        vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, self.process_message)
 
         t_publish = Thread(target=vmPublisher.run)
         t_publish.start()

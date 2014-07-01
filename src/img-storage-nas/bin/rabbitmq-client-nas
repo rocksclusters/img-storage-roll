@@ -70,8 +70,20 @@ import sys
 import pika
 
 NODE_NAME = 'zfs-0-0' # this node's name
-RABBITMQ_URL = 'amqp://guest:guest@localhost:5672/%2F?connection_attempts=3&heartbeat_interval=3600'
 
+RABBITMQ_SERVER = 'localhost'
+
+try:
+    import rocks.db.helper
+
+    db = rocks.db.helper.DatabaseHelper()
+    db.connect()
+    RABBITMQ_SERVER = db.getHostAttr(db.getHostname('localhost'), 'Kickstart_PrivateHostname')
+    db.close()
+except ImportError:
+    pass
+
+RABBITMQ_URL = 'amqp://guest:guest@%s:5672/%%2F?connection_attempts=3&heartbeat_interval=3600'%RABBITMQ_SERVER
 
 with sqlite3.connect('calls.db') as con:
     cur = con.cursor()
