@@ -81,6 +81,9 @@ try:
 except ImportError:
     pass
 
+print RABBITMQ_SERVER
+sys.exit(1)
+
 RABBITMQ_URL = 'amqp://guest:guest@%s:5672/%%2F?connection_attempts=3&heartbeat_interval=3600'%RABBITMQ_SERVER
 
 def callAddHostStoragemap(nas, volume, hosting, size, action):

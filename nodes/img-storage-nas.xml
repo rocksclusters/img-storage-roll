@@ -21,11 +21,13 @@
 	<package>python-daemon</package>
 	<package>lockfile</package>
 	<package>img-storage-nas</package>
+	<package>scsi-target-utils</package>
+	<package>iscsi-initiator-utils</package>
 
 	<post>
 		yum install foundation-sqlite
 		yum install foundation-pysqlite
 		mkdir /var/log/rocks
+		/sbin/chkconfig tgtd on
 	</post>
-
 </kickstart>

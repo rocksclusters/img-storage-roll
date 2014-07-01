@@ -21,6 +21,7 @@
 	<package>python-daemon</package>
 	<package>lockfile</package>
 	<package>img-storage-vm</package>
+	<package>iscsi-initiator-utils</package>
 	<post>
 	    mkdir /var/log/rocks
 	</post>
