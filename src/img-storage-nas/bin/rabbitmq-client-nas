@@ -120,7 +120,7 @@ class RabbitClientDaemonNas():
     """
     Received set_zvol command from frontend, passing to compute node
     """
-    def set_zvol(message, props):
+    def set_zvol(self, message, props):
         hosting = message['hosting']
         zvol_name = message['zvol']
         size = message['size']
@@ -146,7 +146,7 @@ class RabbitClientDaemonNas():
     """
     Received zvol tear_down command from frontend, passing to compute node
     """
-    def tear_down(message, props):
+    def tear_down(self, message, props):
         zvol_name = message['zvol']
         print "Tearing down zvol %s"%zvol_name
         with sqlite3.connect('calls.db') as con:
@@ -173,7 +173,7 @@ class RabbitClientDaemonNas():
     """
     Received zvol_attached notification from compute node, passing to frontend
     """
-    def zvol_attached(message, props):
+    def zvol_attached(self, message, props):
         target = message['target']
         print "Zvol attached %s"%target
         with sqlite3.connect('calls.db') as con:
@@ -190,7 +190,7 @@ class RabbitClientDaemonNas():
     """
     Received zvol_detached notification from compute node, passing to frontend
     """
-    def zvol_detached(message, props):
+    def zvol_detached(self, message, props):
         target = message['target']
         print "Zvol detached %s"%(target)
 
@@ -211,7 +211,7 @@ class RabbitClientDaemonNas():
                             correlation_id = row[0])
 
 
-    def process_message(properties, message):
+    def process_message(self, properties, message):
         print "Received message %s"%message
         self.function_dict[message['action']](message, properties)
 

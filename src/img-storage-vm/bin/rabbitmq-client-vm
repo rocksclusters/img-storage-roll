@@ -95,7 +95,7 @@ class RabbitClientDaemonVm():
     """
     Received set_zvol command from nas
     """
-    def set_zvol(message, props):
+    def set_zvol(self, message, props):
         print "Setting zvol %s"%message['target']
         time.sleep(random.randint(2, 7))
         bdev = '/dev/sdb'
@@ -104,11 +104,11 @@ class RabbitClientDaemonVm():
     """
     Received zvol tear_down command from nas
     """
-    def tear_down(message, props):
+    def tear_down(self, message, props):
         print "Tearing down zvol %s"%message['target']
         vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target']}, 'routing_key': props.reply_to})
 
-    def process_message(properties, message):
+    def process_message(self, properties, message):
         print "Received message %s"%message
         function_dict[message['action']](message, properties)
 
