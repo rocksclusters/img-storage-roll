@@ -85,11 +85,6 @@ except ImportError:
 
 RABBITMQ_URL = 'amqp://guest:guest@%s:5672/%%2F?connection_attempts=3&heartbeat_interval=3600'%RABBITMQ_SERVER
 
-with sqlite3.connect('calls.db') as con:
-    cur = con.cursor()
-    cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE NOT NULL, corr_id TEXT NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
-    cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, hosting TEXT)')
-
 class RabbitClientDaemonNas():
     def __init__(self):
         self.stdin_path = '/dev/null'
@@ -102,15 +97,21 @@ class RabbitClientDaemonNas():
 
 
     def run(self):
-        # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
-        vmPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.vm-manage', 'direct')
-        vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, self.process_message)
+ 	with sqlite3.connect('calls.db') as con:
+	    cur = con.cursor()
+	    cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE NOT NULL, corr_id TEXT NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
+	    cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, hosting TEXT)')
+	    con.commit()
 
-        t_publish = Thread(target=vmPublisher.run)
+        # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
+        self.vmPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.vm-manage', 'direct')
+        self.vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, self.process_message)
+
+        t_publish = Thread(target=self.vmPublisher.run)
         t_publish.start()
         logger.debug('started publisher')
 
-        t_consume = Thread(target=vmConsumer.run)
+        t_consume = Thread(target=self.vmConsumer.run)
         t_consume.start()
         logger.debug('started consumer')
 
@@ -134,7 +135,7 @@ class RabbitClientDaemonNas():
                 cur.execute('INSERT INTO zvol_calls VALUES (?,?,?,?,?)',(zvol_name, iscsi_target, props.correlation_id, props.reply_to, time.time()))
                 cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, iscsi_target,hosting))
                 con.commit()
-                vmPublisher.messages.put({'message': {'action': 'set_zvol', 'target':iscsi_target}, 'routing_key': hosting, 'reply_to': NODE_NAME})
+                self.vmPublisher.messages.put({'message': {'action': 'set_zvol', 'target':iscsi_target}, 'routing_key': hosting, 'reply_to': NODE_NAME})
                 print "Setting iscsi %s sent"%iscsi_target
             except sqlite3.IntegrityError, msg:
                 print "%s"%msg
@@ -157,7 +158,7 @@ class RabbitClientDaemonNas():
                 if row != None:
                     cur.execute('INSERT INTO zvol_calls VALUES (?,?,?,?,?)',(zvol_name, row[1], props.correlation_id, props.reply_to, time.time()))
                     con.commit()
-                    vmPublisher.messages.put({'message': {'action': 'tear_down', 'target':row[1]}, 'routing_key': row[0], 'reply_to': NODE_NAME})
+                    self.vmPublisher.messages.put({'message': {'action': 'tear_down', 'target':row[1]}, 'routing_key': row[0], 'reply_to': NODE_NAME})
                     print "Tearing down zvol %s sent"%zvol_name
                 else:
                     SyncRabbitMQPublisher(RABBITMQ_URL).publish(routing_key=props.reply_to,

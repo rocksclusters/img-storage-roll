@@ -99,23 +99,23 @@ class RabbitClientDaemonVm():
         print "Setting zvol %s"%message['target']
         time.sleep(random.randint(2, 7))
         bdev = '/dev/sdb'
-        vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'bdev':bdev}, 'routing_key': props.reply_to})
+        self.vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'bdev':bdev}, 'routing_key': props.reply_to})
 
     """
     Received zvol tear_down command from nas
     """
     def tear_down(self, message, props):
         print "Tearing down zvol %s"%message['target']
-        vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target']}, 'routing_key': props.reply_to})
+        self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target']}, 'routing_key': props.reply_to})
 
     def process_message(self, properties, message):
         print "Received message %s"%message
-        function_dict[message['action']](message, properties)
+        self.function_dict[message['action']](message, properties)
 
     def run(self):
         # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
-        vmPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.vm-manage', 'direct')
-        vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, self.process_message)
+        self.vmPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.vm-manage', 'direct')
+        self.vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, self.process_message)
 
         t_publish = Thread(target=vmPublisher.run)
         t_publish.start()
