@@ -3,7 +3,7 @@ __PULL_MK = yes
 
 DL.CMD                  = $(shell which curl)
 DL.OPTS                 = -f -LO
-DL.SERVER               = http://pkgs.fedoraproject.org/2d515e19eb6f69d6ed711cbbafdec7ef/lockfile-0.8.tar.gz
+DL.SERVER               = http://pkgs.fedoraproject.org
 DL.PATH                 = repo/pkgs/python-lockfile/lockfile-0.8.tar.gz/2d515e19eb6f69d6ed711cbbafdec7ef
 GREP.CMD                = $(shell which grep)
 STAT.CMD                = $(shell which stat)
