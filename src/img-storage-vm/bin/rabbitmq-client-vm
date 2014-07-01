@@ -117,11 +117,11 @@ class RabbitClientDaemonVm():
         self.vmPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.vm-manage', 'direct')
         self.vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, self.process_message)
 
-        t_publish = Thread(target=vmPublisher.run)
+        t_publish = Thread(target=self.vmPublisher.run)
         t_publish.start()
         logger.debug('started publisher')
 
-        t_consume = Thread(target=vmConsumer.run)
+        t_consume = Thread(target=self.vmConsumer.run)
         t_consume.start()
         logger.debug('started consumer')
 
