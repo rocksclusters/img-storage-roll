@@ -62,6 +62,9 @@ import uuid
 
 import json
 
+if len(sys.argv) < 3:
+    sys.exit('Usage: %s action zvol\n action: set_zvol|tear_down' % sys.argv[0])
+
 #params from user
 nas = 'zfs-0-0'
 zvol_name = sys.argv[2]
@@ -80,9 +83,6 @@ try:
     db.close()
 except ImportError:
     pass
-
-print RABBITMQ_SERVER
-sys.exit(1)
 
 RABBITMQ_URL = 'amqp://guest:guest@%s:5672/%%2F?connection_attempts=3&heartbeat_interval=3600'%RABBITMQ_SERVER
 

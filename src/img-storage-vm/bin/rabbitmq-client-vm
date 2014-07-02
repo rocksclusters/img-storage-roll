@@ -60,11 +60,11 @@ import logging
 from threading import Thread
 
 from daemon import runner
-
+import subprocess
 import time
 import json
 import random
-
+import re
 NODE_NAME = 'compute-0-0' # this node's name
 
 RABBITMQ_SERVER = 'localhost'
@@ -97,16 +97,42 @@ class RabbitClientDaemonVm():
     """
     def set_zvol(self, message, props):
         print "Setting zvol %s"%message['target']
-        time.sleep(random.randint(2, 7))
-        bdev = '/dev/sdb'
-        self.vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'bdev':bdev}, 'routing_key': props.reply_to})
+	if(self.connect_iscsi(message['target'], props.reply_to)):
+		bdev = self.get_blk_dev(message['target'])
+		if(bdev is None):
+		    pass # TODO send error
+		else:
+		    self.vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'bdev':bdev}, 'routing_key': props.reply_to})
+
+    def get_blk_dev(self, iscsi_target):
+        cmd = subprocess.Popen(['iscsiadm', '-m', 'session', '-P3'], stdout=subprocess.PIPE)
+        parsing_target = False
+        for line in cmd.stdout:
+                if "Target: %s"%iscsi_target in line:
+                        parsing_target = True
+                if parsing_target and ('Attached scsi disk ' in line):
+                        searchObj = re.search( r'Attached scsi disk (\w*)', line, re.M)
+                        if searchObj:
+                            return searchObj.group(1)
+        return None
+
+    def connect_iscsi(self, iscsi_target, node_name):
+	cmd = subprocess.Popen(['iscsiadm', '--mode', 'discovery', '--type', 'sendtargets', '-p', node_name], stdout=subprocess.PIPE)
+	for line in cmd.stdout:
+		if iscsi_target in line: #has the target
+		        return subprocess.call(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-p', node_name, '-l']) == 0
+	return False
+
+    def disconnect_iscsi(self, iscsi_target):
+	return subprocess.call(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-u']) == 0
 
     """
     Received zvol tear_down command from nas
     """
     def tear_down(self, message, props):
         print "Tearing down zvol %s"%message['target']
-        self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target']}, 'routing_key': props.reply_to})
+	if(self.disconnect_iscsi(message['target'])):
+        	self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target']}, 'routing_key': props.reply_to})
 
     def process_message(self, properties, message):
         print "Received message %s"%message
