@@ -141,16 +141,16 @@ class RabbitClientDaemonNas():
 			    body = {'action': 'zvol_attached', 'target':zvol_name, 'status': 'error', 'error':'zvol_creation_error'},
 			    correlation_id = props.correlation_id)
 			return
-		
+
 		iscsi_target = ''
 		cmd = subprocess.Popen(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/tank/%s'%zvol_name], stdout=subprocess.PIPE)
 		for line in cmd.stdout:
     			if "Creating new target" in line:
         			iscsi_target = line['Creating new target (name='.__len__():line.index(',')]
-		
+
                 cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, iscsi_target,hosting))
 		con.commit()
- 
+
                 self.vmPublisher.messages.put({'message': {'action': 'set_zvol', 'target':iscsi_target}, 'routing_key': hosting, 'reply_to': NODE_NAME})
                 logger.debug("Setting iscsi %s sent"%iscsi_target)
             except sqlite3.IntegrityError, msg:
@@ -247,7 +247,7 @@ class RabbitClientDaemonNas():
 
 logger = logging.getLogger("DaemonLog")
 logger.setLevel(logging.DEBUG)
-formatter = logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -30s %(funcName) -35s %(lineno) -5d: %(message)s'")
+formatter = logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -10s %(funcName) -35s %(lineno) -5d: %(message)s'")
 handler = logging.FileHandler("/var/log/rocks/img-storage-nas.log")
 handler.setFormatter(formatter)
 logger.addHandler(handler)

@@ -96,7 +96,7 @@ class RabbitClientDaemonVm():
     Received set_zvol command from nas
     """
     def set_zvol(self, message, props):
-        print "Setting zvol %s"%message['target']
+        logger.debug("Setting zvol %s"%message['target'])
 	if(self.connect_iscsi(message['target'], props.reply_to)):
 		bdev = self.get_blk_dev(message['target'])
 		if(bdev is None):
@@ -130,12 +130,12 @@ class RabbitClientDaemonVm():
     Received zvol tear_down command from nas
     """
     def tear_down(self, message, props):
-        print "Tearing down zvol %s"%message['target']
+        logger.debug("Tearing down zvol %s"%message['target'])
 	if(self.disconnect_iscsi(message['target'])):
         	self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target']}, 'routing_key': props.reply_to})
 
     def process_message(self, properties, message):
-        print "Received message %s"%message
+        logger.debug("Received message %s"%message)
         self.function_dict[message['action']](message, properties)
 
     def run(self):
@@ -153,9 +153,9 @@ class RabbitClientDaemonVm():
 
 
 logger = logging.getLogger("DaemonLog")
-logger.setLevel(logging.INFO)
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-handler = logging.FileHandler("/var/log/rocks/img-storage-vm.log")
+logger.setLevel(logging.DEBUG)
+formatter = logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -10s %(funcName) -35s %(lineno) -5d: %(message)s'")
+handler = logging.FileHandler("/var/log/rocks/img-storage-nas.log")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
