@@ -124,7 +124,7 @@ class RabbitClientDaemonVm():
 	return False
 
     def disconnect_iscsi(self, iscsi_target):
-	return subprocess.call(['iscsiadm', '-m', 'session', '--logout']) == 0
+	return subprocess.call(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-u']) == 0
 
     """
     Received zvol tear_down command from nas
