@@ -29,5 +29,6 @@
 		yum install foundation-pysqlite
 		mkdir /var/log/rocks
 		/sbin/chkconfig tgtd on
+		/sbin/chkconfig iscsid on
 	</post>
 </kickstart>
