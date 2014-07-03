@@ -19,7 +19,6 @@
 
 	<package>pika</package>
 	<package>rabbitmq-server</package>
-	<package>img-storage-fe</package>
 	<package>rocks-command-imgstorage</package>
 
 <post>

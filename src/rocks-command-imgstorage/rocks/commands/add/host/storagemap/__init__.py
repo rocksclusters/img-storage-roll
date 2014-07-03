@@ -5,7 +5,21 @@
 import sys
 import string
 import rocks.commands
+import pika
 
+import json
+import uuid
+
+import logging
+logging.basicConfig()
+
+import rocks.db.helper
+db = rocks.db.helper.DatabaseHelper()
+db.connect()
+RABBITMQ_SERVER = db.getHostAttr(db.getHostname('localhost'), 'Kickstart_PrivateHostname')
+db.close()
+
+RABBITMQ_URL = 'amqp://guest:guest@%s:5672/%%2F?connection_attempts=3&heartbeat_interval=3600'%RABBITMQ_SERVER
 
 class Command(rocks.commands.HostArgumentProcessor, rocks.commands.add.command):
 	"""
@@ -35,10 +49,48 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.add.command):
 	</example>
 	"""
 
-	def set_up(self, nas, volume, hosting, size):
-		# useless function
-		return "/dev/sdc"
+	def callAddHostStoragemap(self, nas, volume, hosting, size):
+	    connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
 
+	    channel = connection.channel()
+
+	    # Declare the queue
+	    method_frame = channel.queue_declare(exclusive=True, auto_delete=True)
+	    zvol_manage_queue = method_frame.method.queue
+
+	    # Turn on delivery confirmations
+	    channel.confirm_delivery()
+
+	    message = {'action': 'set_zvol', 'zvol': volume, 'hosting': hosting, 'size': size}
+
+	    def on_message(channel, method_frame, header_frame, body):
+		channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+		channel.stop_consuming()
+		channel.close()
+		message = json.loads(body)
+		if(message['status'] == 'success'):
+		    self.beginOutput()
+		    self.addOutput(nas, message['bdev'])
+		    self.endOutput(padChar='')
+		else:
+		    self.abort(message['error'])
+
+
+	    # Send a message
+	    if channel.basic_publish(exchange='rocks.vm-manage',
+				     routing_key=nas,
+				     mandatory=True,
+				     body=json.dumps(message, ensure_ascii=False),
+				     properties=pika.BasicProperties(content_type='application/json',
+								     delivery_mode=1,
+								     correlation_id = str(uuid.uuid4()),
+								     reply_to = zvol_manage_queue
+								    )
+				    ):
+		channel.basic_consume(on_message, zvol_manage_queue)
+		channel.start_consuming()
+	    else:
+                self.abort('Message could not be delivered: ')
 
 	def run(self, params, args):
 		(args, nas, volume, hosting, size) = self.fillPositionalArgs(
@@ -50,11 +102,7 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.add.command):
 
 		# debugging output
 		print "mapping ", nas, ":", volume, " on ", hosting
-		device = self.set_up(nas, volume, hosting, size)
-
-		self.beginOutput()
-		self.addOutput(nas, device)
-		self.endOutput(padChar='')
+		device = self.callAddHostStoragemap(nas, volume, hosting, size)
 
 
 
