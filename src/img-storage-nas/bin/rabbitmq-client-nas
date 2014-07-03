@@ -107,19 +107,31 @@ class RabbitClientDaemonNas():
 
         # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
         self.vmPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.vm-manage', 'direct')
-        self.vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, self.process_message)
-
         t_publish = Thread(target=self.vmPublisher.run)
         t_publish.start()
         logger.debug('started publisher')
 
+        time.sleep(2)
+
+        self.vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, self.process_message)
         t_consume = Thread(target=self.vmConsumer.run)
         t_consume.start()
         logger.debug('started consumer')
 
-        t_publish.join()
-        t_consume.join()
+        #logger.debug( "Waiting")
 
+        #t_publish.join()
+        #t_consume.join()
+
+        #while(not(self.exiting)):
+        #    time.sleep(1)
+
+        time.sleep(500000)
+        #exit_event.wait()
+        #logger.debug( "Quit waiting")
+        #self.vmPublisher.stop()
+        #self.vmConsumer.stop()
+        #logger.debug( "woohooo")
     """
     Received set_zvol command from frontend, passing to compute node
     """
@@ -242,18 +254,37 @@ class RabbitClientDaemonNas():
         logger.debug("Received message %s"%message)
         self.function_dict[message['action']](message, properties)
 
-
-
+    def stop(self):
+        print "Stopping.."
+        logger.info('Stopping consumer...')
+        self.vmConsumer.stop()
+        logger.info('Stopping publisher...')
+        self.vmPublisher.stop()
+        logger.info('Consumer and publisher stopping called')
+        self.exiting = True
+        print "STOP!!!"
+        #sys.exit(0)
 
 logger = logging.getLogger("DaemonLog")
 logger.setLevel(logging.DEBUG)
-formatter = logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -10s %(funcName) -35s %(lineno) -5d: %(message)s'")
+formatter = logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -30s %(funcName) -35s %(lineno) -5d: %(message)s'")
 handler = logging.FileHandler("/var/log/rocks/img-storage-nas.log")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-
+logging.getLogger("pika.channel").setLevel(logging.INFO)
+logging.getLogger("pika.channel").addHandler(handler)
+logging.getLogger("pika.connection").setLevel(logging.INFO)
+logging.getLogger("pika.connection").addHandler(handler)
+logging.getLogger("rabbit_client.RabbitMQClient").setLevel(logging.DEBUG)
+logging.getLogger("rabbit_client.RabbitMQClient").addHandler(handler)
 
 app = RabbitClientDaemonNas()
+#app.run()
+#logger.info(' !!!!!!!!!!!!!!!!!! STARTED')
+#time.sleep(18)
+#logger.info(' !!!!!!!!!!!!!!!!!! STOPING')
+#app.stop()
+#logger.info(' !!!!!!!!!!!!!!!!!! STOPPED')
 daemon_runner = runner.DaemonRunner(app)
 
 #This ensures that the logger file handle does not get closed during daemonization
