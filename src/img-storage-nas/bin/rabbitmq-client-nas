@@ -68,7 +68,7 @@ import json
 
 from pysqlite2 import dbapi2 as sqlite3
 import sys
-
+import signal
 import pika
 
 NODE_NAME = 'zfs-0-0' # this node's name
@@ -289,5 +289,6 @@ daemon_runner = runner.DaemonRunner(app)
 
 #This ensures that the logger file handle does not get closed during daemonization
 daemon_runner.daemon_context.files_preserve=[handler.stream]
+daemon_runner.daemon_context.signal_map = {signal.SIGTERM: lambda signum, frame: app.stop()}
 
 daemon_runner.do_action()
