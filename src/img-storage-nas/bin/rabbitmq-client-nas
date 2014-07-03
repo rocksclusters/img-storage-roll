@@ -95,7 +95,7 @@ class RabbitClientDaemonNas():
         self.pidfile_path =  '/tmp/rabbitclidaemon.pid'
         self.pidfile_timeout = 5
         self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down, 'zvol_attached':self.zvol_attached, 'zvol_detached': self.zvol_detached }
-
+	self.stoping = False
 
 
     def run(self):
@@ -111,27 +111,16 @@ class RabbitClientDaemonNas():
         t_publish.start()
         logger.debug('started publisher')
 
-        time.sleep(2)
-
         self.vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, self.process_message)
         t_consume = Thread(target=self.vmConsumer.run)
         t_consume.start()
         logger.debug('started consumer')
 
-        #logger.debug( "Waiting")
-
+	while(not(self.stoping)):
+		time.sleep(1)
         #t_publish.join()
         #t_consume.join()
 
-        #while(not(self.exiting)):
-        #    time.sleep(1)
-
-        time.sleep(500000)
-        #exit_event.wait()
-        #logger.debug( "Quit waiting")
-        #self.vmPublisher.stop()
-        #self.vmConsumer.stop()
-        #logger.debug( "woohooo")
     """
     Received set_zvol command from frontend, passing to compute node
     """
@@ -255,15 +244,10 @@ class RabbitClientDaemonNas():
         self.function_dict[message['action']](message, properties)
 
     def stop(self):
-        print "Stopping.."
-        logger.info('Stopping consumer...')
         self.vmConsumer.stop()
-        logger.info('Stopping publisher...')
         self.vmPublisher.stop()
+	self.stoping = True
         logger.info('Consumer and publisher stopping called')
-        self.exiting = True
-        print "STOP!!!"
-        #sys.exit(0)
 
 logger = logging.getLogger("DaemonLog")
 logger.setLevel(logging.DEBUG)
@@ -279,12 +263,6 @@ logging.getLogger("rabbit_client.RabbitMQClient").setLevel(logging.DEBUG)
 logging.getLogger("rabbit_client.RabbitMQClient").addHandler(handler)
 
 app = RabbitClientDaemonNas()
-#app.run()
-#logger.info(' !!!!!!!!!!!!!!!!!! STARTED')
-#time.sleep(18)
-#logger.info(' !!!!!!!!!!!!!!!!!! STOPING')
-#app.stop()
-#logger.info(' !!!!!!!!!!!!!!!!!! STOPPED')
 daemon_runner = runner.DaemonRunner(app)
 
 #This ensures that the logger file handle does not get closed during daemonization

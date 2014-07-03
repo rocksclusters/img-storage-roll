@@ -90,7 +90,7 @@ class RabbitClientDaemonVm():
         self.pidfile_path =  '/tmp/rabbitclidaemon.pid'
         self.pidfile_timeout = 5
         self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down }
-
+	self.stoping = False
 
     """
     Received set_zvol command from nas
@@ -141,23 +141,42 @@ class RabbitClientDaemonVm():
     def run(self):
         # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
         self.vmPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.vm-manage', 'direct')
-        self.vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, self.process_message)
 
         t_publish = Thread(target=self.vmPublisher.run)
         t_publish.start()
         logger.debug('started publisher')
 
+        self.vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, self.process_message)
+
         t_consume = Thread(target=self.vmConsumer.run)
         t_consume.start()
         logger.debug('started consumer')
 
+        while(not(self.stoping)):
+                time.sleep(1)
+        #t_publish.join()
+        #t_consume.join()
+	
+
+    def stop(self):
+        self.vmConsumer.stop()
+        self.vmPublisher.stop()
+	self.stoping = True
+        logger.info('Consumer and publisher stopping called')
+
 
 logger = logging.getLogger("DaemonLog")
 logger.setLevel(logging.DEBUG)
-formatter = logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -10s %(funcName) -35s %(lineno) -5d: %(message)s'")
-handler = logging.FileHandler("/var/log/rocks/img-storage-nas.log")
+formatter = logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -30s %(funcName) -35s %(lineno) -5d: %(message)s'")
+handler = logging.FileHandler("/var/log/rocks/img-storage-vm.log")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
+logging.getLogger("pika.channel").setLevel(logging.INFO)
+logging.getLogger("pika.channel").addHandler(handler)
+logging.getLogger("pika.connection").setLevel(logging.INFO)
+logging.getLogger("pika.connection").addHandler(handler)
+logging.getLogger("rabbit_client.RabbitMQClient").setLevel(logging.DEBUG)
+logging.getLogger("rabbit_client.RabbitMQClient").addHandler(handler)
 
 
 app = RabbitClientDaemonVm()
@@ -165,5 +184,6 @@ daemon_runner = runner.DaemonRunner(app)
 
 #This ensures that the logger file handle does not get closed during daemonization
 daemon_runner.daemon_context.files_preserve=[handler.stream]
+daemon_runner.daemon_context.signal_map = {signal.SIGTERM: lambda signum, frame: app.stop()}
 
 daemon_runner.do_action()
