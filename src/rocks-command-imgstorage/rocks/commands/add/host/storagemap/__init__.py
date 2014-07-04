@@ -73,7 +73,10 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.add.command):
 		    self.addOutput(nas, message['bdev'])
 		    self.endOutput(padChar='')
 		else:
-		    self.abort(message['error'])
+                    error_msg = ''
+                    if 'error_description' in message:
+                        error_msg = message['error_description']
+		    self.abort('%s %s'%(message['error'], error_msg))
 
 
 	    # Send a message
