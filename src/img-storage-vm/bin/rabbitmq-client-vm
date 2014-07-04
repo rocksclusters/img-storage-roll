@@ -65,8 +65,8 @@ import time
 import json
 import random
 import re
-NODE_NAME = 'compute-0-0' # this node's name
-
+NODE_NAME = 'compute-0-2' # this node's name
+import signal
 RABBITMQ_SERVER = 'localhost'
 
 try:
