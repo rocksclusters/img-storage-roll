@@ -29,5 +29,5 @@ setup(
     # disable zip installation
     zip_safe = False,
     #the command line called by users    
-    scripts=['bin/rabbitmq-client-vm'],
+    scripts=['bin/img-storage-vm'],
 )
