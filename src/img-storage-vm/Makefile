@@ -89,6 +89,8 @@ install:: build
 	#  $(myenv) $(PY.PATH) setup.py install --root=$(ROOT) || \
 	#  $(myenv) $(PY.PATH) setup.py install --root=/
 	$(myenv) $(PY.PATH) setup.py install --root=$(ROOT)
+	mkdir -p $(ROOT)/etc/init.d/
+	install -m 755 init.d/img-storage-vm $(ROOT)/etc/init.d/
 
 
 clean::

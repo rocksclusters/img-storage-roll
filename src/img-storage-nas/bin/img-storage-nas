@@ -92,9 +92,9 @@ ZPOOL = 'tank'
 class RabbitClientDaemonNas():
     def __init__(self):
         self.stdin_path = '/dev/null'
-        self.stdout_path = '/dev/tty'
-        self.stderr_path = '/dev/tty'
-        self.pidfile_path =  '/tmp/rabbitclidaemon.pid'
+        self.stdout_path = '/dev/null'
+        self.stderr_path = '/dev/null'
+        self.pidfile_path =  '/var/run/imgstoragedaemon.pid'
         self.pidfile_timeout = 5
         self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down, 'zvol_attached':self.zvol_attached, 'zvol_detached': self.zvol_detached }
         self.stoping = False
