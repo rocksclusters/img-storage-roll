@@ -49,6 +49,8 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.add.command):
         </example>
         """
 
+        block_dev = ''
+
         def callAddHostStoragemap(self, nas, volume, hosting, size):
             connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
 
@@ -65,18 +67,16 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.add.command):
 
             def on_message(channel, method_frame, header_frame, body):
                 channel.basic_ack(delivery_tag=method_frame.delivery_tag)
-                channel.stop_consuming()
-                channel.close()
                 message = json.loads(body)
                 if(message['status'] == 'success'):
-                    self.beginOutput()
-                    self.addOutput(nas, message['bdev'])
-                    self.endOutput(padChar='')
+                    self.block_dev = message['bdev']
                 else:
                     error_msg = ''
                     if 'error_description' in message:
                         error_msg = message['error_description']
                     self.abort('%s %s'%(message['error'], error_msg))
+                channel.stop_consuming()
+                channel.close()
 
 
             # Send a message
@@ -92,6 +92,8 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.add.command):
                                     ):
                 channel.basic_consume(on_message, zvol_manage_queue)
                 channel.start_consuming()
+                
+                return self.block_dev
             else:
                 self.abort('Message could not be delivered: ')
 
@@ -106,7 +108,9 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.add.command):
                 # debugging output
                 print "mapping ", nas, ":", volume, " on ", hosting
                 device = self.callAddHostStoragemap(nas, volume, hosting, size)
-
+                self.beginOutput()
+                self.addOutput(nas, device)
+                self.endOutput(padChar='')
 
 
 
