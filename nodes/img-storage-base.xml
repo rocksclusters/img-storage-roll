@@ -1,10 +1,7 @@
 <?xml version="1.0" standalone="no"?>
-
 <kickstart>
-
-
 	<description>
-	Your img-storage-vm roll description here
+	This is common code which goes on all the machines
 	</description>
 
 	<copyright>
@@ -14,14 +11,8 @@
 	</copyright>
 
 	<changelog>
-	$Log$
 	</changelog>
 
-	<package>python-daemon</package>
-	<package>lockfile</package>
-	<package>img-storage-vm</package>
-	<package>iscsi-initiator-utils</package>
-	<post>
-	    mkdir /var/log/rocks
-	</post>
+	<package>pika</package>
+	<package>rocks-command-imgstorage</package>
 </kickstart>

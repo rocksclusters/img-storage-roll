@@ -20,7 +20,8 @@
 
 	<!-- Front end -->
 	<edge from="server">
-	  <to>img-storage</to>
+		<to>img-storage</to>
+		<to>img-storage-base</to>
 	</edge>
 	<order head="img-storage">
 	  <tail>server</tail>
@@ -33,4 +34,9 @@
 	<edge from="nas">
 	  <to>img-storage-nas</to>
 	</edge>
+
+	<edge from="client">
+		<to>img-storage-base</to>
+	</edge>
+
 </graph>
