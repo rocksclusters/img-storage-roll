@@ -57,14 +57,14 @@
 import sys
 import string
 import pika
-
+import time
 import json
 import uuid
-
+from rocks.util import CommandError
 import logging
 logging.basicConfig()
 
-from rabbitmq_client import RabbitMQLocator 
+from rabbit_client.RabbitMQClient import RabbitMQLocator
 
 class CommandLauncher():
 
@@ -88,17 +88,19 @@ class CommandLauncher():
             message = {'action': 'set_zvol', 'zvol': volume, 'hosting': hosting, 'size': size}
 
             def on_message(channel, method_frame, header_frame, body):
-                channel.basic_ack(delivery_tag=method_frame.delivery_tag)
-                message = json.loads(body)
-                if(message['status'] == 'success'):
-                    block_dev = message['bdev']
-                else:
-                    error_msg = ''
-                    if 'error_description' in message:
-                        error_msg = message['error_description']
-                    self.abort('%s %s'%(message['error'], error_msg))
-                channel.stop_consuming()
-                channel.close()
+                try:
+                    channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+                    message = json.loads(body)
+                    if(message['status'] == 'success'):
+                        block_dev = message['bdev']
+                    else:
+                        error_msg = ''
+                        if 'error_description' in message:
+                            error_msg = message['error_description']
+                        raise rocks.util.CommandError('%s %s'%(message['error'], error_msg))
+                finally:
+                    channel.stop_consuming() # unlocks the main thread, returns bdev
+                    channel.close()
 
 
             # Send a message
@@ -138,14 +140,9 @@ class CommandLauncher():
                 channel.basic_ack(delivery_tag=method_frame.delivery_tag)
                 channel.stop_consuming()
                 channel.close()
-                print body
                 message = json.loads(body)
-                if(message['status'] == 'success'):
-                    self.beginOutput()
-                    self.addOutput("Done ", "Done")
-                    self.endOutput(padChar='')
-                else:
-                    self.abort(message['error'])
+                if(message['status'] == 'error'):
+                    raise rocks.util.CommandError(message['error'])
 
 
             # Send a message
@@ -163,3 +160,46 @@ class CommandLauncher():
                 channel.start_consuming()
             else:
                 self.abort('Message could not be delivered')
+
+        def callDelHostStorageimg(self, nas, volume):
+            try:
+                connection = pika.BlockingConnection(pika.URLParameters(self.RABBITMQ_URL))
+
+                channel = connection.channel()
+
+                # Declare the queue
+                method_frame = channel.queue_declare(exclusive=True, auto_delete=True)
+                zvol_manage_queue = method_frame.method.queue
+
+                # Turn on delivery confirmations
+                channel.confirm_delivery()
+
+                message = {'action': 'del_zvol', 'zvol': volume}
+
+                message_error = None
+
+                def on_message(channel, method_frame, header_frame, body):
+                    channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+                    channel.stop_consuming()
+                    message = json.loads(body)
+                    if(message['status'] == 'error'):
+                       message_error = message['error'] 
+                # Send a message
+                if channel.basic_publish(exchange='rocks.vm-manage',
+                                         routing_key=nas,
+                                         mandatory=True,
+                                         body=json.dumps(message, ensure_ascii=False),
+                                         properties=pika.BasicProperties(content_type='application/json',
+                                                                         delivery_mode=1,
+                                                                         correlation_id = str(uuid.uuid4()),
+                                                                         reply_to = zvol_manage_queue
+                                                                        )
+                                        ):
+                    channel.basic_consume(on_message, zvol_manage_queue)
+                    channel.start_consuming()
+                    if message_error != None:
+                        raise CommandError(message['error'])
+                else:
+                    raise CommandError('Message could not be delivered')
+            finally:
+                channel.close()

@@ -5,7 +5,7 @@
 import sys
 import string
 import rocks.commands
-
+from rabbit_client.CommandLauncher import CommandLauncher
 
 class Command(rocks.commands.HostArgumentProcessor, rocks.commands.remove.command):
 	"""
@@ -25,11 +25,6 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.remove.comman
 	</example>
 	"""
 
-	def remove_zvol(self, nas, volume):
-		# return an string with error if there are errors
-		return ""
-
-
 	def run(self, params, args):
 		(args, nas, volume) = self.fillPositionalArgs(
 				('nas', 'volume'))
@@ -39,12 +34,11 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.remove.comman
 			self.abort("2 argument are required for this command nas volume")
 
 		print "removing  ", nas, ":", volume
-		device = self.remove_zvol(nas, volume)
+		CommandLauncher().callDelHostStorageimg(nas, volume)
 
-		if device:
-			self.beginOutput()
-			self.addOutput(nas, device)
-			self.endOutput(padChar='')
+		self.beginOutput()
+		self.addOutput(nas, "Success")
+		self.endOutput(padChar='')
 
 
 

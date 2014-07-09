@@ -82,3 +82,9 @@ vm:
 	ssh compute-0-2 'yum reinstall ./img-storage-vm-6.2-0.noarch.rpm'
 	ssh compute-0-2 'yum reinstall ./img-storage-6.2-0.noarch.rpm'
 	ssh compute-0-2 'service img-storage-vm restart'
+
+fe:
+	cd src/rocks-command-imgstorage && make rpm
+	cd src/img-storage && make rpm
+	yum reinstall /usr/src/redhat/RPMS/x86_64/rocks-command-imgstorage-6.2-1.x86_64.rpm
+	yum reinstall RPMS/noarch/img-storage-6.2-0.noarch.rpm

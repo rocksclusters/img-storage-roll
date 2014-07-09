@@ -6,7 +6,7 @@ import sys
 import string
 import rocks.commands
 
-from rabbit_client import CommandLauncher
+from rabbit_client.CommandLauncher import CommandLauncher
 
 class Command(rocks.commands.HostArgumentProcessor, rocks.commands.remove.command):
         """

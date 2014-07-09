@@ -80,7 +80,7 @@ class RabbitClientDaemonNas():
         self.stderr_path = '/tmp/err.log'
         self.pidfile_path =  '/var/run/imgstoragedaemon.pid'
         self.pidfile_timeout = 5
-        self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down, 'zvol_attached':self.zvol_attached, 'zvol_detached': self.zvol_detached, 'list_zvols': self.list_zvols }
+        self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down, 'zvol_attached':self.zvol_attached, 'zvol_detached': self.zvol_detached, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol }
         self.stoping = False
         self.RABBITMQ_URL = RabbitMQLocator().RABBITMQ_URL
         self.NODE_NAME = RabbitMQLocator().NODE_NAME
@@ -190,6 +190,47 @@ class RabbitClientDaemonNas():
                 SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
                             body = {'action': 'zvol_detached', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_busy'},
                             correlation_id = props.correlation_id)
+    """
+    Received zvol delete command from frontend
+    """
+    def del_zvol(self, message, props):
+        zvol_name = message['zvol']
+        logger.debug("Deleting zvol %s"%zvol_name)
+        with sqlite3.connect('calls.db') as con:
+            cur = con.cursor()
+            try :
+                self.lockZVol(zvol_name, props.correlation_id, props.reply_to)
+                cur.execute('SELECT hosting, iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
+                row = cur.fetchone()
+                if row != None:
+                    if(row[1] != None): #zvol is mapped
+                        SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
+                            body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_attached'},
+                            correlation_id = props.correlation_id)
+                        return
+                    if subprocess.call(['zfs', 'destroy', '%s/%s'%(ZPOOL, zvol_name)]):
+                        cur.execute('DELETE FROM zvols WHERE zvol = ?',[zvol_name])
+                        con.commit()
+                        SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
+                            body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status':'success'},
+                            correlation_id = props.correlation_id)
+                    else:
+                        SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
+                            body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_attached'},
+                            correlation_id = props.correlation_id)
+                    logger.debug("Tearing down zvol %s sent"%zvol_name)
+                else:
+                    SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
+                        body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_not_found'},
+                        correlation_id = props.correlation_id)
+            except sqlite3.IntegrityError, msg:
+                logger.error("%s"%msg)
+                SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
+                            body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_busy'},
+                            correlation_id = props.correlation_id)
+            finally:
+                self.releaseZVol(zvol_name)
+
 
 
     """
