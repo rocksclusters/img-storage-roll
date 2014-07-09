@@ -2,10 +2,10 @@
 #
 # @Copyright@
 #
-# 				Rocks(r)
-# 		         www.rocksclusters.org
-# 		         version 5.6 (Emerald Boa)
-# 		         version 6.1 (Emerald Boa)
+#                               Rocks(r)
+#                        www.rocksclusters.org
+#                        version 5.6 (Emerald Boa)
+#                        version 6.1 (Emerald Boa)
 #
 # Copyright (c) 2000 - 2013 The Regents of the University of California.
 # All rights reserved.
@@ -25,9 +25,9 @@
 # 3. All advertising and press materials, printed or electronic, mentioning
 # features or use of this software must display the following acknowledgement:
 #
-# 	"This product includes software developed by the Rocks(r)
-# 	Cluster Group at the San Diego Supercomputer Center at the
-# 	University of California, San Diego and its contributors."
+#       "This product includes software developed by the Rocks(r)
+#       Cluster Group at the San Diego Supercomputer Center at the
+#       University of California, San Diego and its contributors."
 #
 # 4. Except as permitted for the purposes of acknowledgment in paragraph 3,
 # neither the name or logo of this software nor the names of its
@@ -54,7 +54,7 @@
 #
 # @Copyright@
 #
-from rabbit_client.RabbitMQClient import RabbitMQPublisher, RabbitMQConsumer
+from rabbit_client.RabbitMQClient import RabbitMQPublisher, RabbitMQConsumer, RabbitMQLocator
 import logging
 
 from threading import Thread
@@ -65,21 +65,7 @@ import time
 import json
 import random
 import re
-NODE_NAME = 'compute-0-2' # this node's name
 import signal
-RABBITMQ_SERVER = 'localhost'
-
-try:
-    import rocks.db.helper
-
-    db = rocks.db.helper.DatabaseHelper()
-    db.connect()
-    RABBITMQ_SERVER = db.getHostAttr(db.getHostname('localhost'), 'Kickstart_PrivateHostname')
-    db.close()
-except ImportError:
-    pass
-
-RABBITMQ_URL = 'amqp://guest:guest@%s:5672/%%2F?connection_attempts=3&heartbeat_interval=3600'%RABBITMQ_SERVER
 
 class RabbitClientDaemonVm():
 
@@ -90,19 +76,21 @@ class RabbitClientDaemonVm():
         self.pidfile_path =  '/var/run/imgstoragedaemon.pid'
         self.pidfile_timeout = 5
         self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down }
-	self.stoping = False
+        self.stoping = False
+        self.RABBITMQ_URL = RabbitMQLocator().RABBITMQ_URL
+        self.NODE_NAME = RabbitMQLocator().NODE_NAME
 
     """
     Received set_zvol command from nas
     """
     def set_zvol(self, message, props):
         logger.debug("Setting zvol %s"%message['target'])
-	if(self.connect_iscsi(message['target'], props.reply_to)):
-		bdev = self.get_blk_dev(message['target'])
-		if(bdev is None):
-		    pass # TODO send error
-		else:
-		    self.vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'bdev':bdev}, 'routing_key': props.reply_to})
+        if(self.connect_iscsi(message['target'], props.reply_to)):
+                bdev = self.get_blk_dev(message['target'])
+                if(bdev is None):
+                    pass # TODO send error
+                else:
+                    self.vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'bdev':bdev}, 'routing_key': props.reply_to})
 
     def get_blk_dev(self, iscsi_target):
         cmd = subprocess.Popen(['iscsiadm', '-m', 'session', '-P3'], stdout=subprocess.PIPE)
@@ -117,22 +105,22 @@ class RabbitClientDaemonVm():
         return None
 
     def connect_iscsi(self, iscsi_target, node_name):
-	cmd = subprocess.Popen(['iscsiadm', '--mode', 'discovery', '--type', 'sendtargets', '-p', node_name], stdout=subprocess.PIPE)
-	for line in cmd.stdout:
-		if iscsi_target in line: #has the target
-		        return subprocess.call(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-p', node_name, '-l']) == 0
-	return False
+        cmd = subprocess.Popen(['iscsiadm', '--mode', 'discovery', '--type', 'sendtargets', '-p', node_name], stdout=subprocess.PIPE)
+        for line in cmd.stdout:
+                if iscsi_target in line: #has the target
+                        return subprocess.call(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-p', node_name, '-l']) == 0
+        return False
 
     def disconnect_iscsi(self, iscsi_target):
-	return subprocess.call(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-u']) == 0
+        return subprocess.call(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-u']) == 0
 
     """
     Received zvol tear_down command from nas
     """
     def tear_down(self, message, props):
         logger.debug("Tearing down zvol %s"%message['target'])
-	if(self.disconnect_iscsi(message['target'])):
-        	self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target']}, 'routing_key': props.reply_to})
+        if(self.disconnect_iscsi(message['target'])):
+                self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target']}, 'routing_key': props.reply_to})
 
     def process_message(self, properties, message):
         logger.debug("Received message %s"%message)
@@ -140,13 +128,13 @@ class RabbitClientDaemonVm():
 
     def run(self):
         # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
-        self.vmPublisher = RabbitMQPublisher(RABBITMQ_URL, 'rocks.vm-manage', 'direct')
+        self.vmPublisher = RabbitMQPublisher(self.RABBITMQ_URL, 'rocks.vm-manage', 'direct')
+        self.vmConsumer = RabbitMQConsumer(self.RABBITMQ_URL, 'rocks.vm-manage', 'direct', self.NODE_NAME, self.process_message)
 
         t_publish = Thread(target=self.vmPublisher.run)
         t_publish.start()
         logger.debug('started publisher')
-
-        self.vmConsumer = RabbitMQConsumer(RABBITMQ_URL, 'rocks.vm-manage', 'direct', NODE_NAME, self.process_message)
+        time.sleep(1)    
 
         t_consume = Thread(target=self.vmConsumer.run)
         t_consume.start()
@@ -156,12 +144,12 @@ class RabbitClientDaemonVm():
                 time.sleep(1)
         #t_publish.join()
         #t_consume.join()
-	
+        
 
     def stop(self):
         self.vmConsumer.stop()
         self.vmPublisher.stop()
-	self.stoping = True
+        self.stoping = True
         logger.info('Consumer and publisher stopping called')
 
 

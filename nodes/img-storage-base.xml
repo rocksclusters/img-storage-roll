@@ -15,4 +15,5 @@
 
 	<package>pika</package>
 	<package>rocks-command-imgstorage</package>
+	<package>img-storage</package>
 </kickstart>

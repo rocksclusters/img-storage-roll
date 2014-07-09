@@ -5,6 +5,22 @@ import pika
 import json
 import Queue
 
+
+import rocks.db.helper
+
+class RabbitMQLocator(object):
+    LOGGER = logging.getLogger(__name__)
+
+    def __init__(self):
+        db = rocks.db.helper.DatabaseHelper()
+        db.connect()
+        RABBITMQ_SERVER = db.getHostAttr(db.getHostname('localhost'), 'Kickstart_PrivateHostname')
+        self.NODE_NAME = db.getHostname()
+        db.close()
+
+        self.RABBITMQ_URL = 'amqp://guest:guest@%s:5672/%%2F?connection_attempts=3&heartbeat_interval=3600'%RABBITMQ_SERVER
+        
+
 class RabbitMQPublisher(object):
     PUBLISH_INTERVAL = 1
 
@@ -239,10 +255,7 @@ class RabbitMQPublisher(object):
         """
         if self._stopping:
             return
-        self.LOGGER.info('Scheduling next message for %0.1f seconds',
-                    self.PUBLISH_INTERVAL)
-        self._connection.add_timeout(self.PUBLISH_INTERVAL,
-                                     self.publish_message)
+        self.publish_message
 
     def start_publishing(self):
         """This method will enable delivery confirmations and schedule the
@@ -325,7 +338,6 @@ class RabbitMQConsumer:
         self._consumer_tag = None
         self._url = amqp_url
         self.process_message = process_message
-
         self.exchange = exchange
         self.exchange_type = exchange_type
         self.routing_key = routing_key
