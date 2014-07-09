@@ -255,7 +255,7 @@ class RabbitMQPublisher(object):
         """
         if self._stopping:
             return
-        self.publish_message
+        self.publish_message()
 
     def start_publishing(self):
         """This method will enable delivery confirmations and schedule the
