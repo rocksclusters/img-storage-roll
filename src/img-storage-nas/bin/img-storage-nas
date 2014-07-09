@@ -136,6 +136,7 @@ class RabbitClientDaemonNas():
                 cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
                 row = cur.fetchone()
                 if (row != None and row[0] != None): #zvol is mapped
+                    self.releaseZVol(zvol_name)
                     SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
                         body = {'action': 'zvol_attached', 'target':zvol_name, 'status': 'error', 'error':'zvol_mapped'},
                         correlation_id = props.correlation_id)
@@ -154,6 +155,7 @@ class RabbitClientDaemonNas():
                 logger.debug("Setting iscsi %s sent"%iscsi_target)
             except sqlite3.IntegrityError, msg:
                 logger.error("%s"%msg)
+                self.releaseZVol(zvol_name)
                 SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
                     body = {'action': 'zvol_attached', 'target':zvol_name, 'status': 'error', 'error':'zvol_busy'},
                     correlation_id = props.correlation_id)
@@ -260,6 +262,13 @@ class RabbitClientDaemonNas():
         self.vmPublisher.stop()
         self.stoping = True
         logger.info('Consumer and publisher stopping called')
+
+    def releaseZVol(self, zvol):
+        with sqlite3.connect('calls.db') as con:
+            cur = con.cursor()
+            cur.execute('DELETE FROM zvol_calls WHERE zvol = ?',[zvol])
+            con.commit()
+
 
 logger = logging.getLogger("DaemonLog")
 logger.setLevel(logging.DEBUG)
