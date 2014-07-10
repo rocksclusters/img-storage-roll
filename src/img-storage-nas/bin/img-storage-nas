@@ -283,6 +283,10 @@ class RabbitClientDaemonNas():
                                 SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
                                     body = {'action': 'zvol_detached', 'status':'success'},
                                     correlation_id = row[0])
+                                return
+        SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
+            body = {'action': 'zvol_detached', 'status':'error', 'error':'some_error', 'error_description':'something bad happened'},
+            correlation_id = row[0])
 
     def list_zvols(self, message, properties):
         with sqlite3.connect('calls.db') as con:

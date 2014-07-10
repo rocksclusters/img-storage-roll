@@ -16,10 +16,12 @@ class RabbitMQLocator(object):
         db.connect()
         RABBITMQ_SERVER = db.getHostAttr(db.getHostname('localhost'), 'Kickstart_PrivateHostname')
         self.NODE_NAME = db.getHostname()
+        self.RABBITMQ_URL = db.getHostAttr(db.getHostname(), 'rabbitmq_url')
         db.close()
-
-        self.RABBITMQ_URL = 'amqp://guest:guest@%s:5672/%%2F?connection_attempts=3&heartbeat_interval=3600'%RABBITMQ_SERVER
-        
+        with open ("/opt/rocks/etc/rabbitmq.conf", "r") as rabbit_pw_file:
+            passwd=rabbit_pw_file.read().rstrip('\n')
+            self.RABBITMQ_URL = self.RABBITMQ_URL.replace('{pass}',passwd)
+       
 
 class RabbitMQPublisher(object):
     PUBLISH_INTERVAL = 1

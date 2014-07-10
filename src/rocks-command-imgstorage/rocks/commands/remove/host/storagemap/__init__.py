@@ -40,4 +40,7 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.remove.comman
                 print "unmapping  ", nas, ":", volume
                 CommandLauncher().callDelHostStoragemap(nas, volume)
 
+                self.beginOutput()
+                self.addOutput(nas, "Success")
+                self.endOutput(padChar='')
 RollName = "kvm"
