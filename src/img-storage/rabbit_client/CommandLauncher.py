@@ -68,153 +68,66 @@ from rabbit_client.RabbitMQClient import RabbitMQLocator
 
 class CommandLauncher():
 
-        def __init__(self):
-            self.RABBITMQ_URL = RabbitMQLocator().RABBITMQ_URL
-            self.ret_message = None
+    def __init__(self):
+       self.RABBITMQ_URL = RabbitMQLocator().RABBITMQ_URL
+       self.ret_message = None
 
-        def callAddHostStoragemap(self, nas, volume, hosting, size):
-            connection = pika.BlockingConnection(pika.URLParameters(self.RABBITMQ_URL))
+    def callAddHostStoragemap(self, nas, volume, hosting, size):
+       message = {'action': 'set_zvol', 'zvol': volume, 'hosting': hosting, 'size': size}
+       self.callCommand(message, nas)
+       block_dev = self.ret_message['bdev']
+       return block_dev
 
-            channel = connection.channel()
-            
-            try:
-                # Declare the queue
-                method_frame = channel.queue_declare(exclusive=True, auto_delete=True)
-                zvol_manage_queue = method_frame.method.queue
+    def callDelHostStoragemap(self, nas, volume):
+       message = {'action': 'tear_down', 'zvol': volume}
+       self.callCommand(message, nas)
+       return
 
-                # Turn on delivery confirmations
-                channel.confirm_delivery()
+    def callDelHostStorageimg(self, nas, volume):
+       message = {'action': 'del_zvol', 'zvol': volume}
+       self.callCommand(message, nas)
+       return
 
-                message = {'action': 'set_zvol', 'zvol': volume, 'hosting': hosting, 'size': size}
-
-                # Send a message
-                if channel.basic_publish(exchange='rocks.vm-manage',
-                                         routing_key=nas,
-                                         mandatory=True,
-                                         body=json.dumps(message, ensure_ascii=False),
-                                         properties=pika.BasicProperties(content_type='application/json',
-                                                                         delivery_mode=1,
-                                                                         correlation_id = str(uuid.uuid4()),
-                                                                         reply_to = zvol_manage_queue
-                                                                        )
-                                        ):
-                    channel.basic_consume(self.on_message, zvol_manage_queue)
-                    channel.start_consuming()
-                    if self.ret_message['status'] == 'error':
-                         raise CommandError(self.ret_message['error'])
-                    block_dev = self.ret_message['bdev']
-                    return block_dev
-                else:
-                    raise CommandError('Message could not be delivered')
-            finally:
-                channel.close()
-   
-        def callDelHostStoragemap(self, nas, volume):
-            connection = pika.BlockingConnection(pika.URLParameters(self.RABBITMQ_URL))
-
-            channel = connection.channel()
-
-            try :
-                # Declare the queue
-                method_frame = channel.queue_declare(exclusive=True, auto_delete=True)
-                zvol_manage_queue = method_frame.method.queue
-
-                # Turn on delivery confirmations
-                channel.confirm_delivery()
-
-                message = {'action': 'tear_down', 'zvol': volume}
-
-                # Send a message
-                if channel.basic_publish(exchange='rocks.vm-manage',
-                                         routing_key=nas,
-                                         mandatory=True,
-                                         body=json.dumps(message, ensure_ascii=False),
-                                         properties=pika.BasicProperties(content_type='application/json',
-                                                                         delivery_mode=1,
-                                                                         correlation_id = str(uuid.uuid4()),
-                                                                         reply_to = zvol_manage_queue
-                                                                        )
-                                        ):
-                    channel.basic_consume(self.on_message, zvol_manage_queue)
-                    channel.start_consuming()
-                    if self.ret_message['status'] == 'error':
-                        raise CommandError(self.ret_message['error'])
-               else:
-                    raise CommandError('Message could not be delivered')
-            finally:
-                channel.close()
- 
-        def callDelHostStorageimg(self, nas, volume):
-           connection = pika.BlockingConnection(pika.URLParameters(self.RABBITMQ_URL))
-
-           channel = connection.channel()
-
-           try:
-                # Declare the queue
-                method_frame = channel.queue_declare(exclusive=True, auto_delete=True)
-                zvol_manage_queue = method_frame.method.queue
-
-                # Turn on delivery confirmations
-                channel.confirm_delivery()
-
-                message = {'action': 'del_zvol', 'zvol': volume}
-
-                # Send a message
-                if channel.basic_publish(exchange='rocks.vm-manage',
-                                         routing_key=nas,
-                                         mandatory=True,
-                                         body=json.dumps(message, ensure_ascii=False),
-                                         properties=pika.BasicProperties(content_type='application/json',
-                                                                         delivery_mode=1,
-                                                                         correlation_id = str(uuid.uuid4()),
-                                                                         reply_to = zvol_manage_queue
-                                                                        )
-                                        ):
-                    channel.basic_consume(self.on_message, zvol_manage_queue)
-                    channel.start_consuming()
-                    if self.ret_message['status'] == 'error':
-                        raise CommandError(self.ret_message['error'])
-                else:
-                    raise CommandError('Message could not be delivered')
-           finally:
-               channel.close()
-
-        def callListHostStoragemap(self, nas):
-           connection = pika.BlockingConnection(pika.URLParameters(self.RABBITMQ_URL))
-
-           channel = connection.channel()
-
-           try:
-                # Declare the queue
-                method_frame = channel.queue_declare(exclusive=True, auto_delete=True)
-                zvol_manage_queue = method_frame.method.queue
-                channel.confirm_delivery()
-
-                message = {'action': 'list_zvols'}
-
-                # Send a message
-                if channel.basic_publish(exchange='rocks.vm-manage',
-                                     routing_key=nas,
-                                     mandatory=True,
-                                     body=json.dumps(message, ensure_ascii=True),
-                                     properties=pika.BasicProperties(content_type='application/json',
-                                                                     delivery_mode=1,
-                                                                     correlation_id = str(uuid.uuid4()),
-                                                                     reply_to = zvol_manage_queue
-                                                                    )
-                                    ):
-                    channel.basic_consume(self.on_message, zvol_manage_queue)
-                    channel.start_consuming()
-                    if self.ret_message['status'] == 'error':
-                        raise CommandError(self.ret_message['error'])
-                    return self.ret_message['body']
-                else:
-                    raise CommandError('Message could not be delivered')
-           finally:
-               channel.close()
+    def callListHostStoragemap(self, nas):
+       message = {'action': 'list_zvols'}
+       self.callCommand(message, nas)
+       return self.ret_message['body']
 
 
-    def on_message(channel, method_frame, header_frame, body):
+    def callCommand(self, message, nas):
+       connection = pika.BlockingConnection(pika.URLParameters(self.RABBITMQ_URL))
+
+       channel = connection.channel()
+
+       try:
+            # Declare the queue
+            method_frame = channel.queue_declare(exclusive=True, auto_delete=True)
+            zvol_manage_queue = method_frame.method.queue
+            channel.confirm_delivery()
+
+            # Send a message
+            if channel.basic_publish(exchange='rocks.vm-manage',
+                                 routing_key=nas,
+                                 mandatory=True,
+                                 body=json.dumps(message, ensure_ascii=True),
+                                 properties=pika.BasicProperties(content_type='application/json',
+                                                                 delivery_mode=1,
+                                                                 correlation_id = str(uuid.uuid4()),
+                                                                 reply_to = zvol_manage_queue
+                                                                )
+                                ):
+                channel.basic_consume(self.on_message, zvol_manage_queue)
+                channel.start_consuming()
+                if self.ret_message['status'] == 'error':
+                    raise CommandError(self.ret_message['error'])
+                return
+            else:
+                raise CommandError('Message could not be delivered')
+       finally:
+           channel.close()
+
+
+    def on_message(self, channel, method_frame, header_frame, body):
         channel.basic_ack(delivery_tag=method_frame.delivery_tag)
         channel.stop_consuming()
         self.ret_message = json.loads(body)

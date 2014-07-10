@@ -3,3 +3,4 @@ SRPMS
 *.pyc
 log
 *.db
+*.swp

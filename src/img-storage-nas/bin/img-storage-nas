@@ -208,17 +208,19 @@ class RabbitClientDaemonNas():
                             body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_attached'},
                             correlation_id = props.correlation_id)
                         return
-                    if subprocess.call(['zfs', 'destroy', '%s/%s'%(ZPOOL, zvol_name)]):
+                    logger.debug("Invoking zfs destroy %s/%s"%(ZPOOL,zvol_name))
+                    if not subprocess.call(['zfs', 'destroy', '%s/%s'%(ZPOOL, zvol_name)]):
+                        logger.debug('zfs destroy success %s'%zvol_name)
                         cur.execute('DELETE FROM zvols WHERE zvol = ?',[zvol_name])
                         con.commit()
                         SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
                             body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status':'success'},
                             correlation_id = props.correlation_id)
                     else:
+                        logger.debug('zvol destroy error %s'%zvol_name)
                         SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
                             body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_attached'},
                             correlation_id = props.correlation_id)
-                    logger.debug("Tearing down zvol %s sent"%zvol_name)
                 else:
                     SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
                         body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_not_found'},
