@@ -120,7 +120,9 @@ class RabbitClientDaemonVm():
     def tear_down(self, message, props):
         logger.debug("Tearing down zvol %s"%message['target'])
         if(self.disconnect_iscsi(message['target'])):
-                self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target']}, 'routing_key': props.reply_to})
+            self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target'], 'status':'success'}, 'routing_key': props.reply_to})
+        else: #TODO !?!?!?!?!?!?!?!?!
+            self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target'], 'status':'error'}, 'routing_key': props.reply_to})
 
     def process_message(self, properties, message):
         logger.debug("Received message %s"%message)
