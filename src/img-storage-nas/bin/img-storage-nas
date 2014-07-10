@@ -178,6 +178,13 @@ class RabbitClientDaemonNas():
                             body = {'action': 'zvol_detached', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_not_attached'},
                             correlation_id = props.correlation_id)
                         return
+
+                    if self.find_iscsi_target_num(row[1]) == None:
+                        SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
+                            body = {'action': 'zvol_detached', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_target_not_exists'},
+                            correlation_id = props.correlation_id)
+                        return
+
                     self.lockZVol(zvol_name, props.correlation_id, props.reply_to)
                     self.vmPublisher.messages.put({'message': {'action': 'tear_down', 'target':row[1]}, 'routing_key': row[0], 'reply_to': self.NODE_NAME})
                     logger.debug("Tearing down zvol %s sent"%zvol_name)
@@ -185,6 +192,7 @@ class RabbitClientDaemonNas():
                     SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
                         body = {'action': 'zvol_detached', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_not_found'},
                         correlation_id = props.correlation_id)
+                    return
             except sqlite3.IntegrityError, msg:
                 logger.error("%s"%msg)
                 SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
@@ -256,37 +264,46 @@ class RabbitClientDaemonNas():
     """
     def zvol_detached(self, message, props):
         target = message['target']
-        logger.debug("Zvol detached %s"%(target))
+        logger.debug("Got zvol %s detached message"%(target))
 
+        with sqlite3.connect('calls.db') as con:
+            cur = con.cursor()
+
+            # get request destination
+            cur.execute('SELECT corr_id, reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
+            row = cur.fetchone()
+
+            tgt_num = self.find_iscsi_target_num(target)
+            if subprocess.call(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num]):
+                logger.error('Error detaching target %s'%target)
+                if row != None:
+                    SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
+                        body = {'action': 'zvol_detached', 'status':'error', 'error':'error_detaching_target'},
+                        correlation_id = row[0])
+            else:
+                # remove iscsi target
+                cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
+                con.commit()
+
+                if row != None:
+                    self.releaseZVol(row[2])
+                    SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
+                        body = {'action': 'zvol_detached', 'status':'success'},
+                        correlation_id = row[0])
+                    return
+
+
+
+    def find_iscsi_target_num(self, target):
         cmd = subprocess.Popen(['tgtadm', '--op', 'show', '--mode', 'target'], stdout=subprocess.PIPE)
+        logger.debug("Looking for target's number in output of tgtadm")
         for line in cmd.stdout:
             if line.startswith('Target '):
                 if line.split()[2] == target:
                     tgt_num = line.split()[1]
-                    if subprocess.call(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num]):
-                        logger.error('Error detaching target %s'%target)
-                        # Send error back to fe!!!!
-                    else:
-                        with sqlite3.connect('calls.db') as con:
-                            cur = con.cursor()
-
-                            # get request destination
-                            cur.execute('SELECT corr_id, reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
-                            row = cur.fetchone()
-
-                            # remove iscsi target
-                            cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
-                            con.commit()
-
-                            if row != None:
-                                self.releaseZVol(row[2])
-                                SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
-                                    body = {'action': 'zvol_detached', 'status':'success'},
-                                    correlation_id = row[0])
-                                return
-        SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
-            body = {'action': 'zvol_detached', 'status':'error', 'error':'some_error', 'error_description':'something bad happened'},
-            correlation_id = row[0])
+                    logger.debug("target number is %s"%tgt_num)
+                    return tgt_num
+        return None
 
     def list_zvols(self, message, properties):
         with sqlite3.connect('calls.db') as con:

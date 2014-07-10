@@ -63,7 +63,6 @@ import uuid
 from rocks.util import CommandError
 import logging
 logging.basicConfig()
-
 from rabbit_client.RabbitMQClient import RabbitMQLocator
 
 class CommandLauncher():
@@ -95,11 +94,12 @@ class CommandLauncher():
 
 
     def callCommand(self, message, nas):
-       connection = pika.BlockingConnection(pika.URLParameters(self.RABBITMQ_URL))
+        connection = pika.BlockingConnection(pika.URLParameters(self.RABBITMQ_URL))
 
-       channel = connection.channel()
+        channel = connection.channel()
+        #channel.add_on_close_callback(lambda channel, replyCode, replyText: print("!!!!!!!!!!!!!!"))
 
-       try:
+        try:
             # Declare the queue
             method_frame = channel.queue_declare(exclusive=True, auto_delete=True)
             zvol_manage_queue = method_frame.method.queue
@@ -123,7 +123,7 @@ class CommandLauncher():
                 return
             else:
                 raise CommandError('Message could not be delivered')
-       finally:
+        finally:
            channel.close()
 
 
@@ -131,5 +131,4 @@ class CommandLauncher():
         channel.basic_ack(delivery_tag=method_frame.delivery_tag)
         channel.stop_consuming()
         self.ret_message = json.loads(body)
-
 

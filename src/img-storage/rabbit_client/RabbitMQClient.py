@@ -20,6 +20,7 @@ class RabbitMQLocator(object):
         db.close()
         with open ("/opt/rocks/etc/rabbitmq.conf", "r") as rabbit_pw_file:
             passwd=rabbit_pw_file.read().rstrip('\n')
+            self.RABBITMQ_URL = self.RABBITMQ_URL.replace('&amp;','&')
             self.RABBITMQ_URL = self.RABBITMQ_URL.replace('{pass}',passwd)
        
 
