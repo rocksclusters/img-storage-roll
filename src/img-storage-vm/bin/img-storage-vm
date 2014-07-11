@@ -54,7 +54,7 @@
 #
 # @Copyright@
 #
-from rabbit_client.RabbitMQClient import RabbitMQPublisher, RabbitMQConsumer, RabbitMQLocator
+from rabbit_client.RabbitMQClient import RabbitMQPublisher, RabbitMQConsumer, RabbitMQLocator, SyncRabbitMQPublisher
 import logging
 
 from threading import Thread
@@ -75,7 +75,7 @@ class RabbitClientDaemonVm():
         self.stderr_path = '/dev/null'
         self.pidfile_path =  '/var/run/imgstoragedaemon.pid'
         self.pidfile_timeout = 5
-        self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down }
+        self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down, 'list_dev':self.list_dev }
         self.stoping = False
         self.RABBITMQ_URL = RabbitMQLocator().RABBITMQ_URL
         self.NODE_NAME = RabbitMQLocator().NODE_NAME
@@ -86,23 +86,34 @@ class RabbitClientDaemonVm():
     def set_zvol(self, message, props):
         logger.debug("Setting zvol %s"%message['target'])
         if(self.connect_iscsi(message['target'], props.reply_to)):
-                bdev = self.get_blk_dev(message['target'])
-                if(bdev is None):
+                mappings = self.get_blk_dev_list()
+                if(message['target'] not in mappings.keys()):
                     pass # TODO send error
                 else:
-                    self.vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'bdev':bdev}, 'routing_key': props.reply_to})
+                    self.vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'bdev':mappings[message['target']]}, 'routing_key': props.reply_to})
 
-    def get_blk_dev(self, iscsi_target):
+    def list_dev(self, message, props):
+        mappings_map = self.get_blk_dev_list()
+        logger.debug("Got mappings %s"%mappings_map)
+        mappings_ar = []
+        for target in mappings_map.keys():
+            mappings_ar.append({'target':target, 'device':mappings_map[target]})
+        SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
+            body = {'action': 'list_dev', 'status': 'success', 'dev_list':mappings_ar},
+            correlation_id = props.correlation_id)
+
+    def get_blk_dev_list(self):
         cmd = subprocess.Popen(['iscsiadm', '-m', 'session', '-P3'], stdout=subprocess.PIPE)
-        parsing_target = False
+        mappings = {}
+        cur_target = None
         for line in cmd.stdout:
-                if "Target: %s"%iscsi_target in line:
-                        parsing_target = True
-                if parsing_target and ('Attached scsi disk ' in line):
-                        searchObj = re.search( r'Attached scsi disk (\w*)', line, re.M)
-                        if searchObj:
-                            return searchObj.group(1)
-        return None
+                logger.debug(line)
+                if "Target: " in line:
+                        cur_target = re.search(r'Target: ([\w\-\.]*)$',line, re.M).group(1)
+                if 'Attached scsi disk ' in line:
+                        blockdev = re.search( r'Attached scsi disk (\w*)', line, re.M)
+                        mappings[cur_target] = blockdev.group(1)
+        return mappings
 
     def connect_iscsi(self, iscsi_target, node_name):
         cmd = subprocess.Popen(['iscsiadm', '--mode', 'discovery', '--type', 'sendtargets', '-p', node_name], stdout=subprocess.PIPE)
