@@ -117,11 +117,11 @@ class RabbitClientDaemonNas():
         size = message['size']
         logger.debug("Setting zvol %s"%zvol_name)
 
-        self.lockZVol(zvol_name, props.correlation_id, props.reply_to)
-
         with sqlite3.connect('calls.db') as con:
             cur = con.cursor()
             try :
+                self.lockZVol(zvol_name, props.correlation_id, props.reply_to)
+
                 if subprocess.call(['zfs', 'list', '%s/%s'%(ZPOOL, zvol_name)]): #zvol not exists
                     cmd = subprocess.Popen(['zfs', 'create', '-V', '10gb', '%s/%s'%(ZPOOL, zvol_name)], stdout=subprocess.PIPE, stderr = subprocess.PIPE)
                     out, err = cmd.communicate()
