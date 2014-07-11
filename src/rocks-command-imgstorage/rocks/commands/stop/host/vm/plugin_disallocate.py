@@ -55,9 +55,7 @@
 # @Copyright@
 #
 
-import os.path
 import rocks.commands
-import rocks.commands.add.host.storagemap
 from rabbit_client.CommandLauncher import CommandLauncher
 
 nas_name = 'zfs-0-0'
@@ -65,26 +63,15 @@ nas_name = 'zfs-0-0'
 class Plugin(rocks.commands.Plugin):
 
 	def provides(self):
-		return 'plugin_allocate'
+		return 'plugin_disallocate'
 
 	def run(self, node):
-		# here you can relocate your VM in rocks DB
+		# here you can disallocate the resource used by your VM
+		# in rocks DB
 		# node is of type rocks.db.mappings.base.Node
-		if not node.vm_defs.physNode or len(node.vm_defs.disks) <= 0:
-			# TODO maybe we should fail
-			print "Unable to allocate storage for ", node.name
-			return
-		disk = node.vm_defs.disks[0]
-		phys = node.vm_defs.physNode.name
-		size = str(disk.size)
 		volume = node.name + '-vol'
-		device = CommandLauncher().callAddHostStoragemap(nas_name, volume, phys, size)
-		disk.vbd_type = "phy"
-		#disk.prefix = os.path.dirname(device)
-		disk.prefix = '/dev/'
-		disk.name = os.path.basename(device)
-		print "mapping done on ", volume, " device ", device
-		return
+		CommandLauncher().callDelHostStoragemap(nas_name, volume)
+		return 
 
 
 
