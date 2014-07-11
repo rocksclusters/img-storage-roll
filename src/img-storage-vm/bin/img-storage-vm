@@ -107,7 +107,6 @@ class RabbitClientDaemonVm():
         mappings = {}
         cur_target = None
         for line in cmd.stdout:
-                logger.debug(line)
                 if "Target: " in line:
                         cur_target = re.search(r'Target: ([\w\-\.]*)$',line, re.M).group(1)
                 if 'Attached scsi disk ' in line:

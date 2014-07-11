@@ -123,8 +123,9 @@ class RabbitClientDaemonNas():
                 self.lockZVol(zvol_name, props.correlation_id, props.reply_to)
 
                 if subprocess.call(['zfs', 'list', '%s/%s'%(ZPOOL, zvol_name)]): #zvol not exists
-                    cmd = subprocess.Popen(['zfs', 'create', '-V', '10gb', '%s/%s'%(ZPOOL, zvol_name)], stdout=subprocess.PIPE, stderr = subprocess.PIPE)
+                    cmd = subprocess.Popen(['zfs', 'create', '-V', '%sgb'%size, '%s/%s'%(ZPOOL, zvol_name)], stdout=subprocess.PIPE, stderr = subprocess.PIPE)
                     out, err = cmd.communicate()
+                    logger.debug('Created new zvol %s'%zvol_name)
                     if cmd.returncode:
                         logger.error('Error creating zvol: %s'%err)
                         self.releaseZVol(zvol_name)
@@ -141,12 +142,14 @@ class RabbitClientDaemonNas():
                         body = {'action': 'zvol_attached', 'target':zvol_name, 'status': 'error', 'error':'zvol_mapped'},
                         correlation_id = props.correlation_id)
                     return
+                logger.debug('zvol %s is unmapped according to DB'%zvol_name)
 
                 iscsi_target = ''
                 cmd = subprocess.Popen(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(ZPOOL, zvol_name)], stdout=subprocess.PIPE)
                 for line in cmd.stdout:
                     if "Creating new target" in line:
                         iscsi_target = line['Creating new target (name='.__len__():line.index(',')]
+                logger.debug('Mapped %s to iscsi target %s'%(zvol_name, iscsi_target))
 
                 cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, iscsi_target,hosting))
                 con.commit()
