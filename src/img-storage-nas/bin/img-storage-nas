@@ -62,6 +62,7 @@ from threading import Thread
 from daemon import runner
 
 import subprocess
+import traceback
 
 import time
 import json
@@ -276,6 +277,15 @@ class RabbitClientDaemonNas():
             cur.execute('SELECT corr_id, reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
             row = cur.fetchone()
 
+            if(message['status'] == 'error'):
+                loger.error('Got error detaching target from compute')
+                self.releaseZVol(row[2])
+                SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
+                    body = {'action': 'zvol_detached', 'status':'error', 'error':'error_detaching_target'},
+                    correlation_id = row[0])
+                return
+
+ 
             tgt_num = self.find_iscsi_target_num(target)
             if subprocess.call(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num]):
                 logger.error('Error detaching target %s'%target)
@@ -283,6 +293,7 @@ class RabbitClientDaemonNas():
                     SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
                         body = {'action': 'zvol_detached', 'status':'error', 'error':'error_detaching_target'},
                         correlation_id = row[0])
+                return
             else:
                 # remove iscsi target
                 cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
@@ -321,7 +332,11 @@ class RabbitClientDaemonNas():
 
     def process_message(self, properties, message):
         logger.debug("Received message %s"%message)
-        self.function_dict[message['action']](message, properties)
+        try:
+            self.function_dict[message['action']](message, properties)
+        except:
+            logger.error("Unexpected error: %s"%sys.exc_info()[0])
+            traceback.print_tb(sys.exc_info()[2])
 
     def stop(self):
         self.vmConsumer.stop()
@@ -348,10 +363,12 @@ formatter = logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -30s %(fun
 handler = logging.FileHandler("/var/log/rocks/img-storage-nas.log")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-logging.getLogger("pika.channel").setLevel(logging.INFO)
+logging.getLogger("pika.channel").setLevel(logging.DEBUG)
 logging.getLogger("pika.channel").addHandler(handler)
-logging.getLogger("pika.connection").setLevel(logging.INFO)
+logging.getLogger("pika.connection").setLevel(logging.DEBUG)
 logging.getLogger("pika.connection").addHandler(handler)
+logging.getLogger("pika.adapters.base_connection").setLevel(logging.DEBUG)
+logging.getLogger("pika.adapters.base_connection").addHandler(handler)
 logging.getLogger("rabbit_client.RabbitMQClient").setLevel(logging.DEBUG)
 logging.getLogger("rabbit_client.RabbitMQClient").addHandler(handler)
 

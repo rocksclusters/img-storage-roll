@@ -66,13 +66,15 @@ import json
 import random
 import re
 import signal
+import sys
+
 
 class RabbitClientDaemonVm():
 
     def __init__(self):
         self.stdin_path = '/dev/null'
         self.stdout_path = '/dev/null'
-        self.stderr_path = '/dev/null'
+        self.stderr_path = '/tmp/err'
         self.pidfile_path =  '/var/run/imgstoragedaemon.pid'
         self.pidfile_timeout = 5
         self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down, 'list_dev':self.list_dev }
@@ -129,14 +131,18 @@ class RabbitClientDaemonVm():
     """
     def tear_down(self, message, props):
         logger.debug("Tearing down zvol %s"%message['target'])
-        if(self.disconnect_iscsi(message['target'])):
+        if(not self.disconnect_iscsi(message['target'])):
             self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target'], 'status':'success'}, 'routing_key': props.reply_to})
         else: #TODO !?!?!?!?!?!?!?!?!
+            logger.error("error detaching the target %s"%message['target'])
             self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target'], 'status':'error'}, 'routing_key': props.reply_to})
 
     def process_message(self, properties, message):
         logger.debug("Received message %s"%message)
-        self.function_dict[message['action']](message, properties)
+        try:
+            self.function_dict[message['action']](message, properties)
+        except:
+            logger.error("Unexpected error: %s"%sys.exc_info()[0])
 
     def run(self):
         # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
@@ -171,10 +177,12 @@ formatter = logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -30s %(fun
 handler = logging.FileHandler("/var/log/rocks/img-storage-vm.log")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-logging.getLogger("pika.channel").setLevel(logging.INFO)
+logging.getLogger("pika.channel").setLevel(logging.DEBUG)
 logging.getLogger("pika.channel").addHandler(handler)
-logging.getLogger("pika.connection").setLevel(logging.INFO)
-logging.getLogger("pika.connection").addHandler(handler)
+logging.getLogger("pika.connection").setLevel(logging.DEBUG)
+logging.getLogger("pika.connection").addHandler(handler)   
+logging.getLogger("pika.adapters.base_connection").setLevel(logging.DEBUG)
+logging.getLogger("pika.adapters.base_connection").addHandler(handler)
 logging.getLogger("rabbit_client.RabbitMQClient").setLevel(logging.DEBUG)
 logging.getLogger("rabbit_client.RabbitMQClient").addHandler(handler)
 

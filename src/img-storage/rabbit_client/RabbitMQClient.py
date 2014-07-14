@@ -232,11 +232,18 @@ class RabbitMQPublisher(object):
         This list will be used to check for delivery confirmations in the
         on_delivery_confirmations method.
         """
-        message = self.messages.get()
+        message = None
 
         if self._stopping:
             return
 
+        try:
+            message = self.messages.get(False)
+        except Queue.Empty:
+            logger.error('Message publish queue is empty, returning to waiting')
+            self.schedule_next_message()
+
+ 
         properties = pika.BasicProperties(app_id='rocks.ImgStorageClient',
                                           content_type='application/json',
                                           headers=message['message'],
@@ -258,7 +265,11 @@ class RabbitMQPublisher(object):
         """
         if self._stopping:
             return
-        self.publish_message()
+        if(self.messages.empty()):
+            #self._connection.add_timeout(1, self.schedule_next_message)
+            self._connection.ioloop.add_timeout(0.2, self.schedule_next_message)
+        else:
+            self.publish_message()
 
     def start_publishing(self):
         """This method will enable delivery confirmations and schedule the
