@@ -278,11 +278,13 @@ class RabbitClientDaemonNas():
             row = cur.fetchone()
 
             if(message['status'] == 'error'):
-                loger.error('Got error detaching target from compute')
+                logger.error('Got error detaching target from compute')
                 self.releaseZVol(row[2])
+                logger.debug('%s volume released from lock'%row[2])
                 SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
                     body = {'action': 'zvol_detached', 'status':'error', 'error':'error_detaching_target'},
                     correlation_id = row[0])
+                logger.debug('Sent zvol_detached error back to FE')
                 return
 
  
@@ -335,7 +337,7 @@ class RabbitClientDaemonNas():
         try:
             self.function_dict[message['action']](message, properties)
         except:
-            logger.error("Unexpected error: %s"%sys.exc_info()[0])
+            logger.error("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
             traceback.print_tb(sys.exc_info()[2])
 
     def stop(self):

@@ -125,7 +125,10 @@ class CommandLauncher():
                 channel.basic_consume(self.on_message, zvol_manage_queue)
                 channel.start_consuming()
                 if self.ret_message['status'] == 'error':
-                    raise CommandError(self.ret_message['error'])
+                    if('error' in self.ret_message.keys()):
+                        raise CommandError(self.ret_message['error'])
+                    else
+                        raise CommandError('Error occured')
                 return
             else:
                 raise CommandError('Message could not be delivered')
