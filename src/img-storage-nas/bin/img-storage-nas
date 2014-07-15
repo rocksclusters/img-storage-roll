@@ -146,7 +146,7 @@ class RabbitClientDaemonNas():
                 logger.debug('zvol %s is unmapped according to DB'%zvol_name)
 
                 iscsi_target = ''
-                cmd = subprocess.Popen(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(ZPOOL, zvol_name)], stdout=subprocess.PIPE)
+                cmd = subprocess.Popen(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(ZPOOL, zvol_name), hosting], stdout=subprocess.PIPE)
                 for line in cmd.stdout:
                     if "Creating new target" in line:
                         iscsi_target = line['Creating new target (name='.__len__():line.index(',')]
@@ -252,6 +252,7 @@ class RabbitClientDaemonNas():
     """
     def zvol_attached(self, message, props):
         target = message['target']
+
         logger.debug("Zvol attached %s"%target)
         with sqlite3.connect('calls.db') as con:
             cur = con.cursor()
@@ -259,9 +260,16 @@ class RabbitClientDaemonNas():
             row = cur.fetchone()
             if row != None:
                 self.releaseZVol(row[2])
-                SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
-                    body = {'action': 'zvol_attached', 'bdev':message['bdev'], 'status':'success'},
-                    correlation_id = row[0])
+                if(message['status'] == 'error'):
+                    SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
+                        body = {'action': 'zvol_attached', 'status':'error'},
+                        correlation_id = row[0])
+                    return
+                else:
+                    SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
+                        body = {'action': 'zvol_attached', 'bdev':message['bdev'], 'status':'success'},
+                        correlation_id = row[0])
+                    return
 
     """
     Received zvol_detached notification from compute node, passing to frontend

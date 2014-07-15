@@ -127,7 +127,7 @@ class CommandLauncher():
                 if self.ret_message['status'] == 'error':
                     if('error' in self.ret_message.keys()):
                         raise CommandError(self.ret_message['error'])
-                    else
+                    else:
                         raise CommandError('Error occured')
                 return
             else:

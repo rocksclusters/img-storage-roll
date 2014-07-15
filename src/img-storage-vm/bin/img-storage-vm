@@ -92,7 +92,12 @@ class RabbitClientDaemonVm():
                 if(message['target'] not in mappings.keys()):
                     pass # TODO send error
                 else:
-                    self.vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'bdev':mappings[message['target']]}, 'routing_key': props.reply_to})
+                    self.vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'bdev':mappings[message['target']], 'status':'success'}, 'routing_key': props.reply_to})
+                    logger.debug('Successfully mapped %s to %s'%(message['target'], mappings[message['target']]))
+        else:
+            self.vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'status':'error'}, 'routing_key': props.reply_to})
+            logger.error('Error mapping %s'%(message['target']))
+ 
 
     def list_dev(self, message, props):
         mappings_map = self.get_blk_dev_list()
@@ -118,9 +123,11 @@ class RabbitClientDaemonVm():
 
     def connect_iscsi(self, iscsi_target, node_name):
         cmd = subprocess.Popen(['iscsiadm', '--mode', 'discovery', '--type', 'sendtargets', '-p', node_name], stdout=subprocess.PIPE)
+        logger.debug("Looking for target in iscsiadm output")
         for line in cmd.stdout:
                 if iscsi_target in line: #has the target
-                        return subprocess.call(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-p', node_name, '-l']) == 0
+                    logger.debug("Found iscsi target in iscsiadm output")
+                    return subprocess.call(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-p', node_name, '-l']) == 0
         return False
 
     def disconnect_iscsi(self, iscsi_target):
