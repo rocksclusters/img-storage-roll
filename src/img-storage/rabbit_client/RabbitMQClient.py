@@ -4,7 +4,7 @@ import logging
 import pika
 import json
 import Queue
-
+import time
 
 import rocks.db.helper
 
@@ -61,10 +61,16 @@ class RabbitMQPublisher(object):
         :rtype: pika.SelectConnection
 
         """
-        self.LOGGER.info('Connecting to %s', self._url)
-        return pika.SelectConnection(pika.URLParameters(self._url),
+        while not self._closing:
+            self.LOGGER.info('Connecting to %s', self._url)
+
+            try:
+                return pika.SelectConnection(pika.URLParameters(self._url),
                                      self.on_connection_open,
                                      stop_ioloop_on_close=False)
+            except:
+                time.sleep(5)
+                pass
 
     def close_connection(self):
         """This method closes the connection to RabbitMQ."""
@@ -113,8 +119,10 @@ class RabbitMQPublisher(object):
     def reconnect(self):
         """Will be invoked by the IOLoop timer if the connection is
         closed. See the on_connection_closed method.
-
         """
+
+        self.LOGGER.debug('Reconnecting')
+
         # This is the old connection IOLoop instance, stop its ioloop
         self._connection.ioloop.stop()
 
@@ -276,11 +284,8 @@ class RabbitMQPublisher(object):
         first message to be sent to RabbitMQ
 
         """
-        self.LOGGER.info('Issuing consumer related RPC commands')
         self.enable_delivery_confirmations()
-        self.LOGGER.info('Issuing consumer related RPC commands 1')
         self.schedule_next_message()
-        self.LOGGER.info('Issuing consumer related RPC commands 2')
 
 
     def on_bindok(self, unused_frame):
@@ -364,10 +369,16 @@ class RabbitMQConsumer:
         :rtype: pika.SelectConnection
 
         """
-        self.LOGGER.info('Connecting to %s', self._url)
-        return pika.SelectConnection(pika.URLParameters(self._url),
+        while not self._closing:
+            self.LOGGER.info('Connecting to %s', self._url)
+
+            try:
+                return pika.SelectConnection(pika.URLParameters(self._url),
                                      self.on_connection_open,
                                      stop_ioloop_on_close=False)
+            except:
+                time.sleep(5)
+                pass
 
     def close_connection(self):
         """This method closes the connection to RabbitMQ."""

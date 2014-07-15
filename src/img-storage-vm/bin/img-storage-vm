@@ -131,18 +131,22 @@ class RabbitClientDaemonVm():
     """
     def tear_down(self, message, props):
         logger.debug("Tearing down zvol %s"%message['target'])
-        if(not self.disconnect_iscsi(message['target'])):
+
+        mappings_map = self.get_blk_dev_list()
+
+        if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
             self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target'], 'status':'success'}, 'routing_key': props.reply_to})
         else: #TODO !?!?!?!?!?!?!?!?!
             logger.error("error detaching the target %s"%message['target'])
-            self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target'], 'status':'error'}, 'routing_key': props.reply_to})
+            self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target'], 'status':'error', 'error':'can_not_detach'}, 'routing_key': props.reply_to})
 
     def process_message(self, properties, message):
         logger.debug("Received message %s"%message)
         try:
             self.function_dict[message['action']](message, properties)
         except:
-            logger.error("Unexpected error: %s"%sys.exc_info()[0])
+            logger.error("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
+            traceback.print_tb(sys.exc_info()[2])
 
     def run(self):
         # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
