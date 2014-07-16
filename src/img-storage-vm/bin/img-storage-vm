@@ -54,7 +54,7 @@
 #
 # @Copyright@
 #
-from rabbit_client.RabbitMQClient import RabbitMQPublisher, RabbitMQConsumer, RabbitMQLocator, SyncRabbitMQPublisher, RabbitMQCommonClient
+from rabbit_client.RabbitMQClient import RabbitMQLocator, SyncRabbitMQPublisher, RabbitMQCommonClient
 import logging
 
 from daemon import runner

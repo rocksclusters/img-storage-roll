@@ -234,7 +234,7 @@ class RabbitMQCommonClient:
         self.LOGGER.info('Acknowledging message %s', delivery_tag)
         self._channel.basic_ack(delivery_tag)
 
-    def publish_message(self, message):
+    def publish_message(self):
         """If the class is not stopping, publish a message to RabbitMQ,
         appending a list of deliveries with the message number that was sent.
         This list will be used to check for delivery confirmations in the
@@ -247,11 +247,11 @@ class RabbitMQCommonClient:
                                           content_type='application/json',
                                           headers=message['message'],
                                           reply_to=message.get('reply_to'))
-        self._connection.ioloop.stop()
+        #self._connection.ioloop.stop()
         self._channel.basic_publish(self.exchange, message.get('routing_key'),
                                     json.dumps(message['message'], ensure_ascii=False),
                                     properties)
-        self._connection.ioloop.start()
+        #self._connection.ioloop.start()
         self.LOGGER.info('Published message')
 
     def on_message(self, unused_channel, basic_deliver, properties, body):

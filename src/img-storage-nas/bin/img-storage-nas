@@ -54,7 +54,7 @@
 #
 # @Copyright@
 #
-from rabbit_client.RabbitMQClient import RabbitMQPublisher, RabbitMQConsumer, SyncRabbitMQPublisher, RabbitMQLocator, RabbitMQCommonClient
+from rabbit_client.RabbitMQClient import SyncRabbitMQPublisher, RabbitMQLocator, RabbitMQCommonClient
 import logging
 
 from daemon import runner
@@ -69,6 +69,7 @@ from pysqlite2 import dbapi2 as sqlite3
 import sys
 import signal
 import pika
+import socket
 
 ZPOOL = 'tank'
 
@@ -130,7 +131,7 @@ class RabbitClientDaemonNas():
                 logger.debug('zvol %s is unmapped according to DB'%zvol_name)
 
                 iscsi_target = ''
-                cmd = subprocess.Popen(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(ZPOOL, zvol_name), hosting], stdout=subprocess.PIPE)
+                cmd = subprocess.Popen(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(ZPOOL, zvol_name), socket.gethostbyname(hosting)], stdout=subprocess.PIPE)
                 for line in cmd.stdout:
                     if "Creating new target" in line:
                         iscsi_target = line['Creating new target (name='.__len__():line.index(',')]
