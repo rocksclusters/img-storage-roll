@@ -54,10 +54,8 @@
 #
 # @Copyright@
 #
-from rabbit_client.RabbitMQClient import RabbitMQPublisher, RabbitMQConsumer, SyncRabbitMQPublisher, RabbitMQLocator
+from rabbit_client.RabbitMQClient import RabbitMQPublisher, RabbitMQConsumer, SyncRabbitMQPublisher, RabbitMQLocator, RabbitMQCommonClient
 import logging
-
-from threading import Thread
 
 from daemon import runner
 
@@ -82,7 +80,6 @@ class RabbitClientDaemonNas():
         self.pidfile_path =  '/var/run/imgstoragedaemon.pid'
         self.pidfile_timeout = 5
         self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down, 'zvol_attached':self.zvol_attached, 'zvol_detached': self.zvol_detached, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol }
-        self.stoping = False
         self.RABBITMQ_URL = RabbitMQLocator().RABBITMQ_URL
         self.NODE_NAME = RabbitMQLocator().NODE_NAME
 
@@ -93,21 +90,8 @@ class RabbitClientDaemonNas():
             cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, hosting TEXT)')
             con.commit()
 
-        # Connect to localhost:5672 as guest with the password guest and virtual host "/" (%2F)
-        self.vmPublisher = RabbitMQPublisher(self.RABBITMQ_URL, 'rocks.vm-manage', 'direct')
-        t_publish = Thread(target=self.vmPublisher.run)
-        t_publish.start()
-        logger.debug('started publisher')
-
-        self.vmConsumer = RabbitMQConsumer(self.RABBITMQ_URL, 'rocks.vm-manage', 'direct', self.NODE_NAME, self.process_message)
-        t_consume = Thread(target=self.vmConsumer.run)
-        t_consume.start()
-        logger.debug('started consumer')
-
-        while(not(self.stoping)):
-                time.sleep(1)
-        #t_publish.join()
-        #t_consume.join()
+        self.vmPublisher = RabbitMQCommonClient(self.RABBITMQ_URL, 'rocks.vm-manage', 'direct', self.NODE_NAME, self.process_message)
+        self.vmPublisher.run()
 
     """
     Received set_zvol command from frontend, passing to compute node
@@ -156,6 +140,7 @@ class RabbitClientDaemonNas():
                 con.commit()
 
                 self.vmPublisher.messages.put({'message': {'action': 'set_zvol', 'target':iscsi_target}, 'routing_key': hosting, 'reply_to': self.NODE_NAME})
+                self.vmPublisher.publish_message()
                 logger.debug("Setting iscsi %s sent"%iscsi_target)
             except sqlite3.IntegrityError, msg:
                 logger.error("%s"%msg)
@@ -184,6 +169,7 @@ class RabbitClientDaemonNas():
                         return
 
                     if self.find_iscsi_target_num(row[1]) == None:
+                        self.targetDetachSuccess(row[1], zvol_name, props.reply_to, props.correlation_id)
                         SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
                             body = {'action': 'zvol_detached', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_target_not_exists'},
                             correlation_id = props.correlation_id)
@@ -191,6 +177,7 @@ class RabbitClientDaemonNas():
 
                     self.lockZVol(zvol_name, props.correlation_id, props.reply_to)
                     self.vmPublisher.messages.put({'message': {'action': 'tear_down', 'target':row[1]}, 'routing_key': row[0], 'reply_to': self.NODE_NAME})
+                    self.vmPublisher.publish_message()
                     logger.debug("Tearing down zvol %s sent"%zvol_name)
                 else:
                     SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
@@ -305,17 +292,25 @@ class RabbitClientDaemonNas():
                         correlation_id = row[0])
                 return
             else:
-                # remove iscsi target
-                cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
-                con.commit()
+                self.targetDetachSuccess(target, row[2], row[1], row[0])
 
-                if row != None:
-                    self.releaseZVol(row[2])
-                    SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
-                        body = {'action': 'zvol_detached', 'status':'success'},
-                        correlation_id = row[0])
-                    return
 
+    '''
+    Function is called to indicate the successful iscsi target detach after getting success from compute or if local target not found
+    '''
+    def targetDetachSuccess(self, target, zvol, routing_key, correlation_id):
+        with sqlite3.connect('calls.db') as con:
+            cur = con.cursor()
+
+            # remove iscsi target
+            cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
+            con.commit()
+
+            if zvol != None:
+                self.releaseZVol(zvol)
+                SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=routing_key,
+                    body = {'action': 'zvol_detached', 'status':'success'},
+                    correlation_id = correlation_id)
 
 
     def find_iscsi_target_num(self, target):
@@ -349,9 +344,7 @@ class RabbitClientDaemonNas():
             traceback.print_tb(sys.exc_info()[2])
 
     def stop(self):
-        self.vmConsumer.stop()
         self.vmPublisher.stop()
-        self.stoping = True
         logger.info('Consumer and publisher stopping called')
 
     def lockZVol(self, zvol_name, correlation_id, reply_to):
@@ -381,6 +374,8 @@ logging.getLogger("pika.adapters.base_connection").setLevel(logging.DEBUG)
 logging.getLogger("pika.adapters.base_connection").addHandler(handler)
 logging.getLogger("rabbit_client.RabbitMQClient").setLevel(logging.DEBUG)
 logging.getLogger("rabbit_client.RabbitMQClient").addHandler(handler)
+#logging.getLogger("pika.heartbeat").setLevel(logging.DEBUG)
+#logging.getLogger("pika.heartbeat").addHandler(handler)
 
 app = RabbitClientDaemonNas()
 daemon_runner = runner.DaemonRunner(app)
