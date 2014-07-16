@@ -234,22 +234,20 @@ class RabbitMQCommonClient:
         self.LOGGER.info('Acknowledging message %s', delivery_tag)
         self._channel.basic_ack(delivery_tag)
 
-    def publish_message(self):
+    def publish_message(self, message, routing_key=None, reply_to=None):
         """If the class is not stopping, publish a message to RabbitMQ,
         appending a list of deliveries with the message number that was sent.
         This list will be used to check for delivery confirmations in the
         on_delivery_confirmations method.
         """
 
-        message = self.messages.get(False)
-
         properties = pika.BasicProperties(app_id='rocks.ImgStorageClient',
                                           content_type='application/json',
-                                          headers=message['message'],
-                                          reply_to=message.get('reply_to'))
+                                          headers=message,
+                                          reply_to=reply_to)
         #self._connection.ioloop.stop()
-        self._channel.basic_publish(self.exchange, message.get('routing_key'),
-                                    json.dumps(message['message'], ensure_ascii=False),
+        self._channel.basic_publish(self.exchange, routing_key,
+                                    json.dumps(message, ensure_ascii=False),
                                     properties)
         #self._connection.ioloop.start()
         self.LOGGER.info('Published message')

@@ -140,8 +140,7 @@ class RabbitClientDaemonNas():
                 cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, iscsi_target,hosting))
                 con.commit()
 
-                self.vmPublisher.messages.put({'message': {'action': 'set_zvol', 'target':iscsi_target}, 'routing_key': hosting, 'reply_to': self.NODE_NAME})
-                self.vmPublisher.publish_message()
+                self.vmPublisher.publish_message({'action': 'set_zvol', 'target':iscsi_target}, hosting, self.NODE_NAME)
                 logger.debug("Setting iscsi %s sent"%iscsi_target)
             except sqlite3.IntegrityError, msg:
                 logger.error("%s"%msg)
@@ -177,8 +176,7 @@ class RabbitClientDaemonNas():
                         return
 
                     self.lockZVol(zvol_name, props.correlation_id, props.reply_to)
-                    self.vmPublisher.messages.put({'message': {'action': 'tear_down', 'target':row[1]}, 'routing_key': row[0], 'reply_to': self.NODE_NAME})
-                    self.vmPublisher.publish_message()
+                    self.vmPublisher.publish_message({'action': 'tear_down', 'target':row[1]}, row[0], self.NODE_NAME)
                     logger.debug("Tearing down zvol %s sent"%zvol_name)
                 else:
                     SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,

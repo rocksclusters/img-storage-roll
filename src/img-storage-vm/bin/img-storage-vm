@@ -89,12 +89,10 @@ class RabbitClientDaemonVm():
                 if(message['target'] not in mappings.keys()):
                     pass # TODO send error
                 else:
-                    self.vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'bdev':mappings[message['target']], 'status':'success'}, 'routing_key': props.reply_to})
-                    self.vmPublisher.publish_message()
+                    self.vmPublisher.publish_message({'action': 'zvol_attached', 'target':message['target'], 'bdev':mappings[message['target']], 'status':'success'}, props.reply_to)
                     logger.debug('Successfully mapped %s to %s'%(message['target'], mappings[message['target']]))
         else:
-            self.vmPublisher.messages.put({'message': {'action': 'zvol_attached', 'target':message['target'], 'status':'error'}, 'routing_key': props.reply_to})
-            self.vmPublisher.publish_message()
+            self.vmPublisher.publish_message({'action': 'zvol_attached', 'target':message['target'], 'status':'error'}, props.reply_to)
             logger.error('Error mapping %s'%(message['target']))
  
 
@@ -141,12 +139,10 @@ class RabbitClientDaemonVm():
         mappings_map = self.get_blk_dev_list()
 
         if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
-            self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target'], 'status':'success'}, 'routing_key': props.reply_to})
-            self.vmPublisher.publish_message()
+            self.vmPublisher.publish_message({'action': 'zvol_detached', 'target':message['target'], 'status':'success'}, props.reply_to)
         else: #TODO !?!?!?!?!?!?!?!?!
             logger.error("error detaching the target %s"%message['target'])
-            self.vmPublisher.messages.put({'message': {'action': 'zvol_detached', 'target':message['target'], 'status':'error', 'error':'can_not_detach'}, 'routing_key': props.reply_to})
-            self.vmPublisher.publish_message()
+            self.vmPublisher.publish_message({'action': 'zvol_detached', 'target':message['target'], 'status':'error', 'error':'can_not_detach'}, props.reply_to)
 
     def process_message(self, properties, message):
         logger.debug("Received message %s"%message)
