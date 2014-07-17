@@ -88,7 +88,7 @@ class RabbitClientDaemonNas():
     def run(self):
         with sqlite3.connect('calls.db') as con:
             cur = con.cursor()
-            cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, corr_id TEXT NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
+            cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
             cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, hosting TEXT)')
             con.commit()
 
@@ -113,15 +113,15 @@ class RabbitClientDaemonNas():
         with sqlite3.connect('calls.db') as con:
             cur = con.cursor()
             try :
-                self.lockZVol(zvol_name, props.message_id, props.reply_to)
+                self.lockZVol(zvol_name, props.reply_to)
 
                 if subprocess.call(['zfs', 'list', '%s/%s'%(ZPOOL, zvol_name)]): #zvol not exists
                     cmd = subprocess.Popen(['zfs', 'create', '-V', '%sgb'%size, '%s/%s'%(ZPOOL, zvol_name)], stdout=subprocess.PIPE, stderr = subprocess.PIPE)
                     out, err = cmd.communicate()
-                    logger.debug('Created new zvol %s'%zvol_name)
                     if cmd.returncode:
                         raise ActionError('zvol_creation_error', 'zvol_attached', err, properties={'zvol':zvol_name})
-
+                    logger.debug('Created new zvol %s'%zvol_name)
+ 
                 cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
                 row = cur.fetchone()
                 if (row != None and row[0] != None): #zvol is mapped
@@ -173,7 +173,7 @@ class RabbitClientDaemonNas():
                     if self.find_iscsi_target_num(row[1]) == None:
                         raise ActionError('zvol_target_not_found', 'zvol_detached', properties={'zvol':zvol_name})
 
-                    self.lockZVol(zvol_name, props.message_id, props.reply_to)
+                    self.lockZVol(zvol_name, props.reply_to)
                     self.vmPublisher.publish_message(
                             {'action': 'tear_down', 'target':row[1]}, 
                             row[0], 
@@ -185,7 +185,7 @@ class RabbitClientDaemonNas():
                    raise ActionError('zvol_not_found', 'zvol_detached')
             except sqlite3.IntegrityError, msg:
                logger.error("%s"%msg)
-               self.failAction(props.reply_to, 'zvol_attached', 'zvol_busy')
+               self.failAction(props.reply_to, 'zvol_detached', 'zvol_busy')
             except ActionError, err:
                 logger.exception(err)
                 self.failAction(props.reply_to, 'zvol_detached', err.message, zvol=err.properties.get('zvol'))
@@ -198,14 +198,13 @@ class RabbitClientDaemonNas():
         with sqlite3.connect('calls.db') as con:
             cur = con.cursor()
             try :
-                self.lockZVol(zvol_name, props.message_id, props.reply_to)
+                self.lockZVol(zvol_name, props.reply_to)
                 cur.execute('SELECT hosting, iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
                 row = cur.fetchone()
                 if row != None:
                     if(row[1] != None): #zvol is mapped
                         SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
-                            body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_attached'},
-                            correlation_id = props.message_id)
+                            body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_attached'})
                         return
                     logger.debug("Invoking zfs destroy %s/%s"%(ZPOOL,zvol_name))
                     if not subprocess.call(['zfs', 'destroy', '%s/%s'%(ZPOOL, zvol_name)]):
@@ -213,22 +212,18 @@ class RabbitClientDaemonNas():
                         cur.execute('DELETE FROM zvols WHERE zvol = ?',[zvol_name])
                         con.commit()
                         SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
-                            body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status':'success'},
-                            correlation_id = props.message_id)
+                            body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status':'success'})
                     else:
                         logger.debug('zvol destroy error %s'%zvol_name)
                         SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
-                            body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_attached'},
-                            correlation_id = props.message_id)
+                            body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_attached'})
                 else:
                     SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
-                        body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_not_found'},
-                        correlation_id = props.message_id)
+                        body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_not_found'})
             except sqlite3.IntegrityError, msg:
                 logger.error("%s"%msg)
                 SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
-                            body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_busy'},
-                            correlation_id = props.message_id)
+                            body = {'action': 'zvol_deleted', 'zvol_name':zvol_name, 'status': 'error', 'error':'zvol_busy'})
             finally:
                 self.releaseZVol(zvol_name)
 
@@ -243,19 +238,17 @@ class RabbitClientDaemonNas():
         logger.debug("Zvol attached %s"%target)
         with sqlite3.connect('calls.db') as con:
             cur = con.cursor()
-            cur.execute('SELECT corr_id, reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
+            cur.execute('SELECT reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
             row = cur.fetchone()
             if row != None:
-                self.releaseZVol(row[2])
+                self.releaseZVol(row[1])
                 if(message['status'] == 'error'):
-                    SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
-                        body = {'action': 'zvol_attached', 'status':'error'},
-                        correlation_id = row[0])
+                    SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[0],
+                        body = {'action': 'zvol_attached', 'status':'error'})
                     return
                 else:
-                    SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
-                        body = {'action': 'zvol_attached', 'bdev':message['bdev'], 'status':'success'},
-                        correlation_id = row[0])
+                    SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[0],
+                        body = {'action': 'zvol_attached', 'bdev':message['bdev'], 'status':'success'})
                     return
 
     """
@@ -319,8 +312,7 @@ class RabbitClientDaemonNas():
             cur.execute('SELECT * from zvols')
             r = [dict((cur.description[i][0], value) for i, value in enumerate(row)) for row in cur.fetchall()]
             SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=properties.reply_to,
-                body = {'action': 'zvol_list', 'status':'success', 'body': r},
-                correlation_id = properties.message_id)
+                body = {'action': 'zvol_list', 'status':'success', 'body': r})
 
 
 
@@ -336,10 +328,10 @@ class RabbitClientDaemonNas():
         self.vmPublisher.stop()
         logger.info('Consumer and publisher stopping called')
 
-    def lockZVol(self, zvol_name, correlation_id, reply_to):
+    def lockZVol(self, zvol_name, reply_to):
         with sqlite3.connect('calls.db') as con:
             cur = con.cursor()
-            cur.execute('INSERT INTO zvol_calls VALUES (?,?,?,?)',(zvol_name, correlation_id, reply_to, time.time()))
+            cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',(zvol_name, reply_to, time.time()))
             con.commit()
 
     def releaseZVol(self, zvol):
@@ -347,12 +339,6 @@ class RabbitClientDaemonNas():
             cur = con.cursor()
             cur.execute('DELETE FROM zvol_calls WHERE zvol = ?',[zvol])
             con.commit()
-
-    def errorToFE(self, routing_key, correlation_id, action, error, error_message = None):
-        SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=routing_key,
-            body = {'action': action, 'status': 'error', 'error':error, 'error_msg':error_message},
-            correlation_id = correlation_id)
-
 
 logger = logging.getLogger("DaemonLog")
 logger.setLevel(logging.DEBUG)

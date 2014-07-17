@@ -236,7 +236,7 @@ class RabbitMQCommonClient:
         if method_frame[2].message_id in self.sent_msg.keys():
             self.sent_msg.pop(method_frame[2].message_id)()
 
-    def publish_message(self, message, routing_key=None, reply_to=None, exchange=None, on_fail=None):
+    def publish_message(self, message, routing_key=None, reply_to=None, exchange=None, correlation_id=None, on_fail=None):
         """If the class is not stopping, publish a message to RabbitMQ,
         appending a list of deliveries with the message number that was sent.
         This list will be used to check for delivery confirmations in the
@@ -247,7 +247,8 @@ class RabbitMQCommonClient:
         properties = pika.BasicProperties(app_id='rocks.ImgStorageClient',
                                           content_type='application/json',
                                           reply_to=reply_to,
-                                          message_id=str(uuid.uuid4())
+                                          message_id=str(uuid.uuid4()),
+                                          correlation_id=correlation_id,
                                           )
         self._channel.basic_publish(exchange, routing_key,
                                     json.dumps(message, ensure_ascii=False),
@@ -274,8 +275,8 @@ class RabbitMQCommonClient:
         self.LOGGER.info('Received message # %s from %s: %s',
                     basic_deliver.delivery_tag, properties.app_id, body)
         self.acknowledge_message(basic_deliver.delivery_tag)
-        if(properties.message_id and properties.message_id in self.sent_msg.keys()):
-            del self.sent_msg[properties.message_id]
+        if(properties.correlation_id and properties.correlation_id in self.sent_msg.keys()):
+            del self.sent_msg[properties.correlation_id]
 
         if self.process_message:
             self.process_message(properties, json.loads(body))
