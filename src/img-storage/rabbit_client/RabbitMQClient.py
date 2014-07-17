@@ -371,25 +371,3 @@ class RabbitMQCommonClient:
         #self._connection.ioloop.start()
         self.LOGGER.info('Stopped')
 
-class SyncRabbitMQPublisher(object):
-    def __init__(self, amqp_url):
-        """Setup the publisher object, passing in the URL we will use to connect to RabbitMQ.
-
-        :param str amqp_url: The URL for connecting to RabbitMQ
-
-        """
-        self._url = amqp_url
-
-    def publish(self, exchange = '', routing_key = '', body = '', correlation_id = None):
-        connection = None
-        try:
-            connection = pika.BlockingConnection(pika.URLParameters(self._url))
-            channel = connection.channel()
-            channel.basic_publish(exchange=exchange,
-                                  routing_key=routing_key,
-                                  body=json.dumps(body, ensure_ascii=False),
-                                  properties=pika.BasicProperties(content_type='application/json',
-                                                                  delivery_mode=1,
-                                                                  correlation_id = correlation_id))
-        finally:
-            if connection: connection.close()

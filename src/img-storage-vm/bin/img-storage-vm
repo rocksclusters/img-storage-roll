@@ -54,7 +54,7 @@
 #
 # @Copyright@
 #
-from rabbit_client.RabbitMQClient import RabbitMQLocator, SyncRabbitMQPublisher, RabbitMQCommonClient
+from rabbit_client.RabbitMQClient import RabbitMQLocator, RabbitMQCommonClient
 import logging
 
 from daemon import runner
@@ -102,8 +102,7 @@ class RabbitClientDaemonVm():
         mappings_ar = []
         for target in mappings_map.keys():
             mappings_ar.append({'target':target, 'device':mappings_map[target]})
-        SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
-            body = {'action': 'list_dev', 'status': 'success', 'dev_list':mappings_ar})
+        self.vmPublisher.publish_message({'action': 'list_dev', 'status': 'success', 'dev_list':mappings_ar}, exchange='', routing_key=props.reply_to)
 
     def get_blk_dev_list(self):
         cmd = subprocess.Popen(['iscsiadm', '-m', 'session', '-P3'], stdout=subprocess.PIPE)
