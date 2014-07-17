@@ -7,6 +7,7 @@ import Queue
 import time
 import sys
 import rocks.db.helper
+import uuid
 
 class RabbitMQLocator(object):
     LOGGER = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ class RabbitMQCommonClient:
         self.exchange = exchange
         self.exchange_type = exchange_type
         self.routing_key = routing_key
+        self.sent_msg = {}
 
     def connect(self):
         """This method connects to RabbitMQ, returning the connection handle.
@@ -123,14 +125,6 @@ class RabbitMQCommonClient:
             # There is now a new connection, needs a new ioloop to run
             self._connection.ioloop.start()
 
-    def add_on_channel_close_callback(self):
-        """This method tells pika to call the on_channel_closed method if
-        RabbitMQ unexpectedly closes the channel.
-
-        """
-        self.LOGGER.info('Adding channel close callback')
-        self._channel.add_on_close_callback(self.on_channel_closed)
-
     def on_channel_closed(self, channel, reply_code, reply_text):
         """Invoked by pika when RabbitMQ unexpectedly closes the channel.
         Channels are usually closed if you attempt to do something that
@@ -158,7 +152,8 @@ class RabbitMQCommonClient:
         """
         self.LOGGER.info('Channel opened')
         self._channel = channel
-        self.add_on_channel_close_callback()
+        self._channel.add_on_close_callback(self.on_channel_closed)
+        self._channel.add_on_return_callback(self.on_return_callback)
         self.setup_exchange(self.exchange)
 
     def setup_exchange(self, exchange_name):
@@ -234,23 +229,33 @@ class RabbitMQCommonClient:
         self.LOGGER.info('Acknowledging message %s', delivery_tag)
         self._channel.basic_ack(delivery_tag)
 
-    def publish_message(self, message, routing_key=None, reply_to=None):
+    def on_return_callback(self, method_frame):
+        """Method is called when message can't be delivered
+        """
+        self.LOGGER.error(method_frame[2])
+        if method_frame[2].message_id in self.sent_msg.keys():
+            self.sent_msg.pop(method_frame[2].message_id)()
+
+    def publish_message(self, message, routing_key=None, reply_to=None, exchange=None, on_fail=None):
         """If the class is not stopping, publish a message to RabbitMQ,
         appending a list of deliveries with the message number that was sent.
         This list will be used to check for delivery confirmations in the
         on_delivery_confirmations method.
         """
-
+        if(exchange==None):
+            exchange=self.exchange
         properties = pika.BasicProperties(app_id='rocks.ImgStorageClient',
                                           content_type='application/json',
-                                          headers=message,
-                                          reply_to=reply_to)
-        #self._connection.ioloop.stop()
-        self._channel.basic_publish(self.exchange, routing_key,
+                                          reply_to=reply_to,
+                                          message_id=str(uuid.uuid4())
+                                          )
+        self._channel.basic_publish(exchange, routing_key,
                                     json.dumps(message, ensure_ascii=False),
-                                    properties)
-        #self._connection.ioloop.start()
-        self.LOGGER.info('Published message')
+                                    properties,
+                                    mandatory=True)
+        if(on_fail):
+            self.sent_msg[properties.message_id] = on_fail
+        self.LOGGER.info('Published message %s %s %s'%(message, exchange, routing_key))
 
     def on_message(self, unused_channel, basic_deliver, properties, body):
         """Invoked by pika when a message is delivered from RabbitMQ. The
@@ -269,6 +274,9 @@ class RabbitMQCommonClient:
         self.LOGGER.info('Received message # %s from %s: %s',
                     basic_deliver.delivery_tag, properties.app_id, body)
         self.acknowledge_message(basic_deliver.delivery_tag)
+        if(properties.message_id and properties.message_id in self.sent_msg.keys()):
+            del self.sent_msg[properties.message_id]
+
         if self.process_message:
             self.process_message(properties, json.loads(body))
 

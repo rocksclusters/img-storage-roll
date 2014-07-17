@@ -104,7 +104,7 @@ class RabbitClientDaemonVm():
             mappings_ar.append({'target':target, 'device':mappings_map[target]})
         SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=props.reply_to,
             body = {'action': 'list_dev', 'status': 'success', 'dev_list':mappings_ar},
-            correlation_id = props.correlation_id)
+            correlation_id = props.message_id)
 
     def get_blk_dev_list(self):
         cmd = subprocess.Popen(['iscsiadm', '-m', 'session', '-P3'], stdout=subprocess.PIPE)

@@ -118,7 +118,7 @@ class CommandLauncher():
                                  body=json.dumps(message, ensure_ascii=True),
                                  properties=pika.BasicProperties(content_type='application/json',
                                                                  delivery_mode=1,
-                                                                 correlation_id = str(uuid.uuid4()),
+                                                                 message_id = str(uuid.uuid4()),
                                                                  reply_to = zvol_manage_queue
                                                                 )
                                 ):
