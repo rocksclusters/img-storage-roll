@@ -137,7 +137,15 @@ class RabbitClientDaemonNas():
                 cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, iscsi_target,hosting))
                 con.commit()
 
-                self.vmPublisher.publish_message({'action': 'set_zvol', 'target':iscsi_target}, hosting, self.NODE_NAME)
+                def failDeliver(target, zvol, reply_to):
+                    self.detach_target(target, {'zvol':zvol, 'reply_to':reply_to})
+                    self.failAction(props.reply_to, 'zvol_attached', 'node_unavailable', zvol=zvol_name)
+
+                self.vmPublisher.publish_message(
+                        {'action': 'set_zvol', 'target':iscsi_target}, 
+                        hosting, 
+                        self.NODE_NAME,
+                        on_fail=lambda: failDeliver(iscsi_target, zvol_name, props.reply_to))
                 logger.debug("Setting iscsi %s sent"%iscsi_target)
             except sqlite3.IntegrityError, msg:
                 logger.error("%s"%msg)
@@ -163,7 +171,6 @@ class RabbitClientDaemonNas():
                         raise ActionError('zvol_not_attached', 'zvol_detached')
 
                     if self.find_iscsi_target_num(row[1]) == None:
-                        self.targetDetachSuccess(row[1], zvol_name, props.reply_to, props.message_id)
                         raise ActionError('zvol_target_not_found', 'zvol_detached', properties={'zvol':zvol_name})
 
                     self.lockZVol(zvol_name, props.message_id, props.reply_to)
@@ -258,52 +265,41 @@ class RabbitClientDaemonNas():
         target = message['target']
         logger.debug("Got zvol %s detached message"%(target))
 
+        try:
+            with sqlite3.connect('calls.db') as con:
+                cur = con.cursor()
+
+                # get request destination
+                cur.execute('SELECT reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
+                row = cur.fetchone()
+
+                caller_properties = {'zvol':row[1], 'reply_to':row[0]} #where request came from
+
+                if(message['status'] == 'error'):
+                    raise ActionError('target_not_detached', 'zvol_detached', properties=caller_properties)
+
+                self.detach_target(target, caller_properties)
+
+                self.releaseZVol(row[1])
+                self.vmPublisher.publish_message({'action': 'zvol_detached', 'status': 'success'}, exchange='', routing_key=caller_properties.get('reply_to'))
+
+        except ActionError, err:
+            logger.exception(err)
+            self.failAction(err.properties['reply_to'], 'zvol_detached', err.message, zvol=err.properties.get('zvol'))
+             
+
+    def detach_target(self, target, caller_properties):
         with sqlite3.connect('calls.db') as con:
             cur = con.cursor()
 
-            # get request destination
-            cur.execute('SELECT corr_id, reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
-            row = cur.fetchone()
-
-            if(message['status'] == 'error'):
-                logger.error('Got error detaching target from compute')
-                self.releaseZVol(row[2])
-                logger.debug('%s volume released from lock'%row[2])
-                SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
-                    body = {'action': 'zvol_detached', 'status':'error', 'error':'error_detaching_target'},
-                    correlation_id = row[0])
-                logger.debug('Sent zvol_detached error back to FE')
-                return
-
- 
             tgt_num = self.find_iscsi_target_num(target)
             if subprocess.call(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num]):
                 logger.error('Error detaching target %s'%target)
-                if row != None:
-                    SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=row[1],
-                        body = {'action': 'zvol_detached', 'status':'error', 'error':'error_detaching_target'},
-                        correlation_id = row[0])
-                return
-            else:
-                self.targetDetachSuccess(target, row[2], row[1], row[0])
-
-
-    '''
-    Function is called to indicate the successful iscsi target detach after getting success from compute or if local target not found
-    '''
-    def targetDetachSuccess(self, target, zvol, routing_key, correlation_id):
-        with sqlite3.connect('calls.db') as con:
-            cur = con.cursor()
-
+                raise ActionError('target_not_detached', 'zvol_detached', properties=caller_proeprties)
             # remove iscsi target
             cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
             con.commit()
 
-            if zvol != None:
-                self.releaseZVol(zvol)
-                SyncRabbitMQPublisher(self.RABBITMQ_URL).publish(routing_key=routing_key,
-                    body = {'action': 'zvol_detached', 'status':'success'},
-                    correlation_id = correlation_id)
 
 
     def find_iscsi_target_num(self, target):
