@@ -144,11 +144,16 @@ class RabbitClientDaemonVm():
 
     def process_message(self, properties, message):
         logger.debug("Received message %s"%message)
+        if message['action'] not in self.function_dict.keys():
+            self.vmPublisher.publish_message({'status': 'error', 'error':'action_unsupported'}, exchange='', routing_key=properties.reply_to)
+            return
+
         try:
             self.function_dict[message['action']](message, properties)
         except:
-            logger.exception("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
+            logger.error("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
             traceback.print_tb(sys.exc_info()[2])
+            self.vmPublisher.publish_message({'status': 'error', 'error':sys.exc_info()[0]}, exchange='', routing_key=properties.reply_to)
 
     def run(self):
         self.vmPublisher = RabbitMQCommonClient(self.RABBITMQ_URL, 'rocks.vm-manage', 'direct', self.NODE_NAME, self.process_message)

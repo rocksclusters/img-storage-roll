@@ -118,6 +118,8 @@ class RabbitClientDaemonNas():
                     out, err = cmd.communicate()
                     if cmd.returncode:
                         raise ActionError('zvol_creation_error', err)
+                    cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, None, None))
+                    con.commit()
                     logger.debug('Created new zvol %s'%zvol_name)
  
                 cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
@@ -126,7 +128,14 @@ class RabbitClientDaemonNas():
                     raise ActionError('zvol_mapped')
                 
                 iscsi_target = ''
-                cmd = subprocess.Popen(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(ZPOOL, zvol_name), socket.gethostbyname(hosting)], stdout=subprocess.PIPE)
+
+                ip = ''
+                try:
+                    ip = socket.gethostbyname(hosting)
+                except:
+                    raise ActionError('host is unknown')
+
+                cmd = subprocess.Popen(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(ZPOOL, zvol_name), ip], stdout=subprocess.PIPE)
                 for line in cmd.stdout:
                     if "Creating new target" in line:
                         iscsi_target = line['Creating new target (name='.__len__():line.index(',')]
@@ -138,6 +147,7 @@ class RabbitClientDaemonNas():
                 def failDeliver(target, zvol, reply_to):
                     self.detach_target(target)
                     self.failAction(props.reply_to, 'zvol_attached', 'node_unavailable')
+                    self.releaseZVol(zvol_name)
 
                 self.vmPublisher.publish_message(
                         {'action': 'set_zvol', 'target':iscsi_target}, 
@@ -311,12 +321,17 @@ class RabbitClientDaemonNas():
 
     def process_message(self, properties, message):
         logger.debug("Received message %s"%message)
+        if message['action'] not in self.function_dict.keys():
+            self.vmPublisher.publish_message({'status': 'error', 'error':'action_unsupported'}, exchange='', routing_key=properties.reply_to)
+            return
+
         try:
             self.function_dict[message['action']](message, properties)
         except:
             logger.error("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
             traceback.print_tb(sys.exc_info()[2])
-
+            self.vmPublisher.publish_message({'status': 'error', 'error':sys.exc_info()[0]}, exchange='', routing_key=properties.reply_to)
+ 
     def stop(self):
         self.vmPublisher.stop()
         logger.info('Consumer and publisher stopping called')
