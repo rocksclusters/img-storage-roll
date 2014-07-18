@@ -117,7 +117,7 @@ class RabbitClientDaemonNas():
                     cmd = subprocess.Popen(['zfs', 'create', '-V', '%sgb'%size, '%s/%s'%(ZPOOL, zvol_name)], stdout=subprocess.PIPE, stderr = subprocess.PIPE)
                     out, err = cmd.communicate()
                     if cmd.returncode:
-                        raise ActionError('zvol_creation_error', err)
+                        raise ActionError('ZVol creation error: %s'%err)
                     cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, None, None))
                     con.commit()
                     logger.debug('Created new zvol %s'%zvol_name)
@@ -125,7 +125,7 @@ class RabbitClientDaemonNas():
                 cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
                 row = cur.fetchone()
                 if (row != None and row[0] != None): #zvol is mapped
-                    raise ActionError('zvol_mapped')
+                    raise ActionError('Error when mapping zvol: already mapped')
                 
                 iscsi_target = ''
 
@@ -133,7 +133,7 @@ class RabbitClientDaemonNas():
                 try:
                     ip = socket.gethostbyname(hosting)
                 except:
-                    raise ActionError('host is unknown')
+                    raise ActionError('Host %s is unknown'%hosting)
 
                 cmd = subprocess.Popen(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(ZPOOL, zvol_name), ip], stdout=subprocess.PIPE)
                 for line in cmd.stdout:
@@ -144,20 +144,20 @@ class RabbitClientDaemonNas():
                 cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, iscsi_target,hosting))
                 con.commit()
 
-                def failDeliver(target, zvol, reply_to):
+                def failDeliver(target, zvol, reply_to, hosting):
                     self.detach_target(target)
-                    self.failAction(props.reply_to, 'zvol_attached', 'node_unavailable')
+                    self.failAction(props.reply_to, 'zvol_attached', 'Compute node %s is unavailable'%hosting)
                     self.releaseZVol(zvol_name)
 
                 self.vmPublisher.publish_message(
                         {'action': 'set_zvol', 'target':iscsi_target}, 
                         hosting, 
                         self.NODE_NAME,
-                        on_fail=lambda: failDeliver(iscsi_target, zvol_name, props.reply_to))
+                        on_fail=lambda: failDeliver(iscsi_target, zvol_name, props.reply_to, hosting))
                 logger.debug("Setting iscsi %s sent"%iscsi_target)
             except sqlite3.IntegrityError, msg:
                 logger.error("%s"%msg)
-                self.failAction(props.reply_to, 'zvol_attached', 'zvol_busy')
+                self.failAction(props.reply_to, 'zvol_attached', 'ZVol is locked')
             except ActionError, err:
                 logger.exception(err)
                 self.failAction(props.reply_to, 'zvol_attached', err.message)
@@ -176,24 +176,24 @@ class RabbitClientDaemonNas():
                 row = cur.fetchone()
                 if row != None:
                     if(row[1] == None): #zvol is not mapped
-                        raise ActionError('zvol_not_attached')
+                        raise ActionError('ZVol %s is not attached'%zvol_name)
 
                     if self.find_iscsi_target_num(row[1]) == None:
-                        raise ActionError('zvol_target_not_found')
+                        raise ActionError('iSCSI target does not exist for ZVol %s'%zvol_name)
 
                     self.lockZVol(zvol_name, props.reply_to)
                     self.vmPublisher.publish_message(
                             {'action': 'tear_down', 'target':row[1]}, 
                             row[0], 
                             self.NODE_NAME, 
-                            on_fail=lambda: self.failAction(props.reply_to, 'zvol_detached', 'node_unavailable')
+                            on_fail=lambda: self.failAction(props.reply_to, 'zvol_detached', 'Compute node %s is unavailable'%row[0])
                     )
                     logger.debug("Tearing down zvol %s sent"%zvol_name)
                 else:
-                   raise ActionError('zvol_not_found')
+                   raise ActionError('ZVol %s not found in database'%zvol_name)
             except sqlite3.IntegrityError, msg:
                 logger.error("%s"%msg)
-                self.failAction(props.reply_to, 'zvol_detached', 'zvol_busy')
+                self.failAction(props.reply_to, 'zvol_detached', 'ZVol is locked')
             except ActionError, err:
                 logger.exception(err)
                 self.failAction(props.reply_to, 'zvol_detached', err.message)
@@ -213,7 +213,7 @@ class RabbitClientDaemonNas():
                 row = cur.fetchone()
                 if row != None:
                     if(row[1] != None): #zvol is mapped
-                        raise ActionError('zvol_attached')
+                        raise ActionError('Error deleting zvol %s: mapped now'%zvol_name)
 
                     logger.debug("Invoking zfs destroy %s/%s"%(ZPOOL,zvol_name))
                     if not subprocess.call(['zfs', 'destroy', '%s/%s'%(ZPOOL, zvol_name)]):
@@ -223,12 +223,12 @@ class RabbitClientDaemonNas():
 
                         self.vmPublisher.publish_message({'action': 'zvol_deleted', 'status': 'success'}, exchange='', routing_key=props.reply_to)
                     else:
-                        raise ActionError('zvol_attached')
+                        raise ActionError('Error deleting zvol %s: command return != 0'%zvol_name)
                 else:
-                    raise ActionError('zvol_not_found')
+                    raise ActionError('Error deleting zvol: not found in database')
             except sqlite3.IntegrityError, msg:
                 logger.error("%s"%msg)
-                self.failAction(props.reply_to, 'zvol_deleted', 'zvol_busy')
+                self.failAction(props.reply_to, 'zvol_deleted', 'ZVol is locked')
             except ActionError, err:
                 logger.exception(err)
                 self.failAction(props.reply_to, 'zvol_deleted', err.message)
@@ -274,7 +274,7 @@ class RabbitClientDaemonNas():
                 reply_to, zvol = cur.fetchone()
 
                 if(message['status'] == 'error'):
-                    raise ActionError('target_not_detached')
+                    raise ActionError('Error detaching iSCSI target from compute node: %s'%message.get('error'))
 
                 self.detach_target(target)
 
@@ -293,7 +293,7 @@ class RabbitClientDaemonNas():
             tgt_num = self.find_iscsi_target_num(target)
             if subprocess.call(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num]):
                 logger.error('Error detaching target %s'%target)
-                raise ActionError('target_not_detached')
+                raise ActionError('Error detaching iSCSI target: command returned non-zero status')
             # remove iscsi target
             cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
             con.commit()
