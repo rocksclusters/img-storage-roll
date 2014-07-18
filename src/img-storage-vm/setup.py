@@ -12,7 +12,7 @@ version = os.environ.get('ROCKS_VERSION')
 # main configuration of distutils
 # 
 setup(
-    name = 'img-storage-fe',
+    name = 'img-storage-vm',
     version = version,
     description = 'Image Storage manager',
     author = 'Dmitry Mishin',

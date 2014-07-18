@@ -23,5 +23,6 @@
 	<package>iscsi-initiator-utils</package>
 	<post>
 	    mkdir /var/log/rocks
+	    chkconfig --add img-storage-vm
 	</post>
 </kickstart>
