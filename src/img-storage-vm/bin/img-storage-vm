@@ -55,6 +55,7 @@
 # @Copyright@
 #
 from rabbit_client.RabbitMQClient import RabbitMQLocator, RabbitMQCommonClient
+from rabbit_client import *
 import logging
 
 from daemon import runner
@@ -84,16 +85,17 @@ class RabbitClientDaemonVm():
     """
     def set_zvol(self, message, props):
         logger.debug("Setting zvol %s"%message['target'])
-        if(self.connect_iscsi(message['target'], props.reply_to)):
-                mappings = self.get_blk_dev_list()
-                if(message['target'] not in mappings.keys()):
-                    pass # TODO send error
-                else:
-                    self.vmPublisher.publish_message({'action': 'zvol_attached', 'target':message['target'], 'bdev':mappings[message['target']], 'status':'success'}, props.reply_to)
-                    logger.debug('Successfully mapped %s to %s'%(message['target'], mappings[message['target']]))
-        else:
-            self.vmPublisher.publish_message({'action': 'zvol_attached', 'target':message['target'], 'status':'error'}, props.reply_to, correlation_id=props.message_id)
-            logger.error('Error mapping %s'%(message['target']))
+        try:
+            self.connect_iscsi(message['target'], message['nas'])
+            mappings = self.get_blk_dev_list()
+            if(message['target'] not in mappings.keys()):
+                pass # TODO send error
+            else:
+                self.vmPublisher.publish_message({'action': 'zvol_attached', 'target':message['target'], 'bdev':mappings[message['target']], 'status':'success'}, props.reply_to)
+                logger.debug('Successfully mapped %s to %s'%(message['target'], mappings[message['target']]))
+        except ActionError, msg:
+            self.vmPublisher.publish_message({'action': 'zvol_attached', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
+            logger.error('Error mapping %s: %s'%(message['target'], str(msg)))
  
 
     def list_dev(self, message, props):
@@ -117,16 +119,16 @@ class RabbitClientDaemonVm():
         return mappings
 
     def connect_iscsi(self, iscsi_target, node_name):
-        cmd = subprocess.Popen(['iscsiadm', '--mode', 'discovery', '--type', 'sendtargets', '-p', node_name], stdout=subprocess.PIPE)
+        connect_out = runCommand(['iscsiadm', '--mode', 'discovery', '--type', 'sendtargets', '-p', node_name])
         logger.debug("Looking for target in iscsiadm output")
-        for line in cmd.stdout:
-                if iscsi_target in line: #has the target
-                    logger.debug("Found iscsi target in iscsiadm output")
-                    return subprocess.call(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-p', node_name, '-l']) == 0
-        return False
+        for line in connect_out:
+            if iscsi_target in line: #has the target
+                logger.debug("Found iscsi target in iscsiadm output")
+                return runCommand(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-p', node_name, '-l'])
+        raise ActionError('Could not find iSCSI target %s on compute node %s'%(iscsi_target, node_name))
 
     def disconnect_iscsi(self, iscsi_target):
-        return subprocess.call(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-u']) == 0
+        return runCommand(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-u'])
 
     """
     Received zvol tear_down command from nas

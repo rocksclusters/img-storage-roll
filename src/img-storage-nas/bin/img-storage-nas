@@ -71,6 +71,7 @@ import sys
 import signal
 import pika
 import socket
+import rocks.db.helper
 
 ZPOOL = 'tank'
 SQLITE_DB = '/opt/rocks/var/img_storage.db'
@@ -85,6 +86,11 @@ class RabbitClientDaemonNas():
         self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down, 'zvol_attached':self.zvol_attached, 'zvol_detached': self.zvol_detached, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol }
         self.RABBITMQ_URL = RabbitMQLocator().RABBITMQ_URL
         self.NODE_NAME = RabbitMQLocator().NODE_NAME
+
+        db = rocks.db.helper.DatabaseHelper()
+        db.connect()
+        self.ib_net = db.getHostAttr(db.getHostname(), 'IB_net')
+        db.close()
 
     def run(self):
         with sqlite3.connect(SQLITE_DB) as con:
@@ -130,11 +136,21 @@ class RabbitClientDaemonNas():
                 
                 iscsi_target = ''
 
-                ip = ''
-                try:
-                    ip = socket.gethostbyname(hosting)
-                except:
-                    raise ActionError('Host %s is unknown'%hosting)
+                ip = None
+                use_ib = False
+
+                if(self.ib_net):
+                    try:
+                        ip = socket.gethostbyname('%s.%s'%(hosting, self.ib_net))
+                        use_ib = True
+                    except:
+                        pass
+
+                if not use_ib:
+                    try:
+                        ip = socket.gethostbyname(hosting)
+                    except:
+                        raise ActionError('Host %s is unknown'%hosting)
 
                 cmd = subprocess.Popen(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(ZPOOL, zvol_name), ip], stdout=subprocess.PIPE)
                 for line in cmd.stdout:
@@ -151,7 +167,7 @@ class RabbitClientDaemonNas():
                     self.releaseZVol(zvol_name)
 
                 self.vmPublisher.publish_message(
-                        {'action': 'set_zvol', 'target':iscsi_target}, 
+                        {'action': 'set_zvol', 'target':iscsi_target, 'nas': ('%s.%s'%(self.NODE_NAME, self.ib_net)) if use_ib else self.NODE_NAME}, 
                         hosting, 
                         self.NODE_NAME,
                         on_fail=lambda: failDeliver(iscsi_target, zvol_name, props.reply_to, hosting))
