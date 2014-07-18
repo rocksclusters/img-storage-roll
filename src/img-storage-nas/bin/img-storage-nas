@@ -73,6 +73,7 @@ import pika
 import socket
 
 ZPOOL = 'tank'
+SQLITE_DB = '/opt/rocks/var/img_storage.db'
 
 class RabbitClientDaemonNas():
     def __init__(self):
@@ -86,7 +87,7 @@ class RabbitClientDaemonNas():
         self.NODE_NAME = RabbitMQLocator().NODE_NAME
 
     def run(self):
-        with sqlite3.connect('calls.db') as con:
+        with sqlite3.connect(SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
             cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, hosting TEXT)')
@@ -108,7 +109,7 @@ class RabbitClientDaemonNas():
         size = message['size']
         logger.debug("Setting zvol %s"%zvol_name)
 
-        with sqlite3.connect('calls.db') as con:
+        with sqlite3.connect(SQLITE_DB) as con:
             cur = con.cursor()
             try :
                 self.lockZVol(zvol_name, props.reply_to)
@@ -169,7 +170,7 @@ class RabbitClientDaemonNas():
     def tear_down(self, message, props):
         zvol_name = message['zvol']
         logger.debug("Tearing down zvol %s"%zvol_name)
-        with sqlite3.connect('calls.db') as con:
+        with sqlite3.connect(SQLITE_DB) as con:
             cur = con.cursor()
             try :
                 cur.execute('SELECT hosting, iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
@@ -205,7 +206,7 @@ class RabbitClientDaemonNas():
     def del_zvol(self, message, props):
         zvol_name = message['zvol']
         logger.debug("Deleting zvol %s"%zvol_name)
-        with sqlite3.connect('calls.db') as con:
+        with sqlite3.connect(SQLITE_DB) as con:
             cur = con.cursor()
             try :
                 self.lockZVol(zvol_name, props.reply_to)
@@ -244,7 +245,7 @@ class RabbitClientDaemonNas():
         target = message['target']
 
         logger.debug("Zvol attached %s"%target)
-        with sqlite3.connect('calls.db') as con:
+        with sqlite3.connect(SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('SELECT reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
             row = cur.fetchone()
@@ -266,7 +267,7 @@ class RabbitClientDaemonNas():
         reply_to = None
 
         try:
-            with sqlite3.connect('calls.db') as con:
+            with sqlite3.connect(SQLITE_DB) as con:
                 cur = con.cursor()
 
                 # get request destination
@@ -287,7 +288,7 @@ class RabbitClientDaemonNas():
             self.releaseZVol(zvol) 
 
     def detach_target(self, target):
-        with sqlite3.connect('calls.db') as con:
+        with sqlite3.connect(SQLITE_DB) as con:
             cur = con.cursor()
 
             tgt_num = self.find_iscsi_target_num(target)
@@ -312,7 +313,7 @@ class RabbitClientDaemonNas():
         return None
 
     def list_zvols(self, message, properties):
-        with sqlite3.connect('calls.db') as con:
+        with sqlite3.connect(SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('SELECT * from zvols')
             r = [dict((cur.description[i][0], value) for i, value in enumerate(row)) for row in cur.fetchall()]
@@ -337,13 +338,13 @@ class RabbitClientDaemonNas():
         logger.info('Consumer and publisher stopping called')
 
     def lockZVol(self, zvol_name, reply_to):
-        with sqlite3.connect('calls.db') as con:
+        with sqlite3.connect(SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',(zvol_name, reply_to, time.time()))
             con.commit()
 
     def releaseZVol(self, zvol):
-        with sqlite3.connect('calls.db') as con:
+        with sqlite3.connect(SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('DELETE FROM zvol_calls WHERE zvol = ?',[zvol])
             con.commit()
