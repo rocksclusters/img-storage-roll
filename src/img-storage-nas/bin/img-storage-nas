@@ -60,7 +60,6 @@ import logging
 
 from daemon import runner
 
-import subprocess
 import traceback
 
 import time
@@ -120,11 +119,9 @@ class RabbitClientDaemonNas():
             try :
                 self.lockZVol(zvol_name, props.reply_to)
 
-                if subprocess.call(['zfs', 'list', '%s/%s'%(ZPOOL, zvol_name)]): #zvol not exists
-                    cmd = subprocess.Popen(['zfs', 'create', '-V', '%sgb'%size, '%s/%s'%(ZPOOL, zvol_name)], stdout=subprocess.PIPE, stderr = subprocess.PIPE)
-                    out, err = cmd.communicate()
-                    if cmd.returncode:
-                        raise ActionError('ZVol creation error: %s'%err)
+                cur.execute('SELECT count(*) FROM zvols WHERE zvol = ?',[zvol_name])
+                if(cur.fetchone()[0] == 0):
+                    runCommand(['zfs', 'create', '-V', '%sgb'%size, '%s/%s'%(ZPOOL, zvol_name)])
                     cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, None, None))
                     con.commit()
                     logger.debug('Created new zvol %s'%zvol_name)
@@ -152,8 +149,8 @@ class RabbitClientDaemonNas():
                     except:
                         raise ActionError('Host %s is unknown'%hosting)
 
-                cmd = subprocess.Popen(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(ZPOOL, zvol_name), ip], stdout=subprocess.PIPE)
-                for line in cmd.stdout:
+                out = runCommand(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(ZPOOL, zvol_name), ip])
+                for line in out:
                     if "Creating new target" in line:
                         iscsi_target = line['Creating new target (name='.__len__():line.index(',')]
                 logger.debug('Mapped %s to iscsi target %s'%(zvol_name, iscsi_target))
@@ -233,14 +230,13 @@ class RabbitClientDaemonNas():
                         raise ActionError('Error deleting zvol %s: mapped now'%zvol_name)
 
                     logger.debug("Invoking zfs destroy %s/%s"%(ZPOOL,zvol_name))
-                    if not subprocess.call(['zfs', 'destroy', '%s/%s'%(ZPOOL, zvol_name)]):
-                        logger.debug('zfs destroy success %s'%zvol_name)
-                        cur.execute('DELETE FROM zvols WHERE zvol = ?',[zvol_name])
-                        con.commit()
+                    runCommand(['zfs', 'destroy', '%s/%s'%(ZPOOL, zvol_name)])
+                    logger.debug('zfs destroy success %s'%zvol_name)
 
-                        self.vmPublisher.publish_message({'action': 'zvol_deleted', 'status': 'success'}, exchange='', routing_key=props.reply_to)
-                    else:
-                        raise ActionError('Error deleting zvol %s: command return != 0'%zvol_name)
+                    cur.execute('DELETE FROM zvols WHERE zvol = ?',[zvol_name])
+                    con.commit()
+
+                    self.vmPublisher.publish_message({'action': 'zvol_deleted', 'status': 'success'}, exchange='', routing_key=props.reply_to)
                 else:
                     raise ActionError('Error deleting zvol: not found in database')
             except sqlite3.IntegrityError, msg:
@@ -308,9 +304,7 @@ class RabbitClientDaemonNas():
             cur = con.cursor()
 
             tgt_num = self.find_iscsi_target_num(target)
-            if subprocess.call(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num]):
-                logger.error('Error detaching target %s'%target)
-                raise ActionError('Error detaching iSCSI target: command returned non-zero status')
+            runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num])
             # remove iscsi target
             cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
             con.commit()
@@ -318,9 +312,9 @@ class RabbitClientDaemonNas():
 
 
     def find_iscsi_target_num(self, target):
-        cmd = subprocess.Popen(['tgtadm', '--op', 'show', '--mode', 'target'], stdout=subprocess.PIPE)
+        out = runCommand(['tgtadm', '--op', 'show', '--mode', 'target'])
         logger.debug("Looking for target's number in output of tgtadm")
-        for line in cmd.stdout:
+        for line in out:
             if line.startswith('Target '):
                 if line.split()[2] == target:
                     tgt_num = line.split()[1]

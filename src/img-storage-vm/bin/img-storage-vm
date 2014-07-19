@@ -59,7 +59,6 @@ from rabbit_client import *
 import logging
 
 from daemon import runner
-import subprocess
 import time
 import json
 import random
@@ -107,10 +106,10 @@ class RabbitClientDaemonVm():
         self.vmPublisher.publish_message({'action': 'list_dev', 'status': 'success', 'dev_list':mappings_ar}, exchange='', routing_key=props.reply_to)
 
     def get_blk_dev_list(self):
-        cmd = subprocess.Popen(['iscsiadm', '-m', 'session', '-P3'], stdout=subprocess.PIPE)
+        out = runCommand(['iscsiadm', '-m', 'session', '-P3'])
         mappings = {}
         cur_target = None
-        for line in cmd.stdout:
+        for line in out:
                 if "Target: " in line:
                         cur_target = re.search(r'Target: ([\w\-\.]*)$',line, re.M).group(1)
                 if 'Attached scsi disk ' in line:
