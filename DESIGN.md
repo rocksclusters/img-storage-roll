@@ -1,36 +1,30 @@
 # Components
 
-- Frontend: sends commands only to the NAS for managing the disks
-- NAS: is responsible to keep the state of the disk images (on which compute node
-  they are currently mapped) and orchestrate their deployment on compute node
-  FE send only order to the NAS
-- Compute: can create mapping a a VM image under the request of a NAS
+- Frontend: sends requests only to the NAS for managing the disks
 
-# current requests
+- NAS: is responsible to manage the state of the disk images (is the disk
+  available, is it mapped on some compute, etc.) and orchestrate their
+  deployment on compute node
 
-- NAS: 
-  - setup_zvol (zvol, compute_name) 
-  - teardown_zvol (zvol, compute_name)
+- Compute: can create mapping of a VM disk image under the request of a NAS
 
-- compute (or vm-container):
-  - set_zvol (zvol, nas_name, iscsi_target)
-  - tear_down (zvol, nas_name, iscsi_target)
+# Requests available on a NAS node
 
+- set_zvol(zvol, hosting, size) => devicepath
 
+    It maps the given `zvol` between the NAS itself and the `hosting` node.
+    If the `zvol` does not exist it will be created with the given `size`
 
+- tear_down(zvol)
 
-# future requests (design attempt)
+    It removes the mapping currently in place for the given `zvol`. Mappings
+    are persistent they survive reboot of the hosting node.
+    The only way to remove a mapping is through this function.
 
-- NAS (nasname_zvol is a unique name space):
-  - setup_zvol (zvol, compute_name, size) => (devicepath) || (error_msg)
-    what if size is different than original creation size?
-  - teardown_zvol (zvol) => (error_msg)
-  - remove_zvol (zvol) => (error_msg)
-    the user has first to call tear_down if the volume is mapped
-  - query_zvol (zvol) => (compute_name, size, devicepath) || (unmapped) || (donotexist)
-  - list_zvol () => (zvol, zvol, zvol, ...)
-    is this really necessary?
-  - create_zvol for the moment is implicit in setup_zvol if it is not already present
+- del_zvol(zvol)
 
+    Erase the given `zvol` from the NAS.
 
+- list_zvols() => list of zvols with their mappings
 
+The current implementation uses zvol = vhostname
