@@ -143,18 +143,18 @@ class RabbitClientDaemonVm():
             logger.error("error detaching the target %s"%message['target'])
             self.queue_connector.publish_message({'action': 'zvol_detached', 'target':message['target'], 'status':'error', 'error':'can_not_detach'}, props.reply_to, correlation_id=props.message_id)
 
-    def process_message(self, properties, message):
+    def process_message(self, props, message):
         logger.debug("Received message %s"%message)
         if message['action'] not in self.function_dict.keys():
-            self.queue_connector.publish_message({'status': 'error', 'error':'action_unsupported'}, exchange='', routing_key=properties.reply_to)
+            self.queue_connector.publish_message({'status': 'error', 'error':'action_unsupported'}, exchange='', routing_key=props.reply_to)
             return
 
         try:
-            self.function_dict[message['action']](message, properties)
+            self.function_dict[message['action']](message, props)
         except:
             logger.error("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
             traceback.print_tb(sys.exc_info()[2])
-            self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[0]}, exchange='', routing_key=properties.reply_to, correlation_id=props.message_id)
+            self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[0]}, exchange='', routing_key=props.reply_to, correlation_id=props.message_id)
 
     def run(self):
         self.queue_connector = RabbitMQCommonClient(self.RABBITMQ_URL, 'rocks.vm-manage', 'direct', self.NODE_NAME, self.process_message)
