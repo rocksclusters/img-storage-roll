@@ -62,8 +62,9 @@ import json
 import uuid
 from rocks.util import CommandError
 import logging
-logging.basicConfig()
 from rabbit_client.RabbitMQClient import RabbitMQLocator
+
+logging.basicConfig()
 
 class CommandLauncher():
 
@@ -103,7 +104,6 @@ class CommandLauncher():
         connection = pika.BlockingConnection(pika.URLParameters(self.RABBITMQ_URL))
 
         channel = connection.channel()
-        #channel.add_on_close_callback(lambda channel, replyCode, replyText: print("!!!!!!!!!!!!!!"))
 
         try:
             # Declare the queue
@@ -139,4 +139,3 @@ class CommandLauncher():
         channel.basic_ack(delivery_tag=method_frame.delivery_tag)
         channel.stop_consuming()
         self.ret_message = json.loads(body)
-

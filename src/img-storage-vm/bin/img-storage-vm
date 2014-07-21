@@ -72,8 +72,8 @@ class RabbitClientDaemonVm():
     def __init__(self):
         self.stdin_path = '/dev/null'
         self.stdout_path = '/dev/null'
-        self.stderr_path = '/tmp/err'
-        self.pidfile_path =  '/var/run/imgstoragedaemon.pid'
+        self.stderr_path = '/tmp/err.log'
+        self.pidfile_path =  '/var/run/img-storage-vm.pid'
         self.pidfile_timeout = 5
         self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down, 'list_dev':self.list_dev }
         self.RABBITMQ_URL = RabbitMQLocator().RABBITMQ_URL
@@ -87,15 +87,15 @@ class RabbitClientDaemonVm():
         try:
             self.connect_iscsi(message['target'], message['nas'])
             mappings = self.get_blk_dev_list()
-            if(message['target'] not in mappings.keys()):
-                pass # TODO send error
-            else:
-                self.vmPublisher.publish_message({'action': 'zvol_attached', 'target':message['target'], 'bdev':mappings[message['target']], 'status':'success'}, props.reply_to)
-                logger.debug('Successfully mapped %s to %s'%(message['target'], mappings[message['target']]))
+
+            if(message['target'] not in mappings.keys()): raise ActionError('Not found %s in targets'%message['target'])
+
+            self.queue_connector.publish_message({'action': 'zvol_attached', 'target':message['target'], 'bdev':mappings[message['target']], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+            logger.debug('Successfully mapped %s to %s'%(message['target'], mappings[message['target']]))
         except ActionError, msg:
-            self.vmPublisher.publish_message({'action': 'zvol_attached', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
+            self.queue_connector.publish_message({'action': 'zvol_attached', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
             logger.error('Error mapping %s: %s'%(message['target'], str(msg)))
- 
+
 
     def list_dev(self, message, props):
         mappings_map = self.get_blk_dev_list()
@@ -103,7 +103,7 @@ class RabbitClientDaemonVm():
         mappings_ar = []
         for target in mappings_map.keys():
             mappings_ar.append({'target':target, 'device':mappings_map[target]})
-        self.vmPublisher.publish_message({'action': 'list_dev', 'status': 'success', 'dev_list':mappings_ar}, exchange='', routing_key=props.reply_to)
+        self.queue_connector.publish_message({'action': 'list_dev', 'status': 'success', 'dev_list':mappings_ar}, exchange='', routing_key=props.reply_to)
 
     def get_blk_dev_list(self):
         out = runCommand(['iscsiadm', '-m', 'session', '-P3'])
@@ -138,15 +138,15 @@ class RabbitClientDaemonVm():
         mappings_map = self.get_blk_dev_list()
 
         if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
-            self.vmPublisher.publish_message({'action': 'zvol_detached', 'target':message['target'], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
-        else: #TODO !?!?!?!?!?!?!?!?!
+            self.queue_connector.publish_message({'action': 'zvol_detached', 'target':message['target'], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+        else:
             logger.error("error detaching the target %s"%message['target'])
-            self.vmPublisher.publish_message({'action': 'zvol_detached', 'target':message['target'], 'status':'error', 'error':'can_not_detach'}, props.reply_to, correlation_id=props.message_id)
+            self.queue_connector.publish_message({'action': 'zvol_detached', 'target':message['target'], 'status':'error', 'error':'can_not_detach'}, props.reply_to, correlation_id=props.message_id)
 
     def process_message(self, properties, message):
         logger.debug("Received message %s"%message)
         if message['action'] not in self.function_dict.keys():
-            self.vmPublisher.publish_message({'status': 'error', 'error':'action_unsupported'}, exchange='', routing_key=properties.reply_to)
+            self.queue_connector.publish_message({'status': 'error', 'error':'action_unsupported'}, exchange='', routing_key=properties.reply_to)
             return
 
         try:
@@ -154,18 +154,18 @@ class RabbitClientDaemonVm():
         except:
             logger.error("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
             traceback.print_tb(sys.exc_info()[2])
-            self.vmPublisher.publish_message({'status': 'error', 'error':sys.exc_info()[0]}, exchange='', routing_key=properties.reply_to)
+            self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[0]}, exchange='', routing_key=properties.reply_to, correlation_id=props.message_id)
 
     def run(self):
-        self.vmPublisher = RabbitMQCommonClient(self.RABBITMQ_URL, 'rocks.vm-manage', 'direct', self.NODE_NAME, self.process_message)
-        self.vmPublisher.run()
+        self.queue_connector = RabbitMQCommonClient(self.RABBITMQ_URL, 'rocks.vm-manage', 'direct', self.NODE_NAME, self.process_message)
+        self.queue_connector.run()
 
     def stop(self):
-        self.vmPublisher.stop()
-        logger.info('Consumer and publisher stopping called')
+        self.queue_connector.stop()
+        logger.info('RabbitMQ connector stopping called')
 
 
-logger = logging.getLogger("DaemonLog")
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 formatter = logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -30s %(funcName) -35s %(lineno) -5d: %(message)s'")
 handler = logging.FileHandler("/var/log/rocks/img-storage-vm.log")
@@ -174,15 +174,11 @@ logger.addHandler(handler)
 logging.getLogger("pika.channel").setLevel(logging.DEBUG)
 logging.getLogger("pika.channel").addHandler(handler)
 logging.getLogger("pika.connection").setLevel(logging.DEBUG)
-logging.getLogger("pika.connection").addHandler(handler)   
+logging.getLogger("pika.connection").addHandler(handler)
 logging.getLogger("pika.adapters.base_connection").setLevel(logging.DEBUG)
 logging.getLogger("pika.adapters.base_connection").addHandler(handler)
 logging.getLogger("rabbit_client.RabbitMQClient").setLevel(logging.DEBUG)
 logging.getLogger("rabbit_client.RabbitMQClient").addHandler(handler)
-#logging.getLogger("pika.heartbeat").setLevel(logging.DEBUG)
-#logging.getLogger("pika.heartbeat").addHandler(handler)
-#logging.getLogger("pika.adapters.select_connection").setLevel(logging.DEBUG)
-#logging.getLogger("pika.adapters.select_connection").addHandler(handler)   
 
 
 app = RabbitClientDaemonVm()
