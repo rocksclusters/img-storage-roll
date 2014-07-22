@@ -96,7 +96,7 @@ class CommandLauncher():
     def callListHostStoragedev(self, compute):
        message = {'action': 'list_dev'}
        self.callCommand(message, compute)
-       return self.ret_message['dev_list']
+       return self.ret_message['body']
 
 
 

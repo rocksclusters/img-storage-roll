@@ -103,7 +103,7 @@ class RabbitClientDaemonVm():
         mappings_ar = []
         for target in mappings_map.keys():
             mappings_ar.append({'target':target, 'device':mappings_map[target]})
-        self.queue_connector.publish_message({'action': 'list_dev', 'status': 'success', 'dev_list':mappings_ar}, exchange='', routing_key=props.reply_to)
+        self.queue_connector.publish_message({'action': 'dev_list', 'status': 'success', 'body':mappings_ar}, exchange='', routing_key=props.reply_to)
 
     def get_blk_dev_list(self):
         out = runCommand(['iscsiadm', '-m', 'session', '-P3'])
