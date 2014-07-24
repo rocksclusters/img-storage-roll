@@ -10,12 +10,12 @@
 
 # Requests available on a NAS node
 
-- set_zvol(zvol, hosting, size) => devicepath
+- map_zvol(zvol, remotehost, size) => devicepath
 
-    It maps the given `zvol` between the NAS itself and the `hosting` node.
+    It maps the given `zvol` between the NAS itself and the `renotehost` node.
     If the `zvol` does not exist it will be created with the given `size`
 
-- tear_down(zvol)
+- unmap_zvol(zvol)
 
     It removes the mapping currently in place for the given `zvol`. Mappings
     are persistent they survive reboot of the hosting node.
@@ -25,7 +25,9 @@
 
     Erase the given `zvol` from the NAS.
 
-- list_zvols() => list of zvols with their mappings
+- list_zvols(name) => list of zvols with their mappings
+
+    Name of the zvol if empty return the full list.
 
 The current implementation uses zvol = vhostname
 
