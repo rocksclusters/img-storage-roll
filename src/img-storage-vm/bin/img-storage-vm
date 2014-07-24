@@ -106,7 +106,10 @@ class RabbitClientDaemonVm():
         self.queue_connector.publish_message({'action': 'dev_list', 'status': 'success', 'body':mappings_ar}, exchange='', routing_key=props.reply_to)
 
     def get_blk_dev_list(self):
-        out = runCommand(['iscsiadm', '-m', 'session', '-P3'])
+	try:
+    	    out = runCommand(['iscsiadm', '-m', 'session', '-P3'])
+    	except:
+    	    return {}
         mappings = {}
         cur_target = None
         for line in out:
