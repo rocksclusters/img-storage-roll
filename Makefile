@@ -85,6 +85,9 @@ nas:
 	scp RPMS/noarch/img-storage-nas-6.2-0.noarch.rpm zfs-0-0:
 	ssh zfs-0-0 'yum reinstall ./img-storage-nas-6.2-0.noarch.rpm'
 	ssh zfs-0-0 'service img-storage-nas restart'
+	scp RPMS/noarch/img-storage-nas-6.2-0.noarch.rpm nas-0-1:
+	ssh nas-0-1 'yum reinstall ./img-storage-nas-6.2-0.noarch.rpm'
+	ssh nas-0-1 'service img-storage-nas restart'
 
 vm:
 	cd src/img-storage-vm && make rpm

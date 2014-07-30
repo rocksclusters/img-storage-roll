@@ -58,7 +58,7 @@
 import rocks.commands
 from rabbit_client.CommandLauncher import CommandLauncher
 
-nas_name = 'zfs-0-0'
+nas_name = 'nas-0-1'
 
 class Plugin(rocks.commands.Plugin):
 

@@ -121,7 +121,7 @@ class RabbitClientDaemonNas():
 
                 cur.execute('SELECT count(*) FROM zvols WHERE zvol = ?',[zvol_name])
                 if(cur.fetchone()[0] == 0):
-                    runCommand(['zfs', 'create', '-V', '%sgb'%message['size'], '%s/%s'%(ZPOOL, zvol_name)])
+                    runCommand(['zfs', 'create', '-o', 'primarycache=metadata', '-o', 'volblocksize=128K', '-V', '%sgb'%message['size'], '%s/%s'%(ZPOOL, zvol_name)])
                     cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, None, None))
                     con.commit()
                     logger.debug('Created new zvol %s'%zvol_name)
