@@ -54,7 +54,7 @@
 #
 # @Copyright@
 #
-from rabbitmqclient import RabbitMQLocator, RabbitMQCommonClient
+from rabbitmqclient import RabbitMQCommonClient
 from imgstorage import *
 import logging
 
@@ -75,8 +75,6 @@ class VmDaemon():
         self.pidfile_path =  '/var/run/img-storage-vm.pid'
         self.pidfile_timeout = 5
         self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down, 'list_dev':self.list_dev }
-        self.RABBITMQ_URL = RabbitMQLocator().RABBITMQ_URL
-        self.NODE_NAME = RabbitMQLocator().NODE_NAME
 
     """
     Received set_zvol command from nas
@@ -159,7 +157,7 @@ class VmDaemon():
             self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[1].message}, exchange='', routing_key=props.reply_to, correlation_id=props.message_id)
 
     def run(self):
-        self.queue_connector = RabbitMQCommonClient(self.RABBITMQ_URL, 'rocks.vm-manage', 'direct', self.NODE_NAME, self.process_message)
+        self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message)
         self.queue_connector.run()
 
     def stop(self):

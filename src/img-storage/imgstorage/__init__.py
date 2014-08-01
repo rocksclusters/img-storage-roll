@@ -55,8 +55,6 @@
 
 import subprocess
 import logging
-from daemon import runner
-import signal
 
 class ActionError(Exception):
     pass
@@ -81,12 +79,3 @@ def setupLogger(logger):
         logging.getLogger(log_name).setLevel(logging.DEBUG)
         logging.getLogger(log_name).addHandler(handler)
 
-def runDaemon(app):
-    setupLogger(app.__class__.__name__)
-    daemon_runner = runner.DaemonRunner(app)
-
-    #This ensures that the logger file handle does not get closed during daemonization
-    daemon_runner.daemon_context.files_preserve=[handler.stream]
-    daemon_runner.daemon_context.signal_map = {signal.SIGTERM: lambda signum, frame: app.stop()}
-
-    daemon_runner.do_action()

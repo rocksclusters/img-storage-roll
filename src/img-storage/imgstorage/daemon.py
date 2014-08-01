@@ -1,5 +1,3 @@
-#!/opt/rocks/bin/python
-#
 # @Copyright@
 #
 #                               Rocks(r)
@@ -54,7 +52,16 @@
 #
 # @Copyright@
 #
-from imgstorage.imgstoragenas import NasDaemon
-from imgstorage.daemon import *
+from daemon import runner
+import signal
+from imgstorage import *
 
-runDaemon(NasDaemon())
+def runDaemon(app):
+    setupLogger(app.__class__.__name__)
+    daemon_runner = runner.DaemonRunner(app)
+
+    #This ensures that the logger file handle does not get closed during daemonization
+    daemon_runner.daemon_context.files_preserve=[handler.stream]
+    daemon_runner.daemon_context.signal_map = {signal.SIGTERM: lambda signum, frame: app.stop()}
+
+    daemon_runner.do_action()
