@@ -49,34 +49,36 @@ class TestNasFunctions(unittest.TestCase):
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     @mock.patch('socket.gethostbyname', return_value='10.1.1.1')
     def test_set_zvol_createnew_success(self, mockGetHostCommand, mockRunCommand):
+        zvol = 'vol3'
         def my_side_effect(*args, **kwargs):
-            if args[0][0] == 'zfs':                return StringIO("\n")
-            elif args[0][0] == 'tgt-setup-lun':    return tgt_setup_lun_response
+            if args[0][0] == 'zfs':                return StringIO("")
+            elif args[0][0] == 'tgt-setup-lun':    return StringIO(tgt_setup_lun_response%(zvol, zvol))
 
         mockRunCommand.side_effect = my_side_effect
         self.client.ib_net = 'ibnet'
         self.client.set_zvol(
-            {'action': 'set_zvol', 'zvol': 'vol3', 'hosting': 'compute-0-1', 'size': '10gb'},
+            {'action': 'set_zvol', 'zvol': zvol, 'hosting': 'compute-0-1', 'size': '10gb'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'set_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.zfs-0-0-vol3'}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
+            {'action': 'set_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol)}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
 
 
     """ Testing mapping of zvol created before """
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     @mock.patch('socket.gethostbyname', return_value='10.1.1.1')
     def test_set_zvol_usecreated_success(self, mockGetHostCommand, mockRunCommand ):
+        zvol = 'vol1'
         def my_side_effect(*args, **kwargs):
-            if args[0][0] == 'zfs':                return StringIO("\n")
-            elif args[0][0] == 'tgt-setup-lun':    return tgt_setup_lun_response
+            if args[0][0] == 'zfs':                return StringIO("")
+            elif args[0][0] == 'tgt-setup-lun':    return StringIO(tgt_setup_lun_response%(zvol, zvol))
         mockRunCommand.side_effect = my_side_effect
 
         self.client.ib_net = 'ibnet'
         self.client.set_zvol(
-            {'action': 'set_zvol', 'zvol': 'vol1', 'hosting': 'compute-0-1', 'size': '10gb'},
+            {'action': 'set_zvol', 'zvol': zvol, 'hosting': 'compute-0-1', 'size': '10gb'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'set_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.zfs-0-0-vol1'}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
+            {'action': 'set_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol)}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
 
 
  
@@ -89,20 +91,21 @@ class TestNasFunctions(unittest.TestCase):
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_teardown_success(self, mockRunCommand):
-        mockRunCommand.return_value = tgtadm_response
+        zvol = 'vol2'
+        mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
 
         self.client.tear_down(
-            {'action': 'tear_down', 'zvol': 'vol2'},
+            {'action': 'tear_down', 'zvol': zvol},
             BasicProperties(reply_to='reply_to'))
 
         mockRunCommand.assert_called_with(['tgtadm', '--op', 'show', '--mode', 'target'])
 
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'tear_down', 'target': u'iqn.2001-04.com.nas-0-1-vol2'}, u'nas-0-1', 'hpcdev-pub02', on_fail=ANY)
+            {'action': 'tear_down', 'target': u'iqn.2001-04.com.nas-0-1-%s'%zvol}, u'nas-0-1', 'hpcdev-pub02', on_fail=ANY)
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_teardown_error(self, mockRunCommand):
-        mockRunCommand.return_value = tgtadm_response
+        mockRunCommand.return_value = StringIO(tgtadm_response)
 
         self.client.tear_down(
             {'action': 'tear_down', 'zvol': 'vol1'},
@@ -116,8 +119,8 @@ class TestNasFunctions(unittest.TestCase):
        
         
 
-tgtadm_response = StringIO("""
-Target 1: iqn.2001-04.com.nas-0-1-vol2
+tgtadm_response = """
+Target 1: iqn.2001-04.com.nas-0-1-%s
     System information:
         Driver: iscsi
         State: ready
@@ -149,15 +152,15 @@ Target 1: iqn.2001-04.com.nas-0-1-vol2
             Prevent removal: No
             Readonly: No
             Backing store type: rdwr
-            Backing store path: /dev/tank/vol2
+            Backing store path: /dev/tank/%s
             Backing store flags: 
     Account information:
     ACL information:
-        10.2.20.250""")
+        10.2.20.250"""
 
 
-tgt_setup_lun_response = StringIO("""
+tgt_setup_lun_response = """
 Using transport: iscsi
-Creating new target (name=iqn.2001-04.com.zfs-0-0-vol3, tid=1)
-Adding a logical unit (/dev/tank/vol3) to target, tid=1
-Accepting connections only from 10.1.1.1""")
+Creating new target (name=iqn.2001-04.com.nas-0-1-%s, tid=1)
+Adding a logical unit (/dev/tank/%s) to target, tid=1
+Accepting connections only from 10.1.1.1"""
