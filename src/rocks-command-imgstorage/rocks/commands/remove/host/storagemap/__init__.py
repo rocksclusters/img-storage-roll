@@ -43,4 +43,5 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.remove.comman
                 self.beginOutput()
                 self.addOutput(nas, "Success")
                 self.endOutput(padChar='')
-RollName = "kvm"
+
+RollName = "img-storage"

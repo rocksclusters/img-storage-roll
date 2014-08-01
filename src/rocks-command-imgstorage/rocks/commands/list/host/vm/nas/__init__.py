@@ -1,4 +1,4 @@
-# $Id: plugin_route.py,v 1.6 2012/11/27 00:48:21 phil Exp $
+#!/opt/rocks/bin/python 
 # 
 # @Copyright@
 # 
@@ -56,34 +56,50 @@
 #
 
 import os.path
+
 import rocks.commands
-from rabbit_client.CommandLauncher import CommandLauncher
+import rocks.db.mappings.img_manager
+import rocks.db.vmextend
 
 
-class Plugin(rocks.commands.Plugin):
 
-	def provides(self):
-		return 'plugin_allocate'
+class Command(rocks.commands.list.host.command):
+	"""
+	Lists the nas of each vm
 
-	def run(self, node):
-		# here you can relocate your VM in rocks DB
-		# node is of type rocks.db.mappings.base.Node
-		if not node.vm_defs.physNode or len(node.vm_defs.disks) <= 0:
-			# TODO maybe we should fail
-			print "Unable to allocate storage for ", node.name
-			return
-		disk = node.vm_defs.disks[0]
-		phys = node.vm_defs.physNode.name
-		size = str(disk.size)
-		volume = node.name + '-vol'
-		nas_name = disk.img_nas_server.server_name
-		device = CommandLauncher().callAddHostStoragemap(nas_name, volume, phys, size)
-		disk.vbd_type = "phy"
-		#disk.prefix = os.path.dirname(device)
-		disk.prefix = '/dev/'
-		disk.name = os.path.basename(device)
-		print "mapping done on ", volume, " device ", device
-		return
+	<arg optional='1' type='string' name='host' repeat='1'>
+	Zero, one or more host names. If no host names are supplied,
+	information for all hosts will be listed.
+	</arg>
+
+	<example cmd='list host vm compute-0-0'>
+	List the nas setting for for compute-0-0.
+	</example>
+
+	"""
+
+	def run(self, params, args):
+		self.beginOutput()
+
+		for node in self.newdb.getNodesfromNames(args, 
+				preload=['vm_defs', 'vm_defs.disks', 
+				'vm_defs.disks.img_nas_server']):
+
+			if not node.vm_defs:
+				continue
+
+			# disks
+			for disk in node.vm_defs.disks:
+
+				if disk.img_nas_server:
+					name = disk.img_nas_server.server_name
+				else:
+					name = None
+
+				self.addOutput(node.name, name)
+
+		self.endOutput(['vm-host','nas'])
+
 
 
 

@@ -1,4 +1,4 @@
-# $Id: plugin_route.py,v 1.6 2012/11/27 00:48:21 phil Exp $
+#!/opt/rocks/bin/python
 # 
 # @Copyright@
 # 
@@ -54,36 +54,68 @@
 # 
 # @Copyright@
 #
+#
 
 import os.path
 import rocks.commands
-from rabbit_client.CommandLauncher import CommandLauncher
+import rocks.db.mappings.img_manager
+from rocks.db.mappings.img_manager import ImgNasServer
 
 
-class Plugin(rocks.commands.Plugin):
+class Command(rocks.commands.HostArgumentProcessor, rocks.commands.set.command):
+	"""
+	Set the external nas used by a virtual host for its disk
 
-	def provides(self):
-		return 'plugin_allocate'
+	<arg type='string' name='host' optional='0'>
+	One or more VM host names.
+	</arg>
 
-	def run(self, node):
-		# here you can relocate your VM in rocks DB
-		# node is of type rocks.db.mappings.base.Node
-		if not node.vm_defs.physNode or len(node.vm_defs.disks) <= 0:
-			# TODO maybe we should fail
-			print "Unable to allocate storage for ", node.name
-			return
-		disk = node.vm_defs.disks[0]
-		phys = node.vm_defs.physNode.name
-		size = str(disk.size)
-		volume = node.name + '-vol'
-		nas_name = disk.img_nas_server.server_name
-		device = CommandLauncher().callAddHostStoragemap(nas_name, volume, phys, size)
-		disk.vbd_type = "phy"
-		#disk.prefix = os.path.dirname(device)
-		disk.prefix = '/dev/'
-		disk.name = os.path.basename(device)
-		print "mapping done on ", volume, " device ", device
-		return
+	<param type='string' name='nas'>
+	The hostname of the nas that will host the disk image of this machine
+	</param>
+
+	<param type='string' name='index'>
+	Not implemented yet. We supports remote disk image only on the first disk
+	</param>
+
+	<example cmd='set host vm nas compute-0-0-0 nas=nas-0-5'>
+	use nas-0-5 to store compute-0-0-0 disk images 
+	</example>
+	"""
+
+	def run(self, params, args):
+
+		(nas, index) = self.fillParams([ ('nas', ""), ('index', '0')])
+
+		try:
+			index = int(index)
+		except:
+			self.abort("index must be an integer")
+
+
+		if nas.lower() == 'none':
+			nas = ""
+		else:
+			if nas not in self.newdb.getListHostnames():
+				self.abort('nas %s must be a valid rocks host' \
+					% nas)
+
+
+		nodes = self.newdb.getNodesfromNames(args, preload=['vm_defs', \
+					'vm_defs.disks'])
+		for node in nodes:
+			if not node.vm_defs or not node.vm_defs.disks:
+				self.abort("node %s is not a virtual node" \
+						% node.name)
+
+			#ok we are good to go
+			if node.vm_defs.disks[index].img_nas_server:
+				node.vm_defs.disks[index].img_nas_server.server_name = nas
+			else:
+				# we need to create it
+				nas_server = ImgNasServer(server_name=nas, 
+						disk=node.vm_defs.disks[index])
+				self.newdb.getSession().add(nas_server)
 
 
 
