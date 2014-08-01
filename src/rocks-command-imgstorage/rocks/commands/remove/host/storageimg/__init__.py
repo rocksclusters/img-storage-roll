@@ -43,4 +43,5 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.remove.comman
 
 
 
-RollName = "kvm"
+
+RollName = "img-storage"

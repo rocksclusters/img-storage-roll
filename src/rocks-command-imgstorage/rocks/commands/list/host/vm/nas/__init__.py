@@ -102,4 +102,5 @@ class Command(rocks.commands.list.host.command):
 
 
 
-RollName = "kvm"
+
+RollName = "img-storage"

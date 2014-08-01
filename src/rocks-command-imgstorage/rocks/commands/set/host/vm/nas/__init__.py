@@ -118,3 +118,5 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.set.command):
 				self.newdb.getSession().add(nas_server)
 
 
+
+RollName = "img-storage"

@@ -86,4 +86,5 @@ class Plugin(rocks.commands.Plugin):
 		return
 
 
-RollName = "kvm"
+
+RollName = "img-storage"
