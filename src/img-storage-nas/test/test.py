@@ -152,6 +152,30 @@ class TestNasFunctions(unittest.TestCase):
                 routing_key='reply_to', 
                 exchange='')
 
+
+    @mock.patch('imgstorage.imgstoragenas.runCommand', return_value='')
+    def test_del_zvol_success(self, mockRunCommand):
+        zvol = 'vol1'
+        self.client.del_zvol(
+            {'action': 'del_zvol', 'zvol': zvol},
+            BasicProperties(reply_to='reply_to'))
+
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'zvol_deleted', 'status': 'success'}, routing_key='reply_to', exchange='')
+
+
+    @mock.patch('imgstorage.imgstoragenas.runCommand', return_value='')
+    def test_del_zvol_not_found(self, mockRunCommand):
+        zvol = 'wrong_vol'
+        self.client.del_zvol(
+            {'action': 'del_zvol', 'zvol': zvol},
+            BasicProperties(reply_to='reply_to'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'zvol_deleted', 'status': 'error', 'error': 'ZVol wrong_vol not found in database'}, 
+            routing_key='reply_to', exchange='')
+
+
+
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_find_iscsi_target_num_not_found(self, mockRunCommand):
         zvol = 'vol1'
