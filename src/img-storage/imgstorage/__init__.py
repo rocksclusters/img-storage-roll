@@ -54,6 +54,9 @@
 #
 
 import subprocess
+import logging
+from daemon import runner
+import signal
 
 class ActionError(Exception):
     pass
@@ -68,3 +71,22 @@ def runCommand(params):
         raise ActionError('Error executing %s: %s'%(params[0], err))
     else:
         return out.splitlines()
+
+def setupLogger(logger):
+    formatter = logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -30s %(funcName) -35s %(lineno) -5d: %(message)s'")
+    handler = logging.FileHandler("/var/log/rocks/img-storage.log")
+    handler.setFormatter(formatter)
+
+    for log_name in (logger, 'pika.channel', 'pika.connection', 'pika.adapters.base_connection', 'rabbit_client.RabbitMQClient', 'pika.heartbeat'):
+        logging.getLogger(log_name).setLevel(logging.DEBUG)
+        logging.getLogger(log_name).addHandler(handler)
+
+def runDaemon(app):
+    setupLogger(app.__class__.__name__)
+    daemon_runner = runner.DaemonRunner(app)
+
+    #This ensures that the logger file handle does not get closed during daemonization
+    daemon_runner.daemon_context.files_preserve=[handler.stream]
+    daemon_runner.daemon_context.signal_map = {signal.SIGTERM: lambda signum, frame: app.stop()}
+
+    daemon_runner.do_action()
