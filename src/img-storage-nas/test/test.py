@@ -43,6 +43,43 @@ class TestNasFunctions(unittest.TestCase):
     def tearDown(self):
         os.remove(self.client.SQLITE_DB)
 
+
+
+    """ Testing mapping of newly created zvol """
+    @mock.patch('imgstorage.imgstoragenas.runCommand')
+    @mock.patch('socket.gethostbyname', return_value='10.1.1.1')
+    def test_set_zvol_createnew_success(self, mockGetHostCommand, mockRunCommand):
+        def my_side_effect(*args, **kwargs):
+            if args[0][0] == 'zfs':                return StringIO("\n")
+            elif args[0][0] == 'tgt-setup-lun':    return tgt_setup_lun_response
+
+        mockRunCommand.side_effect = my_side_effect
+        self.client.ib_net = 'ibnet'
+        self.client.set_zvol(
+            {'action': 'set_zvol', 'zvol': 'vol3', 'hosting': 'compute-0-1', 'size': '10gb'},
+            BasicProperties(reply_to='reply_to'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'set_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.zfs-0-0-vol3'}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
+
+
+    """ Testing mapping of zvol created before """
+    @mock.patch('imgstorage.imgstoragenas.runCommand')
+    @mock.patch('socket.gethostbyname', return_value='10.1.1.1')
+    def test_set_zvol_usecreated_success(self, mockGetHostCommand, mockRunCommand ):
+        def my_side_effect(*args, **kwargs):
+            if args[0][0] == 'zfs':                return StringIO("\n")
+            elif args[0][0] == 'tgt-setup-lun':    return tgt_setup_lun_response
+        mockRunCommand.side_effect = my_side_effect
+
+        self.client.ib_net = 'ibnet'
+        self.client.set_zvol(
+            {'action': 'set_zvol', 'zvol': 'vol1', 'hosting': 'compute-0-1', 'size': '10gb'},
+            BasicProperties(reply_to='reply_to'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'set_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.zfs-0-0-vol1'}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
+
+
+ 
     def test_fail_action(self):
         self.client.failAction('routing_key', 'action', 'error_message')
         self.client.queue_connector.publish_message.assert_called_with(
@@ -51,7 +88,7 @@ class TestNasFunctions(unittest.TestCase):
                 exchange='')
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
-    def test_teardown_normal(self, mockRunCommand):
+    def test_teardown_success(self, mockRunCommand):
         mockRunCommand.return_value = tgtadm_response
 
         self.client.tear_down(
@@ -117,3 +154,10 @@ Target 1: iqn.2001-04.com.nas-0-1-vol2
     Account information:
     ACL information:
         10.2.20.250""")
+
+
+tgt_setup_lun_response = StringIO("""
+Using transport: iscsi
+Creating new target (name=iqn.2001-04.com.zfs-0-0-vol3, tid=1)
+Adding a logical unit (/dev/tank/vol3) to target, tid=1
+Accepting connections only from 10.1.1.1""")
