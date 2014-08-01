@@ -11,6 +11,7 @@ from imgstorage.imgstoragenas import NasDaemon
 from imgstorage.rabbitmqclient import RabbitMQCommonClient
                            
 import uuid
+import time
 
 from pysqlite2 import dbapi2 as sqlite3
 
@@ -38,6 +39,8 @@ class TestNasFunctions(unittest.TestCase):
             cur = con.cursor()
             cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol1', None, None))
             cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol2', 'iqn.2001-04.com.nas-0-1-vol2', 'nas-0-1'))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol3_busy', 'iqn.2001-04.com.nas-0-1-vol3_busy', 'nas-0-1'))
+            cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',('vol3_busy', 'reply_to', time.time()))
             con.commit()
 
     def tearDown(self):
@@ -81,6 +84,26 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'set_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol)}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
 
 
+
+    """ Testing mapping of busy zvol """
+    @mock.patch('imgstorage.imgstoragenas.runCommand')
+    @mock.patch('socket.gethostbyname', return_value='10.1.1.1')
+    def test_set_zvol_busy(self, mockGetHostCommand, mockRunCommand ):
+        zvol = 'vol3_busy'
+        def my_side_effect(*args, **kwargs): # just in case... not used in normal condition
+            if args[0][0] == 'zfs':                return StringIO("")
+            elif args[0][0] == 'tgt-setup-lun':    return StringIO(tgt_setup_lun_response%(zvol, zvol))
+        mockRunCommand.side_effect = my_side_effect
+
+        self.client.ib_net = 'ibnet'
+        self.client.set_zvol(
+            {'action': 'set_zvol', 'zvol': zvol, 'hosting': 'compute-0-1', 'size': '10gb'},
+            BasicProperties(reply_to='reply_to'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'zvol_attached', 'status': 'error', 'error': 'ZVol %s is busy'%zvol}, routing_key='reply_to', exchange='')
+
+
+
  
     def test_fail_action(self):
         self.client.failAction('routing_key', 'action', 'error_message')
@@ -104,20 +127,47 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'tear_down', 'target': u'iqn.2001-04.com.nas-0-1-%s'%zvol}, u'nas-0-1', 'hpcdev-pub02', on_fail=ANY)
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
-    def test_teardown_error(self, mockRunCommand):
-        mockRunCommand.return_value = StringIO(tgtadm_response)
+    def test_teardown_busy(self, mockRunCommand):
+        zvol = 'vol3_busy'
+        mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
 
         self.client.tear_down(
-            {'action': 'tear_down', 'zvol': 'vol1'},
+            {'action': 'tear_down', 'zvol': zvol},
             BasicProperties(reply_to='reply_to'))
 
         self.client.queue_connector.publish_message.assert_called_with(
-                {'action': 'zvol_detached', 'status': 'error', 'error': 'ZVol vol1 is not attached'}, 
+            {'action': 'zvol_detached', 'status': 'error', 'error': 'ZVol %s is busy'%zvol}, routing_key='reply_to', exchange='')
+
+    @mock.patch('imgstorage.imgstoragenas.runCommand')
+    def test_teardown_detached_volume(self, mockRunCommand):
+        zvol = 'vol1'
+        mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
+
+        self.client.tear_down(
+            {'action': 'tear_down', 'zvol': zvol},
+            BasicProperties(reply_to='reply_to'))
+
+        self.client.queue_connector.publish_message.assert_called_with(
+                {'action': 'zvol_detached', 'status': 'error', 'error': 'ZVol %s is not attached'%zvol}, 
                 routing_key='reply_to', 
                 exchange='')
 
-       
+    @mock.patch('imgstorage.imgstoragenas.runCommand')
+    def test_find_iscsi_target_num_not_found(self, mockRunCommand):
+        zvol = 'vol1'
+        target = 'not_found_iqn.2001-04.com.nas-0-1-%s'%zvol
+        mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
+        self.assertEqual(self.client.find_iscsi_target_num(target), None)
         
+
+    @mock.patch('imgstorage.imgstoragenas.runCommand')
+    def test_find_iscsi_target_num_success(self, mockRunCommand):
+        zvol = 'vol1'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
+        mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
+        self.assertEqual(self.client.find_iscsi_target_num(target), '1')
+        
+
 
 tgtadm_response = """
 Target 1: iqn.2001-04.com.nas-0-1-%s

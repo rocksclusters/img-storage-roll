@@ -116,7 +116,7 @@ class NasDaemon():
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             try :
-                self.lockZVol(zvol_name, props.reply_to)
+                self.lock_zvol(zvol_name, props.reply_to)
 
                 cur.execute('SELECT count(*) FROM zvols WHERE zvol = ?',[zvol_name])
                 if(cur.fetchone()[0] == 0):
@@ -160,7 +160,7 @@ class NasDaemon():
                 def failDeliver(target, zvol, reply_to, hosting):
                     self.detach_target(target)
                     self.failAction(props.reply_to, 'zvol_attached', 'Compute node %s is unavailable'%hosting)
-                    self.releaseZVol(zvol_name)
+                    self.release_zvol(zvol_name)
 
                 self.queue_connector.publish_message(
                         {'action': 'set_zvol', 'target':iscsi_target, 'nas': ('%s.%s'%(self.NODE_NAME, self.ib_net)) if use_ib else self.NODE_NAME},
@@ -169,7 +169,7 @@ class NasDaemon():
                         on_fail=lambda: failDeliver(iscsi_target, zvol_name, props.reply_to, hosting))
                 self.logger.debug("Setting iscsi %s sent"%iscsi_target)
             except ActionError, err:
-                if not isinstance(err, ZvolBusyActionError): self.releaseZVol(zvol_name)
+                if not isinstance(err, ZvolBusyActionError): self.release_zvol(zvol_name)
                 self.failAction(props.reply_to, 'zvol_attached', str(err))
 
     """
@@ -187,7 +187,7 @@ class NasDaemon():
                 if row[1] == None: raise ActionError('ZVol %s is not attached'%zvol_name)
                 if self.find_iscsi_target_num(row[1]) == None: raise ActionError('iSCSI target does not exist for ZVol %s'%zvol_name)
 
-                self.lockZVol(zvol_name, props.reply_to)
+                self.lock_zvol(zvol_name, props.reply_to)
                 self.queue_connector.publish_message(
                         {'action': 'tear_down', 'target':row[1]},
                         row[0],
@@ -197,7 +197,7 @@ class NasDaemon():
                 self.logger.debug("Tearing down zvol %s sent"%zvol_name)
 
             except ActionError, err:
-                if not isinstance(err, ZvolBusyActionError): self.releaseZVol(zvol_name)
+                if not isinstance(err, ZvolBusyActionError): self.release_zvol(zvol_name)
                 self.failAction(props.reply_to, 'zvol_detached', str(err))
 
     """
@@ -209,7 +209,7 @@ class NasDaemon():
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             try :
-                self.lockZVol(zvol_name, props.reply_to)
+                self.lock_zvol(zvol_name, props.reply_to)
                 cur.execute('SELECT hosting, iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
                 row = cur.fetchone()
                 if row == None: raise ActionError('ZVol %s not found in database'%zvol_name)
@@ -222,10 +222,10 @@ class NasDaemon():
                 cur.execute('DELETE FROM zvols WHERE zvol = ?',[zvol_name])
                 con.commit()
 
-                self.releaseZVol(zvol_name)
+                self.release_zvol(zvol_name)
                 self.queue_connector.publish_message({'action': 'zvol_deleted', 'status': 'success'}, exchange='', routing_key=props.reply_to)
             except ActionError, err:
-                if not isinstance(err, ZvolBusyActionError): self.releaseZVol(zvol_name)
+                if not isinstance(err, ZvolBusyActionError): self.release_zvol(zvol_name)
                 self.failAction(props.reply_to, 'zvol_deleted', str(err))
 
     """
@@ -243,7 +243,7 @@ class NasDaemon():
             cur.execute('SELECT reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
             reply_to, zvol = cur.fetchone()
 
-            self.releaseZVol(zvol)
+            self.release_zvol(zvol)
             if(message['status'] == 'success'):
                 self.queue_connector.publish_message({'action': 'zvol_attached', 'bdev':message['bdev'], 'status': 'success'}, exchange='', routing_key=reply_to)
             else:
@@ -272,11 +272,11 @@ class NasDaemon():
 
                 self.detach_target(target)
 
-                self.releaseZVol(zvol)
+                self.release_zvol(zvol)
                 self.queue_connector.publish_message({'action': 'zvol_detached', 'status': 'success'}, exchange='', routing_key=reply_to)
 
         except ActionError, err:
-            self.releaseZVol(zvol)
+            self.release_zvol(zvol)
             self.failAction(caller_properties['reply_to'], 'zvol_detached', str(err))
 
     def detach_target(self, target):
@@ -294,7 +294,7 @@ class NasDaemon():
         self.logger.debug("Looking for target's number in output of tgtadm")
         for line in out:
             if line.startswith('Target ') and line.split()[2] == target:
-                tgt_num = line.split()[1]
+                tgt_num = line.split()[1][:-1]
                 self.logger.debug("target number is %s"%tgt_num)
                 return tgt_num
         return None
@@ -324,7 +324,7 @@ class NasDaemon():
         self.queue_connector.stop()
         self.logger.info('RabbitMQ connector stopping called')
 
-    def lockZVol(self, zvol_name, reply_to):
+    def lock_zvol(self, zvol_name, reply_to):
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             try:
@@ -333,7 +333,7 @@ class NasDaemon():
             except sqlite3.IntegrityError:
                 raise ZvolBusyActionError('ZVol %s is busy'%zvol_name)
 
-    def releaseZVol(self, zvol):
+    def release_zvol(self, zvol):
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('DELETE FROM zvol_calls WHERE zvol = ?',[zvol])
