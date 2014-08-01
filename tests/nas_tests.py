@@ -1,7 +1,7 @@
 #!/opt/rocks/bin/python
 
 import sys, os
-lib_path = os.path.abspath('../img-storage')
+lib_path = os.path.abspath('src/img-storage')
 sys.path.append(lib_path)
 
 import unittest
