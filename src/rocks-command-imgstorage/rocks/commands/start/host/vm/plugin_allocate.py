@@ -57,10 +57,8 @@
 
 import os.path
 import rocks.commands
-import rocks.commands.add.host.storagemap
 from rabbit_client.CommandLauncher import CommandLauncher
 
-nas_name = 'nas-0-1'
 
 class Plugin(rocks.commands.Plugin):
 
@@ -78,6 +76,7 @@ class Plugin(rocks.commands.Plugin):
 		phys = node.vm_defs.physNode.name
 		size = str(disk.size)
 		volume = node.name + '-vol'
+		nas_name = disk.img_nas_server.server_name
 		device = CommandLauncher().callAddHostStoragemap(nas_name, volume, phys, size)
 		disk.vbd_type = "phy"
 		#disk.prefix = os.path.dirname(device)
@@ -85,7 +84,6 @@ class Plugin(rocks.commands.Plugin):
 		disk.name = os.path.basename(device)
 		print "mapping done on ", volume, " device ", device
 		return
-
 
 
 RollName = "kvm"
