@@ -54,7 +54,7 @@
 #
 # @Copyright@
 #
-from imgstorage.imgstoragenas import VmDaemon
-from imgstorage.daemon import *
+from imgstorage.imgstoragevm import VmDaemon
+from imgstorage.imgstoragedaemon import *
 
 runDaemon(VmDaemon())

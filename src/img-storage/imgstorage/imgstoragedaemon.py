@@ -1,3 +1,4 @@
+#!/opt/rocks/bin/python
 # @Copyright@
 #
 #                               Rocks(r)
@@ -57,7 +58,7 @@ import signal
 from imgstorage import *
 
 def runDaemon(app):
-    setupLogger(app.__class__.__name__)
+    handler = setupLogger(app.__class__.__name__)
     daemon_runner = runner.DaemonRunner(app)
 
     #This ensures that the logger file handle does not get closed during daemonization

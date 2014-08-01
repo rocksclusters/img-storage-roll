@@ -55,6 +55,6 @@
 # @Copyright@
 #
 from imgstorage.imgstoragenas import NasDaemon
-from imgstorage.daemon import *
+from imgstorage.imgstoragedaemon import *
 
 runDaemon(NasDaemon())

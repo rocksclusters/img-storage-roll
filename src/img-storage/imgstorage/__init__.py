@@ -1,3 +1,4 @@
+#!/opt/rocks/bin/python
 # @Copyright@
 #
 #                               Rocks(r)
@@ -79,3 +80,4 @@ def setupLogger(logger):
         logging.getLogger(log_name).setLevel(logging.DEBUG)
         logging.getLogger(log_name).addHandler(handler)
 
+    return handler

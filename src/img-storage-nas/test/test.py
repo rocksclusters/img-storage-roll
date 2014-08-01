@@ -171,7 +171,7 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'del_zvol', 'zvol': zvol},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_deleted', 'status': 'error', 'error': 'ZVol wrong_vol not found in database'}, 
+            {'action': 'zvol_deleted', 'status': 'error', 'error': 'ZVol %s not found in database'%zvol}, 
             routing_key='reply_to', exchange='')
 
 
