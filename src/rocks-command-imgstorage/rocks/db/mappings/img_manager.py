@@ -2,10 +2,12 @@
 #
 #
 
-
+import sqlalchemy
 from sqlalchemy import *
 
-from rocks.db.mappings.base import *
+from rocks.db.mappings.base import Base, RocksBase
+# we need this for the backref
+import rocks.db.mappings.kvm
 
 
 class ImgNasServer(RocksBase, Base):
@@ -14,11 +16,11 @@ class ImgNasServer(RocksBase, Base):
 
 	ID = Column('ID', Integer, primary_key=True, nullable=False)
 	disk_ID = Column('vm_disk_id', Integer, ForeignKey('vm_disks.ID'),
-								nullable=False, default=0)
-	server_name = Column('Name', String(32))
+			nullable=False, server_default='0')
+	server_name = Column('Name', String(64), server_default='')
 
 	disk = sqlalchemy.orm.relationship("VmDisk", uselist=False, 
-				backref=sqlalchemy.orm.backref("img_nas_server", uselist=False),)
+		backref=sqlalchemy.orm.backref("img_nas_server", uselist=False),)
 
 
 

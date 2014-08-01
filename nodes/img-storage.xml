@@ -32,4 +32,11 @@ echo ${admin_pass} &gt; /opt/rocks/etc/rabbitmq.conf
 chmod 400 /opt/rocks/etc/rabbitmq.conf
 </post>
 
+<post>
+rocks report databasesql kvm | /opt/rocks/mysql/bin/mysql \
+        --defaults-extra-file=/root/.rocks.my.cnf --user=root cluster &gt;\
+                /tmp/kvm-database.log
+
+</post>
+
 </kickstart>

@@ -58,8 +58,6 @@
 import rocks.commands
 from rabbit_client.CommandLauncher import CommandLauncher
 
-nas_name = 'nas-0-1'
-
 class Plugin(rocks.commands.Plugin):
 
 	def provides(self):
@@ -70,9 +68,12 @@ class Plugin(rocks.commands.Plugin):
 		# in rocks DB
 		# node is of type rocks.db.mappings.base.Node
 		volume = node.name + '-vol'
+		disk = node.vm_defs.disks[0]
+		nas_name = disk.img_nas_server.server_name
 		CommandLauncher().callDelHostStoragemap(nas_name, volume)
 		return 
 
 
 
-RollName = "kvm"
+
+RollName = "img-storage"
