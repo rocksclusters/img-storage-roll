@@ -57,6 +57,7 @@
 
 import os.path
 import rocks.commands
+import rocks.db.mappings.img_manager
 from rabbit_client.CommandLauncher import CommandLauncher
 
 
