@@ -247,7 +247,7 @@ class NasDaemon():
             if(message['status'] == 'success'):
                 self.queue_connector.publish_message({'action': 'zvol_mapped', 'bdev':message['bdev'], 'status': 'success'}, exchange='', routing_key=reply_to)
             else:
-                self.failAction(reply_to, 'zvol_mapped', message.get('error'))
+                self.failAction(reply_to, 'zvol_mapped', 'Error attaching iSCSI target to compute node: %s'%message.get('error'))
 
     """
     Received zvol_unmapped notification from compute node, passing to frontend
@@ -277,15 +277,14 @@ class NasDaemon():
 
         except ActionError, err:
             self.release_zvol(zvol)
-            self.failAction(caller_properties['reply_to'], 'zvol_unmapped', str(err))
+            self.failAction(reply_to, 'zvol_unmapped', str(err))
 
     def detach_target(self, target):
         with sqlite3.connect(self.SQLITE_DB) as con:
-            cur = con.cursor()
-
             tgt_num = self.find_iscsi_target_num(target)
             runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num])# remove iscsi target
 
+            cur = con.cursor()
             cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
             con.commit()
 

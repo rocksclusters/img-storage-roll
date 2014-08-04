@@ -41,6 +41,8 @@ class TestNasFunctions(unittest.TestCase):
             cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol2', 'iqn.2001-04.com.nas-0-1-vol2', 'nas-0-1'))
             cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol3_busy', 'iqn.2001-04.com.nas-0-1-vol3_busy', 'nas-0-1'))
             cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',('vol3_busy', 'reply_to', time.time()))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol4_busy', 'iqn.2001-04.com.nas-0-1-vol4_busy', 'nas-0-1'))
+            cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',('vol4_busy', 'reply_to', time.time()))
             con.commit()
 
     def tearDown(self):
@@ -190,7 +192,47 @@ class TestNasFunctions(unittest.TestCase):
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
         self.assertEqual(self.client.find_iscsi_target_num(target), '1')
+    
+
+    @mock.patch('imgstorage.imgstoragenas.runCommand')    
+    def test_zvol_unmapped_success(self, mockRunCommand):
+        zvol = 'vol3_busy'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
+        self.client.zvol_unmapped(
+            {'action': 'zvol_unmapped', 'target':target, 'status':'success'}, 
+            BasicProperties(reply_to='reply_to', correlation_id='message_id'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'zvol_unmapped', 'status': 'success'}, routing_key=u'reply_to', exchange='')
         
+    @mock.patch('imgstorage.imgstoragenas.runCommand')    
+    def test_zvol_unmapped_got_error(self, mockRunCommand):
+        zvol = 'vol3_busy'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
+        self.client.zvol_unmapped(
+            {'action': 'zvol_unmapped', 'target':target, 'status':'error', 'error':'Some error'}, 
+            BasicProperties(reply_to='reply_to', correlation_id='message_id'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'zvol_unmapped', 'status': 'error', 'error': 'Error detaching iSCSI target from compute node: Some error'}, routing_key=u'reply_to', exchange='')
+        
+    def test_zvol_mapped_success(self):
+        zvol = 'vol4_busy'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
+        self.client.zvol_mapped(
+            {'action': 'zvol_mapped', 'target':target, 'bdev': 'sdc', 'status':'success'}, 
+            BasicProperties(reply_to='reply_to', correlation_id='message_id'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'zvol_mapped', 'status': 'success', 'bdev': 'sdc'}, routing_key=u'reply_to', exchange='')
+        
+    def test_zvol_mapped_got_error(self):
+        zvol = 'vol4_busy'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
+        self.client.zvol_mapped(
+            {'action': 'zvol_mapped', 'target':target, 'status':'error', 'error':'Some error'}, 
+            BasicProperties(reply_to='reply_to', correlation_id='message_id'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'zvol_mapped', 'status': 'error', 'error': 'Error attaching iSCSI target to compute node: Some error'}, routing_key=u'reply_to', exchange='')
+        
+
 
 
 tgtadm_response = """

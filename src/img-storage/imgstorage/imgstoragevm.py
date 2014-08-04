@@ -139,7 +139,6 @@ class VmDaemon():
         mappings_map = self.get_blk_dev_list()
 
         try:
-           self.logger.debug('wooohooo')
            if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
                 self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
         except ActionError, msg:

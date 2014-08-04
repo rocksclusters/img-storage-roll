@@ -121,9 +121,6 @@ class TestVmFunctions(unittest.TestCase):
         mockRunCommand.assert_called_with(['iscsiadm', '-m', 'node', '-T', target, '-u'])
 
 
-
-
-
 iscsiadm_response = """
 iSCSI Transport Class version 2.0-870
 version 6.2.0-873.10.el6
