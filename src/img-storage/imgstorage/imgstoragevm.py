@@ -119,7 +119,7 @@ class VmDaemon():
         return mappings
 
     def connect_iscsi(self, iscsi_target, node_name):
-        connect_out = runCommand(['iscsiadm', '--mode', 'discovery', '--type', 'sendtargets', '-p', node_name])
+        connect_out = runCommand(['iscsiadm', '-m', 'discovery', '-t', 'sendtargets', '-p', node_name])
         self.logger.debug("Looking for target in iscsiadm output")
         for line in connect_out:
             if iscsi_target in line: #has the target
@@ -138,11 +138,14 @@ class VmDaemon():
 
         mappings_map = self.get_blk_dev_list()
 
-        if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
-            self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
-        else:
-            self.logger.error("error detaching the target %s"%message['target'])
-            self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'error', 'error':'can_not_detach'}, props.reply_to, correlation_id=props.message_id)
+        try:
+           self.logger.debug('wooohooo')
+           if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
+                self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+        except ActionError, msg:
+            self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
+            self.logger.error('Error unmapping %s: %s'%(message['target'], str(msg)))
+
 
     def process_message(self, props, message):
         self.logger.debug("Received message %s"%message)
