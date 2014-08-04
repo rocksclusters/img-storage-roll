@@ -2,7 +2,7 @@
 
 import sys, os
 lib_path = os.path.abspath('src/img-storage')
-sys.path.append(lib_path)
+sys.path.insert(1, lib_path)
 
 import unittest
 from mock import MagicMock, ANY
@@ -66,6 +66,7 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'map_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol)}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
+        self.assertTrue(self.check_zvol_busy(zvol))
 
 
     """ Testing mapping of zvol created before """
@@ -84,7 +85,7 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'map_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol)}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
-
+        self.assertTrue(self.check_zvol_busy(zvol))
 
 
     """ Testing mapping of busy zvol """
@@ -103,8 +104,7 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_mapped', 'status': 'error', 'error': 'ZVol %s is busy'%zvol}, routing_key='reply_to', exchange='')
-
-
+        self.assertTrue(self.check_zvol_busy(zvol))
 
  
     def test_fail_action(self):
@@ -127,6 +127,8 @@ class TestNasFunctions(unittest.TestCase):
 
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'unmap_zvol', 'target': u'iqn.2001-04.com.nas-0-1-%s'%zvol}, u'nas-0-1', 'hpcdev-pub02', on_fail=ANY)
+        self.assertTrue(self.check_zvol_busy(zvol))
+
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_teardown_busy(self, mockRunCommand):
@@ -139,6 +141,8 @@ class TestNasFunctions(unittest.TestCase):
 
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_unmapped', 'status': 'error', 'error': 'ZVol %s is busy'%zvol}, routing_key='reply_to', exchange='')
+        self.assertTrue(self.check_zvol_busy(zvol))
+
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_teardown_unmapped_volume(self, mockRunCommand):
@@ -153,6 +157,8 @@ class TestNasFunctions(unittest.TestCase):
                 {'action': 'zvol_unmapped', 'status': 'error', 'error': 'ZVol %s is not mapped'%zvol}, 
                 routing_key='reply_to', 
                 exchange='')
+        self.assertFalse(self.check_zvol_busy(zvol))
+
 
 
     @mock.patch('imgstorage.imgstoragenas.runCommand', return_value='')
@@ -164,6 +170,8 @@ class TestNasFunctions(unittest.TestCase):
 
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_deleted', 'status': 'success'}, routing_key='reply_to', exchange='')
+        mockRunCommand.assert_called_with(['zfs', 'destroy', 'tank/%s'%(zvol)])
+        self.assertFalse(self.check_zvol_busy(zvol))
 
 
     @mock.patch('imgstorage.imgstoragenas.runCommand', return_value='')
@@ -175,8 +183,19 @@ class TestNasFunctions(unittest.TestCase):
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_deleted', 'status': 'error', 'error': 'ZVol %s not found in database'%zvol}, 
             routing_key='reply_to', exchange='')
+        self.assertFalse(self.check_zvol_busy(zvol))
 
 
+    @mock.patch('imgstorage.imgstoragenas.runCommand', return_value='')
+    def test_del_zvol_mapped(self, mockRunCommand):
+        zvol = 'vol2'
+        self.client.del_zvol(
+            {'action': 'del_zvol', 'zvol': zvol},
+            BasicProperties(reply_to='reply_to'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'zvol_deleted', 'status': 'error', 'error': 'Error deleting zvol %s: is mapped'%zvol},
+            routing_key='reply_to', exchange='')
+        self.assertFalse(self.check_zvol_busy(zvol))
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_find_iscsi_target_num_not_found(self, mockRunCommand):
@@ -232,8 +251,15 @@ class TestNasFunctions(unittest.TestCase):
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_mapped', 'status': 'error', 'error': 'Error attaching iSCSI target to compute node: Some error'}, routing_key=u'reply_to', exchange='')
         
-
-
+    def check_zvol_busy(self, zvol):
+        with sqlite3.connect(self.client.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('SELECT count(*) from zvol_calls where zvol = ?',[zvol])
+            num_rows = cur.fetchone()[0]
+            print "Num rows %s"%num_rows
+            print num_rows > 0
+            return num_rows > 0
+        
 
 tgtadm_response = """
 Target 1: iqn.2001-04.com.nas-0-1-%s

@@ -2,7 +2,7 @@
 
 import sys, os
 lib_path = os.path.abspath('src/img-storage')
-sys.path.append(lib_path)
+sys.path.insert(1, lib_path)
 
 import unittest
 from mock import MagicMock, ANY
