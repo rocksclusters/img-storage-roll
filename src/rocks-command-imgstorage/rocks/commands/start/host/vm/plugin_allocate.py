@@ -58,7 +58,7 @@
 import os.path
 import rocks.commands
 import rocks.db.mappings.img_manager
-from rabbit_client.CommandLauncher import CommandLauncher
+from imgstorage.commandlauncher import CommandLauncher
 
 
 class Plugin(rocks.commands.Plugin):

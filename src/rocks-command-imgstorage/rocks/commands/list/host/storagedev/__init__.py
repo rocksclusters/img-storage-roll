@@ -12,7 +12,7 @@ import uuid
 import logging
 logging.basicConfig()
 
-from rabbit_client.CommandLauncher import CommandLauncher
+from imgstorage.commandlauncher import CommandLauncher
 
 
 class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command):

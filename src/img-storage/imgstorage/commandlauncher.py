@@ -72,14 +72,14 @@ class CommandLauncher():
        self.RABBITMQ_URL = RabbitMQLocator().RABBITMQ_URL
        self.ret_message = None
 
-    def callAddHostStoragemap(self, nas, volume, hosting, size):
-       message = {'action': 'set_zvol', 'zvol': volume, 'hosting': hosting, 'size': size}
+    def callAddHostStoragemap(self, nas, volume, remotehost, size):
+       message = {'action': 'map_zvol', 'zvol': volume, 'remotehost': remotehost, 'size': size}
        self.callCommand(message, nas)
        block_dev = self.ret_message['bdev']
        return block_dev
 
     def callDelHostStoragemap(self, nas, volume):
-       message = {'action': 'tear_down', 'zvol': volume}
+       message = {'action': 'unmap_zvol', 'zvol': volume}
        self.callCommand(message, nas)
        return
 

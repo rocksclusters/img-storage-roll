@@ -66,9 +66,10 @@ default: roll
 all: base nas vm fe
 
 reall:
-	ssh zfs-0-0 'service img-storage-nas restart'
+	ssh nas-0-1 'service img-storage-nas restart'
 	ssh compute-0-2 'service img-storage-vm restart'
-
+	ssh compute-0-3 'service img-storage-vm restart'
+	service img-storage-vm restart
 
 base:
 	cd src/img-storage && make rpm

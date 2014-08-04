@@ -37,15 +37,15 @@ class TestVmFunctions(unittest.TestCase):
 
     """ Testing mapping of zvol """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
-    def test_set_zvol_createnew_success(self, mockRunCommand):
+    def test_map_zvol_createnew_success(self, mockRunCommand):
         target = 'iqn.2001-04.com.nas-0-1-vol2'
         bdev = 'sdc'
         def my_side_effect(*args, **kwargs):
             if args[0][0] == 'iscsiadm':    return StringIO(iscsiadm_response%(target, bdev))
 
         mockRunCommand.side_effect = my_side_effect
-        self.client.set_zvol(
-            {'action': 'set_zvol', 'target':target, 'nas': 'nas-0-1'},
+        self.client.map_zvol(
+            {'action': 'map_zvol', 'target':target, 'nas': 'nas-0-1'},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_attached', 'status': 'success', 'bdev': bdev, 'target': target}, 'reply_to', correlation_id='message_id')

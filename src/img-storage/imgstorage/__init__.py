@@ -76,7 +76,7 @@ def setupLogger(logger):
     handler = logging.FileHandler("/var/log/rocks/img-storage.log")
     handler.setFormatter(formatter)
 
-    for log_name in (logger, 'pika.channel', 'pika.connection', 'pika.adapters.base_connection', 'rabbit_client.RabbitMQClient', 'pika.heartbeat'):
+    for log_name in (logger, 'pika.channel', 'pika.connection', 'rabbit_client.RabbitMQClient'):
         logging.getLogger(log_name).setLevel(logging.DEBUG)
         logging.getLogger(log_name).addHandler(handler)
 

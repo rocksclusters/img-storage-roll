@@ -51,7 +51,7 @@ class TestNasFunctions(unittest.TestCase):
     """ Testing mapping of newly created zvol """
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     @mock.patch('socket.gethostbyname', return_value='10.1.1.1')
-    def test_set_zvol_createnew_success(self, mockGetHostCommand, mockRunCommand):
+    def test_map_zvol_createnew_success(self, mockGetHostCommand, mockRunCommand):
         zvol = 'vol3'
         def my_side_effect(*args, **kwargs):
             if args[0][0] == 'zfs':                return StringIO("")
@@ -59,17 +59,17 @@ class TestNasFunctions(unittest.TestCase):
 
         mockRunCommand.side_effect = my_side_effect
         self.client.ib_net = 'ibnet'
-        self.client.set_zvol(
-            {'action': 'set_zvol', 'zvol': zvol, 'hosting': 'compute-0-1', 'size': '10gb'},
+        self.client.map_zvol(
+            {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10gb'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'set_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol)}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
+            {'action': 'map_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol)}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
 
 
     """ Testing mapping of zvol created before """
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     @mock.patch('socket.gethostbyname', return_value='10.1.1.1')
-    def test_set_zvol_usecreated_success(self, mockGetHostCommand, mockRunCommand ):
+    def test_map_zvol_usecreated_success(self, mockGetHostCommand, mockRunCommand ):
         zvol = 'vol1'
         def my_side_effect(*args, **kwargs):
             if args[0][0] == 'zfs':                return StringIO("")
@@ -77,18 +77,18 @@ class TestNasFunctions(unittest.TestCase):
         mockRunCommand.side_effect = my_side_effect
 
         self.client.ib_net = 'ibnet'
-        self.client.set_zvol(
-            {'action': 'set_zvol', 'zvol': zvol, 'hosting': 'compute-0-1', 'size': '10gb'},
+        self.client.map_zvol(
+            {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10gb'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'set_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol)}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
+            {'action': 'map_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol)}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
 
 
 
     """ Testing mapping of busy zvol """
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     @mock.patch('socket.gethostbyname', return_value='10.1.1.1')
-    def test_set_zvol_busy(self, mockGetHostCommand, mockRunCommand ):
+    def test_map_zvol_busy(self, mockGetHostCommand, mockRunCommand ):
         zvol = 'vol3_busy'
         def my_side_effect(*args, **kwargs): # just in case... not used in normal condition
             if args[0][0] == 'zfs':                return StringIO("")
@@ -96,8 +96,8 @@ class TestNasFunctions(unittest.TestCase):
         mockRunCommand.side_effect = my_side_effect
 
         self.client.ib_net = 'ibnet'
-        self.client.set_zvol(
-            {'action': 'set_zvol', 'zvol': zvol, 'hosting': 'compute-0-1', 'size': '10gb'},
+        self.client.map_zvol(
+            {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10gb'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_attached', 'status': 'error', 'error': 'ZVol %s is busy'%zvol}, routing_key='reply_to', exchange='')
@@ -117,22 +117,22 @@ class TestNasFunctions(unittest.TestCase):
         zvol = 'vol2'
         mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
 
-        self.client.tear_down(
-            {'action': 'tear_down', 'zvol': zvol},
+        self.client.unmap_zvol(
+            {'action': 'unmap_zvol', 'zvol': zvol},
             BasicProperties(reply_to='reply_to'))
 
         mockRunCommand.assert_called_with(['tgtadm', '--op', 'show', '--mode', 'target'])
 
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'tear_down', 'target': u'iqn.2001-04.com.nas-0-1-%s'%zvol}, u'nas-0-1', 'hpcdev-pub02', on_fail=ANY)
+            {'action': 'unmap_zvol', 'target': u'iqn.2001-04.com.nas-0-1-%s'%zvol}, u'nas-0-1', 'hpcdev-pub02', on_fail=ANY)
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_teardown_busy(self, mockRunCommand):
         zvol = 'vol3_busy'
         mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
 
-        self.client.tear_down(
-            {'action': 'tear_down', 'zvol': zvol},
+        self.client.unmap_zvol(
+            {'action': 'unmap_zvol', 'zvol': zvol},
             BasicProperties(reply_to='reply_to'))
 
         self.client.queue_connector.publish_message.assert_called_with(
@@ -143,8 +143,8 @@ class TestNasFunctions(unittest.TestCase):
         zvol = 'vol1'
         mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
 
-        self.client.tear_down(
-            {'action': 'tear_down', 'zvol': zvol},
+        self.client.unmap_zvol(
+            {'action': 'unmap_zvol', 'zvol': zvol},
             BasicProperties(reply_to='reply_to'))
 
         self.client.queue_connector.publish_message.assert_called_with(

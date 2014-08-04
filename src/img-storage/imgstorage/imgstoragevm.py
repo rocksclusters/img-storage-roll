@@ -74,13 +74,13 @@ class VmDaemon():
         self.stderr_path = '/tmp/err.log'
         self.pidfile_path =  '/var/run/img-storage-vm.pid'
         self.pidfile_timeout = 5
-        self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down, 'list_dev':self.list_dev }
+        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'list_dev':self.list_dev }
         self.logger = logging.getLogger(__name__)
 
     """
-    Received set_zvol command from nas
+    Received map_zvol command from nas
     """
-    def set_zvol(self, message, props):
+    def map_zvol(self, message, props):
         self.logger.debug("Setting zvol %s"%message['target'])
         try:
             self.connect_iscsi(message['target'], message['nas'])
@@ -131,9 +131,9 @@ class VmDaemon():
         return runCommand(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-u'])
 
     """
-    Received zvol tear_down command from nas
+    Received zvol unmap_zvol command from nas
     """
-    def tear_down(self, message, props):
+    def unmap_zvol(self, message, props):
         self.logger.debug("Tearing down zvol %s"%message['target'])
 
         mappings_map = self.get_blk_dev_list()

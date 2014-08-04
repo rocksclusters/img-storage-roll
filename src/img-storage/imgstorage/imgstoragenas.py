@@ -77,7 +77,7 @@ class NasDaemon():
         self.stderr_path = '/tmp/err.log'
         self.pidfile_path =  '/var/run/img-storage-nas.pid'
         self.pidfile_timeout = 5
-        self.function_dict = {'set_zvol':self.set_zvol, 'tear_down':self.tear_down, 'zvol_attached':self.zvol_attached, 'zvol_detached': self.zvol_detached, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol }
+        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'zvol_attached':self.zvol_attached, 'zvol_detached': self.zvol_detached, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol }
 
         self.ZPOOL = 'tank'
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
@@ -94,7 +94,7 @@ class NasDaemon():
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
-            cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, hosting TEXT)')
+            cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, remotehost TEXT)')
             con.commit()
 
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message)
@@ -106,10 +106,10 @@ class NasDaemon():
         self.logger.error("Failed %s: %s"%(action, error_message))
 
     """
-    Received set_zvol command from frontend, passing to compute node
+    Received map_zvol command from frontend, passing to compute node
     """
-    def set_zvol(self, message, props):
-        hosting = message['hosting']
+    def map_zvol(self, message, props):
+        remotehost = message['remotehost']
         zvol_name = message['zvol']
         self.logger.debug("Setting zvol %s"%zvol_name)
 
@@ -135,16 +135,16 @@ class NasDaemon():
 
                 if(self.ib_net):
                     try:
-                        ip = socket.gethostbyname('%s.%s'%(hosting, self.ib_net))
+                        ip = socket.gethostbyname('%s.%s'%(remotehost, self.ib_net))
                         use_ib = True
                     except:
                         pass
 
                 if not use_ib:
                     try:
-                        ip = socket.gethostbyname(hosting)
+                        ip = socket.gethostbyname(remotehost)
                     except:
-                        raise ActionError('Host %s is unknown'%hosting)
+                        raise ActionError('Host %s is unknown'%remotehost)
 
                 iscsi_target = ''
 
@@ -154,34 +154,34 @@ class NasDaemon():
                         iscsi_target = line['Creating new target (name='.__len__():line.index(',')]
                 self.logger.debug('Mapped %s to iscsi target %s'%(zvol_name, iscsi_target))
 
-                cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, iscsi_target,hosting))
+                cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, iscsi_target,remotehost))
                 con.commit()
 
-                def failDeliver(target, zvol, reply_to, hosting):
+                def failDeliver(target, zvol, reply_to, remotehost):
                     self.detach_target(target)
-                    self.failAction(props.reply_to, 'zvol_attached', 'Compute node %s is unavailable'%hosting)
+                    self.failAction(props.reply_to, 'zvol_attached', 'Compute node %s is unavailable'%remotehost)
                     self.release_zvol(zvol_name)
 
                 self.queue_connector.publish_message(
-                        {'action': 'set_zvol', 'target':iscsi_target, 'nas': ('%s.%s'%(self.NODE_NAME, self.ib_net)) if use_ib else self.NODE_NAME},
-                        hosting,
+                        {'action': 'map_zvol', 'target':iscsi_target, 'nas': ('%s.%s'%(self.NODE_NAME, self.ib_net)) if use_ib else self.NODE_NAME},
+                        remotehost,
                         self.NODE_NAME,
-                        on_fail=lambda: failDeliver(iscsi_target, zvol_name, props.reply_to, hosting))
+                        on_fail=lambda: failDeliver(iscsi_target, zvol_name, props.reply_to, remotehost))
                 self.logger.debug("Setting iscsi %s sent"%iscsi_target)
             except ActionError, err:
                 if not isinstance(err, ZvolBusyActionError): self.release_zvol(zvol_name)
                 self.failAction(props.reply_to, 'zvol_attached', str(err))
 
     """
-    Received zvol tear_down command from frontend, passing to compute node
+    Received zvol unmap_zvol command from frontend, passing to compute node
     """
-    def tear_down(self, message, props):
+    def unmap_zvol(self, message, props):
         zvol_name = message['zvol']
         self.logger.debug("Tearing down zvol %s"%zvol_name)
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             try :
-                cur.execute('SELECT hosting, iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
+                cur.execute('SELECT remotehost, iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
                 row = cur.fetchone()
                 if row == None: raise ActionError('ZVol %s not found in database'%zvol_name)
                 if row[1] == None: raise ActionError('ZVol %s is not attached'%zvol_name)
@@ -189,7 +189,7 @@ class NasDaemon():
 
                 self.lock_zvol(zvol_name, props.reply_to)
                 self.queue_connector.publish_message(
-                        {'action': 'tear_down', 'target':row[1]},
+                        {'action': 'unmap_zvol', 'target':row[1]},
                         row[0],
                         self.NODE_NAME,
                         on_fail=lambda: self.failAction(props.reply_to, 'zvol_detached', 'Compute node %s is unavailable'%row[0])
@@ -210,7 +210,7 @@ class NasDaemon():
             cur = con.cursor()
             try :
                 self.lock_zvol(zvol_name, props.reply_to)
-                cur.execute('SELECT hosting, iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
+                cur.execute('SELECT remotehost, iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
                 row = cur.fetchone()
                 if row == None: raise ActionError('ZVol %s not found in database'%zvol_name)
                 if row[1] != None: raise ActionError('Error deleting zvol %s: is mapped'%zvol_name)
