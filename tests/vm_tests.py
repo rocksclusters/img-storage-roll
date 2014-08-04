@@ -48,7 +48,39 @@ class TestVmFunctions(unittest.TestCase):
             {'action': 'map_zvol', 'target':target, 'nas': 'nas-0-1'},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_attached', 'status': 'success', 'bdev': bdev, 'target': target}, 'reply_to', correlation_id='message_id')
+            {'action': 'zvol_mapped', 'status': 'success', 'bdev': bdev, 'target': target}, 'reply_to', correlation_id='message_id')
+
+    """ Testing mapping of zvol for missing block device """
+    @mock.patch('imgstorage.imgstoragevm.runCommand')
+    def test_map_zvol_createnew_missing_blkdev_error(self, mockRunCommand):
+        target = 'iqn.2001-04.com.nas-0-1-vol2'
+        bdev = 'sdc'
+        def my_side_effect(*args, **kwargs):
+            if args[0][0] == 'iscsiadm':    return StringIO(iscsiadm_response%(target+"_missing_target", bdev))
+
+        mockRunCommand.side_effect = my_side_effect
+        self.client.map_zvol(
+            {'action': 'map_zvol', 'target':target, 'nas': 'nas-0-1'},
+            BasicProperties(reply_to='reply_to', message_id='message_id'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'zvol_mapped', 'status': 'error', 'target': target, 
+            'error': 'Not found %s in targets'%target}, 
+            'reply_to', correlation_id='message_id')
+
+    """ Testing unmapping of zvol """
+    @mock.patch('imgstorage.imgstoragevm.runCommand')
+    def test_map_zvol_unmap_success(self, mockRunCommand):
+        target = 'iqn.2001-04.com.nas-0-1-vol2'
+        bdev = 'sdc'
+        def my_side_effect(*args, **kwargs):
+            if args[0][0] == 'iscsiadm':    return StringIO(iscsiadm_response%(target, bdev))
+
+        mockRunCommand.side_effect = my_side_effect
+        self.client.unmap_zvol(
+            {'action': 'unmap_zvol', 'target':target},
+            BasicProperties(reply_to='reply_to', message_id='message_id'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'zvol_unmapped', 'status': 'success', 'target': target}, 'reply_to', correlation_id='message_id')
 
 
 iscsiadm_response = """

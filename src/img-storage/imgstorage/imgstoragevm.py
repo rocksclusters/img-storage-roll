@@ -88,10 +88,10 @@ class VmDaemon():
 
             if(message['target'] not in mappings.keys()): raise ActionError('Not found %s in targets'%message['target'])
 
-            self.queue_connector.publish_message({'action': 'zvol_attached', 'target':message['target'], 'bdev':mappings[message['target']], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+            self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'bdev':mappings[message['target']], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
             self.logger.debug('Successfully mapped %s to %s'%(message['target'], mappings[message['target']]))
         except ActionError, msg:
-            self.queue_connector.publish_message({'action': 'zvol_attached', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
+            self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
             self.logger.error('Error mapping %s: %s'%(message['target'], str(msg)))
 
 
@@ -139,10 +139,10 @@ class VmDaemon():
         mappings_map = self.get_blk_dev_list()
 
         if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
-            self.queue_connector.publish_message({'action': 'zvol_detached', 'target':message['target'], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+            self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
         else:
             self.logger.error("error detaching the target %s"%message['target'])
-            self.queue_connector.publish_message({'action': 'zvol_detached', 'target':message['target'], 'status':'error', 'error':'can_not_detach'}, props.reply_to, correlation_id=props.message_id)
+            self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'error', 'error':'can_not_detach'}, props.reply_to, correlation_id=props.message_id)
 
     def process_message(self, props, message):
         self.logger.debug("Received message %s"%message)

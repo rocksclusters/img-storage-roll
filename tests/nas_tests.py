@@ -100,7 +100,7 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10gb'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_attached', 'status': 'error', 'error': 'ZVol %s is busy'%zvol}, routing_key='reply_to', exchange='')
+            {'action': 'zvol_mapped', 'status': 'error', 'error': 'ZVol %s is busy'%zvol}, routing_key='reply_to', exchange='')
 
 
 
@@ -136,10 +136,10 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to'))
 
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_detached', 'status': 'error', 'error': 'ZVol %s is busy'%zvol}, routing_key='reply_to', exchange='')
+            {'action': 'zvol_unmapped', 'status': 'error', 'error': 'ZVol %s is busy'%zvol}, routing_key='reply_to', exchange='')
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
-    def test_teardown_detached_volume(self, mockRunCommand):
+    def test_teardown_unmapped_volume(self, mockRunCommand):
         zvol = 'vol1'
         mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
 
@@ -148,7 +148,7 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to'))
 
         self.client.queue_connector.publish_message.assert_called_with(
-                {'action': 'zvol_detached', 'status': 'error', 'error': 'ZVol %s is not attached'%zvol}, 
+                {'action': 'zvol_unmapped', 'status': 'error', 'error': 'ZVol %s is not mapped'%zvol}, 
                 routing_key='reply_to', 
                 exchange='')
 

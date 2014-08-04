@@ -77,7 +77,7 @@ class NasDaemon():
         self.stderr_path = '/tmp/err.log'
         self.pidfile_path =  '/var/run/img-storage-nas.pid'
         self.pidfile_timeout = 5
-        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'zvol_attached':self.zvol_attached, 'zvol_detached': self.zvol_detached, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol }
+        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'zvol_mapped':self.zvol_mapped, 'zvol_unmapped': self.zvol_unmapped, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol }
 
         self.ZPOOL = 'tank'
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
@@ -159,7 +159,7 @@ class NasDaemon():
 
                 def failDeliver(target, zvol, reply_to, remotehost):
                     self.detach_target(target)
-                    self.failAction(props.reply_to, 'zvol_attached', 'Compute node %s is unavailable'%remotehost)
+                    self.failAction(props.reply_to, 'zvol_mapped', 'Compute node %s is unavailable'%remotehost)
                     self.release_zvol(zvol_name)
 
                 self.queue_connector.publish_message(
@@ -170,7 +170,7 @@ class NasDaemon():
                 self.logger.debug("Setting iscsi %s sent"%iscsi_target)
             except ActionError, err:
                 if not isinstance(err, ZvolBusyActionError): self.release_zvol(zvol_name)
-                self.failAction(props.reply_to, 'zvol_attached', str(err))
+                self.failAction(props.reply_to, 'zvol_mapped', str(err))
 
     """
     Received zvol unmap_zvol command from frontend, passing to compute node
@@ -184,7 +184,7 @@ class NasDaemon():
                 cur.execute('SELECT remotehost, iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
                 row = cur.fetchone()
                 if row == None: raise ActionError('ZVol %s not found in database'%zvol_name)
-                if row[1] == None: raise ActionError('ZVol %s is not attached'%zvol_name)
+                if row[1] == None: raise ActionError('ZVol %s is not mapped'%zvol_name)
                 if self.find_iscsi_target_num(row[1]) == None: raise ActionError('iSCSI target does not exist for ZVol %s'%zvol_name)
 
                 self.lock_zvol(zvol_name, props.reply_to)
@@ -192,13 +192,13 @@ class NasDaemon():
                         {'action': 'unmap_zvol', 'target':row[1]},
                         row[0],
                         self.NODE_NAME,
-                        on_fail=lambda: self.failAction(props.reply_to, 'zvol_detached', 'Compute node %s is unavailable'%row[0])
+                        on_fail=lambda: self.failAction(props.reply_to, 'zvol_unmapped', 'Compute node %s is unavailable'%row[0])
                 )
                 self.logger.debug("Tearing down zvol %s sent"%zvol_name)
 
             except ActionError, err:
                 if not isinstance(err, ZvolBusyActionError): self.release_zvol(zvol_name)
-                self.failAction(props.reply_to, 'zvol_detached', str(err))
+                self.failAction(props.reply_to, 'zvol_unmapped', str(err))
 
     """
     Received zvol delete command from frontend
@@ -229,15 +229,15 @@ class NasDaemon():
                 self.failAction(props.reply_to, 'zvol_deleted', str(err))
 
     """
-    Received zvol_attached notification from compute node, passing to frontend
+    Received zvol_mapped notification from compute node, passing to frontend
     """
-    def zvol_attached(self, message, props):
+    def zvol_mapped(self, message, props):
         target = message['target']
 
         zvol = None
         reply_to = None
 
-        self.logger.debug("Got zvol attached message %s"%target)
+        self.logger.debug("Got zvol mapped message %s"%target)
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('SELECT reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
@@ -245,16 +245,16 @@ class NasDaemon():
 
             self.release_zvol(zvol)
             if(message['status'] == 'success'):
-                self.queue_connector.publish_message({'action': 'zvol_attached', 'bdev':message['bdev'], 'status': 'success'}, exchange='', routing_key=reply_to)
+                self.queue_connector.publish_message({'action': 'zvol_mapped', 'bdev':message['bdev'], 'status': 'success'}, exchange='', routing_key=reply_to)
             else:
-                self.failAction(reply_to, 'zvol_attached', message.get('error'))
+                self.failAction(reply_to, 'zvol_mapped', message.get('error'))
 
     """
-    Received zvol_detached notification from compute node, passing to frontend
+    Received zvol_unmapped notification from compute node, passing to frontend
     """
-    def zvol_detached(self, message, props):
+    def zvol_unmapped(self, message, props):
         target = message['target']
-        self.logger.debug("Got zvol %s detached message"%(target))
+        self.logger.debug("Got zvol %s unmapped message"%(target))
 
         zvol = None
         reply_to = None
@@ -273,11 +273,11 @@ class NasDaemon():
                 self.detach_target(target)
 
                 self.release_zvol(zvol)
-                self.queue_connector.publish_message({'action': 'zvol_detached', 'status': 'success'}, exchange='', routing_key=reply_to)
+                self.queue_connector.publish_message({'action': 'zvol_unmapped', 'status': 'success'}, exchange='', routing_key=reply_to)
 
         except ActionError, err:
             self.release_zvol(zvol)
-            self.failAction(caller_properties['reply_to'], 'zvol_detached', str(err))
+            self.failAction(caller_properties['reply_to'], 'zvol_unmapped', str(err))
 
     def detach_target(self, target):
         with sqlite3.connect(self.SQLITE_DB) as con:
