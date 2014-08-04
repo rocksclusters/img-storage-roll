@@ -222,7 +222,9 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_unmapped', 'status': 'success'}, routing_key=u'reply_to', exchange='')
-        
+        self.assertFalse(self.check_zvol_busy(zvol))
+
+       
     @mock.patch('imgstorage.imgstoragenas.runCommand')    
     def test_zvol_unmapped_got_error(self, mockRunCommand):
         zvol = 'vol3_busy'
@@ -232,6 +234,8 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_unmapped', 'status': 'error', 'error': 'Error detaching iSCSI target from compute node: Some error'}, routing_key=u'reply_to', exchange='')
+        self.assertFalse(self.check_zvol_busy(zvol))
+
         
     def test_zvol_mapped_success(self):
         zvol = 'vol4_busy'
@@ -241,7 +245,8 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_mapped', 'status': 'success', 'bdev': 'sdc'}, routing_key=u'reply_to', exchange='')
-        
+        self.assertFalse(self.check_zvol_busy(zvol))
+       
     def test_zvol_mapped_got_error(self):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
@@ -250,7 +255,8 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_mapped', 'status': 'error', 'error': 'Error attaching iSCSI target to compute node: Some error'}, routing_key=u'reply_to', exchange='')
-        
+        self.assertFalse(self.check_zvol_busy(zvol))
+       
     def check_zvol_busy(self, zvol):
         with sqlite3.connect(self.client.SQLITE_DB) as con:
             cur = con.cursor()
