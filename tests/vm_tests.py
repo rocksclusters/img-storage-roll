@@ -48,6 +48,10 @@ class TestVmFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_mapped', 'status': 'success', 'bdev': bdev, 'target': target}, 'reply_to', correlation_id='message_id')
+        mockRunCommand.assert_any_call(['iscsiadm', '-m', 'discovery', '-t', 'sendtargets', '-p', 'nas-0-1'])
+        mockRunCommand.assert_any_call(['iscsiadm', '-m', 'node', '-T', target, '-p', 'nas-0-1', '-l'])
+        mockRunCommand.assert_any_call(['iscsiadm', '-m', 'session', '-P3'])
+
 
     """ Testing mapping of zvol for missing block device """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
