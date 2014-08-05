@@ -41,10 +41,8 @@ class TestVmFunctions(unittest.TestCase):
     def test_map_zvol_createnew_success(self, mockRunCommand):
         target = 'iqn.2001-04.com.nas-0-1-vol2'
         bdev = 'sdc'
-        def my_side_effect(*args, **kwargs):
-            if args[0][0] == 'iscsiadm':    return StringIO(iscsiadm_response%(target, bdev))
 
-        mockRunCommand.side_effect = my_side_effect
+        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
         self.client.map_zvol(
             {'action': 'map_zvol', 'target':target, 'nas': 'nas-0-1'},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
@@ -56,10 +54,8 @@ class TestVmFunctions(unittest.TestCase):
     def test_map_zvol_createnew_missing_blkdev_error(self, mockRunCommand):
         target = 'iqn.2001-04.com.nas-0-1-vol2'
         bdev = 'sdc'
-        def my_side_effect(*args, **kwargs):
-            if args[0][0] == 'iscsiadm':    return StringIO(iscsiadm_response%(target+"_missing_target", bdev))
 
-        mockRunCommand.side_effect = my_side_effect
+        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target+"_missing_target", bdev)
         self.client.map_zvol(
             {'action': 'map_zvol', 'target':target, 'nas': 'nas-0-1'},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
@@ -73,11 +69,8 @@ class TestVmFunctions(unittest.TestCase):
     def test_map_zvol_unmap_success(self, mockRunCommand):
         target = 'iqn.2001-04.com.nas-0-1-vol2'
         bdev = 'sdc'
-        def my_side_effect(*args, **kwargs):
-            if args[0][:3] == ['iscsiadm', '-m', 'session']:    return StringIO(iscsiadm_response%(target, bdev))
-            elif args[0][:3] == ['iscsiadm', '-m', 'node']:    return StringIO('')
 
-        mockRunCommand.side_effect = my_side_effect
+        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
         self.client.unmap_zvol(
             {'action': 'unmap_zvol', 'target':target},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
@@ -90,11 +83,8 @@ class TestVmFunctions(unittest.TestCase):
     def test_map_zvol_unmap_not_found(self, mockRunCommand):
         target = 'iqn.2001-04.com.nas-0-1-vol2'
         bdev = 'sdc'
-        def my_side_effect(*args, **kwargs):
-            if args[0][:3] == ['iscsiadm', '-m', 'session']:    return StringIO(iscsiadm_response%(target+"not_found", bdev))
-            elif args[0][:3] == ['iscsiadm', '-m', 'node']:    return StringIO('')
 
-        mockRunCommand.side_effect = my_side_effect
+        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
         self.client.unmap_zvol(
             {'action': 'unmap_zvol', 'target':target},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
@@ -107,7 +97,8 @@ class TestVmFunctions(unittest.TestCase):
         target = 'iqn.2001-04.com.nas-0-1-vol2'
         bdev = 'sdc'
         def my_side_effect(*args, **kwargs):
-            if args[0][:3] == ['iscsiadm', '-m', 'session']:    return StringIO(iscsiadm_response%(target, bdev))
+            if args[0][:3] == ['iscsiadm', '-m', 'session']:    return StringIO(iscsiadm_session_response%(target, bdev))
+            elif args[0][:3] == ['iscsiadm', '-m', 'discovery']:    return StringIO(iscsiadm_discovery_response%target) # find remote targets
             elif args[0][:3] == ['iscsiadm', '-m', 'node']:    
                 raise ActionError('Some error happened') 
 
@@ -120,11 +111,21 @@ class TestVmFunctions(unittest.TestCase):
             'reply_to', correlation_id='message_id')
         mockRunCommand.assert_called_with(['iscsiadm', '-m', 'node', '-T', target, '-u'])
 
+    def create_iscsiadm_side_effect(self, target, bdev):
+        def iscsiadm_side_effect(*args, **kwargs):
+            if args[0][:3] == ['iscsiadm', '-m', 'session']:    return StringIO(iscsiadm_session_response%(target, bdev)) # list local devices
+            elif args[0][:3] == ['iscsiadm', '-m', 'discovery']:    return StringIO(iscsiadm_discovery_response%target) # find remote targets
+            elif args[0][:3] == ['iscsiadm', '-m', 'node']:    return StringIO('') # connect to iscsi target 
+        return iscsiadm_side_effect
 
-iscsiadm_response = """
+iscsiadm_discovery_response = """
+10.2.20.247:3260,1 iqn.2001-04.com.nas-0-1-vm-hpcdev-pub03-1-vol
+10.2.20.247:3260,2 %s"""
+
+iscsiadm_session_response = """
 iSCSI Transport Class version 2.0-870
 version 6.2.0-873.10.el6
-Target: iqn.2001-04.com.zfs-0-0-compute-0-2-0-vol
+Target: iqn.2001-04.com.nas-0-1-compute-0-2-0-vol
     Current Portal: 10.2.20.254:3260,1
     Persistent Portal: 10.2.20.254:3260,1
         **********
