@@ -6,7 +6,7 @@ The roll creates the daemon scripts that can be started/stopped using system com
 
 Also the roll provides rocks commands for managing virtual machines. These include creating a zvol with mapping to a compute node local block device, unmapping and removing a zvol, getting a list of zvols created and zvols mapped on a compute node.
 
-Commands:
+## Commands:
 
 ```rocks start host vm {vm_hostname}``` - mount the VM image and start the VM
 
