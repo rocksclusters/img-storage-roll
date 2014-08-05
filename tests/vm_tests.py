@@ -51,7 +51,7 @@ class TestVmFunctions(unittest.TestCase):
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'discovery', '-t', 'sendtargets', '-p', 'nas-0-1'])
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'node', '-T', target, '-p', 'nas-0-1', '-l'])
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'session', '-P3'])
-
+        assert 3 == mockRunCommand.call_count
 
     """ Testing mapping of zvol for missing block device """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
