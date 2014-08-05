@@ -48,7 +48,7 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command)
                 self.beginOutput()
                 for d in list:
                     self.addOutput(nas, d.values())
-                headers=['nas','device', 'zvol', 'host']
+                headers=['nas','device', 'host', 'zvol']
                 self.endOutput(headers)
 
 
