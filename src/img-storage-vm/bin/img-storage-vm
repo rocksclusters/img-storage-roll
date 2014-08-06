@@ -56,5 +56,7 @@
 #
 from imgstorage.imgstoragevm import VmDaemon
 from imgstorage.imgstoragedaemon import *
+from imgstorage import *
 
-runDaemon(VmDaemon())
+handler = setupLogger('imgstorage.imgstoragevm.VmDaemon')
+runDaemon(VmDaemon(), handler)

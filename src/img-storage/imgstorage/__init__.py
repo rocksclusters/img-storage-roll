@@ -63,13 +63,25 @@ class ActionError(Exception):
 class ZvolBusyActionError(ActionError):
     pass
 
-def runCommand(params):
+""" Runs system command. If passed second command, the output of first one will be piped to second one """
+def runCommand(params, params2 = None):
     cmd = subprocess.Popen(params, stdout=subprocess.PIPE, stderr = subprocess.PIPE)
-    out, err = cmd.communicate()
-    if cmd.returncode:
-        raise ActionError('Error executing %s: %s'%(params[0], err))
+
+    if params2:
+        cmd2 = subprocess.Popen(params2, stdin=cmd.stdout, stdout=subprocess.PIPE, stderr = subprocess.PIPE)
+        cmd.stdout.close()
+        out, err = cmd2.communicate()
+        if cmd2.returncode:
+            raise ActionError('Error executing %s: %s'%(params2[0], err))
+        else:
+            return out.splitlines()
+
     else:
-        return out.splitlines()
+        out, err = cmd.communicate()
+        if cmd.returncode:
+            raise ActionError('Error executing %s: %s'%(params[0], err))
+        else:
+            return out.splitlines()
 
 def setupLogger(logger):
     formatter = logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -30s %(funcName) -35s %(lineno) -5d: %(message)s'")

@@ -56,5 +56,7 @@
 #
 from imgstorage.imgstoragenas import NasDaemon
 from imgstorage.imgstoragedaemon import *
+from imgstorage import *
 
-runDaemon(NasDaemon())
+handler = setupLogger('imgstorage.imgstoragenas.NasDaemon')
+runDaemon(NasDaemon(), handler)

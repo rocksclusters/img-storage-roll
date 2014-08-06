@@ -73,8 +73,6 @@ reall:
 
 base:
 	cd src/img-storage && make rpm
-	scp RPMS/noarch/img-storage-6.2-0.noarch.rpm zfs-0-0:
-	ssh zfs-0-0 'yum reinstall ./img-storage-6.2-0.noarch.rpm'
 	scp RPMS/noarch/img-storage-6.2-0.noarch.rpm nas-0-1:
 	ssh nas-0-1 'yum reinstall ./img-storage-6.2-0.noarch.rpm'
 	scp RPMS/noarch/img-storage-6.2-0.noarch.rpm compute-0-2:

@@ -62,10 +62,10 @@ class TestNasFunctions(unittest.TestCase):
         mockRunCommand.side_effect = my_side_effect
         self.client.ib_net = 'ibnet'
         self.client.map_zvol(
-            {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10gb'},
+            {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'map_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol)}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
+            {'action': 'map_zvol', 'nas': 'hpcdev-pub02.ibnet', 'size':'10', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol), 'zvol':zvol}, 'compute-0-1', self.client.NODE_NAME, on_fail=ANY)
         self.assertTrue(self.check_zvol_busy(zvol))
 
 
@@ -81,10 +81,10 @@ class TestNasFunctions(unittest.TestCase):
 
         self.client.ib_net = 'ibnet'
         self.client.map_zvol(
-            {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10gb'},
+            {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'map_zvol', 'nas': 'hpcdev-pub02.ibnet', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol)}, 'compute-0-1', 'hpcdev-pub02', on_fail=ANY)
+            {'action': 'map_zvol', 'nas': 'hpcdev-pub02.ibnet', 'size':'10', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol), 'zvol':zvol}, 'compute-0-1', self.client.NODE_NAME, on_fail=ANY)
         self.assertTrue(self.check_zvol_busy(zvol))
 
 
@@ -126,7 +126,7 @@ class TestNasFunctions(unittest.TestCase):
         mockRunCommand.assert_called_with(['tgtadm', '--op', 'show', '--mode', 'target'])
 
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'unmap_zvol', 'target': u'iqn.2001-04.com.nas-0-1-%s'%zvol}, u'nas-0-1', 'hpcdev-pub02', on_fail=ANY)
+            {'action': 'unmap_zvol', 'target': u'iqn.2001-04.com.nas-0-1-%s'%zvol}, u'nas-0-1', self.client.NODE_NAME, on_fail=ANY)
         self.assertTrue(self.check_zvol_busy(zvol))
 
 
@@ -236,17 +236,30 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'zvol_unmapped', 'status': 'error', 'error': 'Error detaching iSCSI target from compute node: Some error'}, routing_key=u'reply_to', exchange='')
         self.assertFalse(self.check_zvol_busy(zvol))
 
-        
-    def test_zvol_mapped_success(self):
+    @mock.patch('imgstorage.imgstoragenas.runCommand') 
+    def test_zvol_mapped_success(self, mockRunCommand):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         self.client.zvol_mapped(
-            {'action': 'zvol_mapped', 'target':target, 'bdev': 'sdc', 'status':'success'}, 
+            {'action': 'zvol_mapped', 'target':target, 'bdev': '/dev/mapper/%s-snap'%zvol, 'status':'success'}, 
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
-        self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_mapped', 'status': 'success', 'bdev': 'sdc'}, routing_key=u'reply_to', exchange='')
+        self.client.queue_connector.publish_message.assert_any_call(
+            {'action': 'zvol_mapped', 'status': 'success', 'bdev': '/dev/mapper/%s-snap'%zvol}, routing_key=u'reply_to', exchange='')
+        mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@initial_snapshot'%zvol])
+        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@initial_snapshot'%zvol], ['ssh', 'compute-0-3', 'zfs', 'receive', '-F', 'tank/%s'%zvol])
+
+        self.client.queue_connector.publish_message.assert_any_call(
+            {'action': 'sync_zvol', 'zvol':zvol, 'target':target}, 'reply_to', self.client.NODE_NAME, on_fail=ANY)
+        self.assertTrue(self.check_zvol_busy(zvol))
+        
+    def test_zvol_synced_success(self):
+        zvol = 'vol4_busy'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
+        self.client.zvol_synced(
+            {'action': 'zvol_synced', 'status':'success', 'zvol':zvol},
+            BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.assertFalse(self.check_zvol_busy(zvol))
-       
+
     def test_zvol_mapped_got_error(self):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
@@ -255,15 +268,13 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_mapped', 'status': 'error', 'error': 'Error attaching iSCSI target to compute node: Some error'}, routing_key=u'reply_to', exchange='')
-        self.assertFalse(self.check_zvol_busy(zvol))
+        self.assertTrue(self.check_zvol_busy(zvol)) # TODO IS THIS RIGHT?
        
     def check_zvol_busy(self, zvol):
         with sqlite3.connect(self.client.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('SELECT count(*) from zvol_calls where zvol = ?',[zvol])
             num_rows = cur.fetchone()[0]
-            print "Num rows %s"%num_rows
-            print num_rows > 0
             return num_rows > 0
         
 

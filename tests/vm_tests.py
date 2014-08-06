@@ -36,22 +36,28 @@ class TestVmFunctions(unittest.TestCase):
         self.client.run()
 
 
-    """ Testing mapping of zvol """
+    """ Testing mapping of zvol with sync """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
-    def test_map_zvol_createnew_success(self, mockRunCommand):
+    def test_map_zvol_createnew_sync_success(self, mockRunCommand):
         target = 'iqn.2001-04.com.nas-0-1-vol2'
         bdev = 'sdc'
+        zvol = 'vol2'
+        zvol_size = '36'
 
         mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
         self.client.map_zvol(
-            {'action': 'map_zvol', 'target':target, 'nas': 'nas-0-1'},
+            {'action': 'map_zvol', 'target':target, 'nas': 'nas-0-1', 'zvol': zvol, 'size':zvol_size},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_mapped', 'status': 'success', 'bdev': bdev, 'target': target}, 'reply_to', correlation_id='message_id')
+            {'action': 'zvol_mapped', 'status': 'success', 'bdev': '/dev/mapper/%s-snap'%zvol, 'target': target}, 'reply_to', correlation_id='message_id')
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'discovery', '-t', 'sendtargets', '-p', 'nas-0-1'])
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'node', '-T', target, '-p', 'nas-0-1', '-l'])
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'session', '-P3'])
-        assert 3 == mockRunCommand.call_count
+        mockRunCommand.assert_any_call(['zfs', 'create', '-V', '%sgb'%zvol_size, 'tank/%s'%zvol])
+        mockRunCommand.assert_any_call(['zfs', 'create', '-V', '10gb', 'tank/%s-temp-write'%zvol])
+        mockRunCommand.assert_any_call(['dmsetup', 'create', '%s-snap'%zvol, '--table', 
+                '"0 62914560 snapshot /dev/%s /dev/zvol/tank/%s-temp-write P 16"'%(bdev, zvol)])
+        assert 6 == mockRunCommand.call_count
 
     """ Testing mapping of zvol for missing block device """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
@@ -115,11 +121,37 @@ class TestVmFunctions(unittest.TestCase):
             'reply_to', correlation_id='message_id')
         mockRunCommand.assert_called_with(['iscsiadm', '-m', 'node', '-T', target, '-u'])
 
+
+    """ Testing zvol sync """
+    @mock.patch('imgstorage.imgstoragevm.runCommand')
+    def test_sync_zvol_success(self, mockRunCommand):
+        zvol= 'vol2'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
+        bdev = 'sdc'
+        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
+        self.client.sync_zvol(
+            {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
+            BasicProperties(reply_to='reply_to', message_id='message_id'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'zvol_synced', 'status': 'success', 'zvol': zvol}, 
+            'reply_to', correlation_id='message_id')
+        print(mockRunCommand.mock_calls)
+        mockRunCommand.assert_any_call(['blockdev', '--getsize', '/dev/%s'%bdev])
+        mockRunCommand.assert_any_call(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
+        mockRunCommand.assert_any_call(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 12345 snapshot-merge /dev/zvol/tank/%s /dev/zvol/tank/%s-temp-write P 16'%(zvol, zvol)])
+        mockRunCommand.assert_any_call(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
+        mockRunCommand.assert_any_call(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 12345 linear /dev/zvol/tank/%s 0'%(zvol)])
+        assert 8 == mockRunCommand.call_count # 6 + search blockdev
+
+
+
+ 
     def create_iscsiadm_side_effect(self, target, bdev):
         def iscsiadm_side_effect(*args, **kwargs):
-            if args[0][:3] == ['iscsiadm', '-m', 'session']:    return StringIO(iscsiadm_session_response%(target, bdev)) # list local devices
+            if args[0][:3] == ['iscsiadm', '-m', 'session']:        return StringIO(iscsiadm_session_response%(target, bdev)) # list local devices
             elif args[0][:3] == ['iscsiadm', '-m', 'discovery']:    return StringIO(iscsiadm_discovery_response%target) # find remote targets
-            elif args[0][:3] == ['iscsiadm', '-m', 'node']:    return StringIO('') # connect to iscsi target 
+            elif args[0][:3] == ['iscsiadm', '-m', 'node']:         return StringIO('') # connect to iscsi target 
+            elif args[0][0] == 'blockdev':                          return StringIO('12345')
         return iscsiadm_side_effect
 
 iscsiadm_discovery_response = """

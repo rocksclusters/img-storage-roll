@@ -77,13 +77,13 @@ class NasDaemon():
         self.stderr_path = '/tmp/err.log'
         self.pidfile_path =  '/var/run/img-storage-nas.pid'
         self.pidfile_timeout = 5
-        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'zvol_mapped':self.zvol_mapped, 'zvol_unmapped': self.zvol_unmapped, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol }
+        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'zvol_mapped':self.zvol_mapped, 'zvol_unmapped': self.zvol_unmapped, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol, 'zvol_synced':self.zvol_synced }
 
         self.ZPOOL = 'tank'
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
         self.NODE_NAME = RabbitMQLocator().NODE_NAME
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
 
         db = rocks.db.helper.DatabaseHelper()
         db.connect()
@@ -163,7 +163,10 @@ class NasDaemon():
                     self.release_zvol(zvol_name)
 
                 self.queue_connector.publish_message(
-                        {'action': 'map_zvol', 'target':iscsi_target, 'nas': ('%s.%s'%(self.NODE_NAME, self.ib_net)) if use_ib else self.NODE_NAME},
+                        {'action': 'map_zvol', 'target':iscsi_target,
+                            'zvol': zvol_name,
+                            'nas': ('%s.%s'%(self.NODE_NAME, self.ib_net)) if use_ib else self.NODE_NAME,
+                            'size': '%s'%message['size']},
                         remotehost,
                         self.NODE_NAME,
                         on_fail=lambda: failDeliver(iscsi_target, zvol_name, props.reply_to, remotehost))
@@ -243,9 +246,16 @@ class NasDaemon():
             cur.execute('SELECT reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
             reply_to, zvol = cur.fetchone()
 
-            self.release_zvol(zvol)
+            #self.release_zvol(zvol)
             if(message['status'] == 'success'):
                 self.queue_connector.publish_message({'action': 'zvol_mapped', 'bdev':message['bdev'], 'status': 'success'}, exchange='', routing_key=reply_to)
+                runCommand(['zfs', 'snap', 'tank/%s@initial_snapshot'%zvol])
+                runCommand(['zfs', 'send', 'tank/%s@initial_snapshot'%zvol], ['ssh', 'compute-0-3', 'zfs', 'receive', '-F', 'tank/%s'%zvol])
+                self.queue_connector.publish_message(
+                    {'action': 'sync_zvol', 'zvol':zvol, 'target':target}, 
+                    props.reply_to, #reply back to compute node
+                    self.NODE_NAME,
+                    on_fail=lambda: self.failAction(reply_to, 'sync_zvol', 'Compute node %s is unavailable to sync zvol %s'%(props.reply_to, zvol)))
             else:
                 self.failAction(reply_to, 'zvol_mapped', 'Error attaching iSCSI target to compute node: %s'%message.get('error'))
 
@@ -279,6 +289,13 @@ class NasDaemon():
             self.release_zvol(zvol)
             self.failAction(reply_to, 'zvol_unmapped', str(err))
 
+
+    """
+    Received zvol_synced notification from compute node
+    """
+    def zvol_synced(self, message, props):
+        self.release_zvol(message['zvol'])
+ 
     def detach_target(self, target):
         with sqlite3.connect(self.SQLITE_DB) as con:
             tgt_num = self.find_iscsi_target_num(target)
@@ -287,6 +304,8 @@ class NasDaemon():
             cur = con.cursor()
             cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
             con.commit()
+
+
 
     def find_iscsi_target_num(self, target):
         out = runCommand(['tgtadm', '--op', 'show', '--mode', 'target'])

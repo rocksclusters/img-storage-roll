@@ -74,8 +74,8 @@ class VmDaemon():
         self.stderr_path = '/tmp/err.log'
         self.pidfile_path =  '/var/run/img-storage-vm.pid'
         self.pidfile_timeout = 5
-        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'list_dev':self.list_dev }
-        self.logger = logging.getLogger(__name__)
+        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'list_dev':self.list_dev, 'sync_zvol':self.sync_zvol }
+        self.logger = logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
 
     """
     Received map_zvol command from nas
@@ -88,8 +88,15 @@ class VmDaemon():
 
             if(message['target'] not in mappings.keys()): raise ActionError('Not found %s in targets'%message['target'])
 
-            self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'bdev':mappings[message['target']], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
-            self.logger.debug('Successfully mapped %s to %s'%(message['target'], mappings[message['target']]))
+            bdev = mappings[message['target']]
+            zvol = message.get('zvol')
+            runCommand(['zfs', 'create', '-V', '%sgb'%message['size'], 'tank/%s'%zvol])
+            runCommand(['zfs', 'create', '-V', '10gb', 'tank/%s-temp-write'%zvol])
+            runCommand(['dmsetup', 'create', '%s-snap'%zvol, 
+                '--table', '0 62914560 snapshot /dev/%s /dev/zvol/tank/%s-temp-write P 16'%(bdev, zvol)])
+            self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'bdev':'/dev/mapper/%s-snap'%zvol, 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+
+            self.logger.debug('Successfully mapped %s to %s'%(message['target'], bdev))
         except ActionError, msg:
             self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
             self.logger.error('Error mapping %s: %s'%(message['target'], str(msg)))
@@ -145,6 +152,29 @@ class VmDaemon():
             self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
             self.logger.error('Error unmapping %s: %s'%(message['target'], str(msg)))
 
+    def sync_zvol(self, message, props):
+        zvol = message.get('zvol')
+        target = message.get('target')
+
+        mappings = self.get_blk_dev_list()
+        if(target not in mappings.keys()): raise ActionError('Not found %s in targets'%target)
+
+        self.logger.debug("Syncing zvol %s"%zvol)
+
+        try:
+            devsize = runCommand(['blockdev', '--getsize', '/dev/%s'%mappings[target]]).getvalue()
+            runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
+            runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s snapshot-merge /dev/zvol/tank/%s /dev/zvol/tank/%s-temp-write P 16'%(devsize, zvol, zvol)])
+            runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
+            self.logger.debug('Synced local storage')
+            runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
+            runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s linear /dev/zvol/tank/%s 0'%(devsize, zvol)])
+            runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
+
+            self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+        except ActionError, msg:
+            self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
+            self.logger.error('Error syncing %s: %s'%(zvol, str(msg)))
 
     def process_message(self, props, message):
         self.logger.debug("Received message %s"%message)
@@ -155,7 +185,7 @@ class VmDaemon():
         try:
             self.function_dict[message['action']](message, props)
         except:
-            self.logger.error("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
+            self.logger.exception("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
             traceback.print_tb(sys.exc_info()[2])
             self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[1].message}, exchange='', routing_key=props.reply_to, correlation_id=props.message_id)
 
