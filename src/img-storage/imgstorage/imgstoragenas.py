@@ -334,8 +334,7 @@ class NasDaemon():
         try:
             self.function_dict[message['action']](message, properties)
         except:
-            self.logger.error("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
-            traceback.print_tb(sys.exc_info()[2])
+            self.logger.exception("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
             self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[1].message}, exchange='', routing_key=properties.reply_to)
 
     def stop(self):

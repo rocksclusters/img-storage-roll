@@ -92,6 +92,7 @@ class VmDaemon():
             zvol = message.get('zvol')
             runCommand(['zfs', 'create', '-V', '%sgb'%message['size'], 'tank/%s'%zvol])
             runCommand(['zfs', 'create', '-V', '10gb', 'tank/%s-temp-write'%zvol])
+            time.sleep(5)
             runCommand(['dmsetup', 'create', '%s-snap'%zvol, 
                 '--table', '0 62914560 snapshot /dev/%s /dev/zvol/tank/%s-temp-write P 16'%(bdev, zvol)])
             self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'bdev':'/dev/mapper/%s-snap'%zvol, 'status':'success'}, props.reply_to, correlation_id=props.message_id)
