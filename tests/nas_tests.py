@@ -9,7 +9,7 @@ from mock import MagicMock, ANY
 import mock
 from imgstorage.imgstoragenas import NasDaemon
 from imgstorage.rabbitmqclient import RabbitMQCommonClient
-                           
+
 import uuid
 import time
 
@@ -25,7 +25,7 @@ class TestNasFunctions(unittest.TestCase):
             def publish_message(self, message, routing_key=None, reply_to=None, exchange=None, correlation_id=None, on_fail=None):
                 return
         return MockRabbitMQCommonClient
-    
+
     @mock.patch('imgstorage.imgstoragenas.RabbitMQCommonClient')
     def setUp(self, mock_rabbit):
         self.client = NasDaemon()
@@ -65,7 +65,7 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'map_zvol', 'nas': 'hpcdev-pub02.ibnet', 'size':'10', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol), 'zvol':zvol}, 'compute-0-1', self.client.NODE_NAME, on_fail=ANY)
+            {'action': 'map_zvol', 'zvol': zvol, 'nas': '%s.ibnet'%self.client.NODE_NAME, 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol), 'size':'10'}, 'compute-0-1', self.client.NODE_NAME, on_fail=ANY)
         self.assertTrue(self.check_zvol_busy(zvol))
 
 
@@ -84,7 +84,7 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'map_zvol', 'nas': 'hpcdev-pub02.ibnet', 'size':'10', 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol), 'zvol':zvol}, 'compute-0-1', self.client.NODE_NAME, on_fail=ANY)
+            {'action': 'map_zvol', 'zvol': zvol, 'nas': '%s.ibnet'%self.client.NODE_NAME, 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol), 'size':'10'}, 'compute-0-1', self.client.NODE_NAME, on_fail=ANY)
         self.assertTrue(self.check_zvol_busy(zvol))
 
 
@@ -100,18 +100,18 @@ class TestNasFunctions(unittest.TestCase):
 
         self.client.ib_net = 'ibnet'
         self.client.map_zvol(
-            {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10gb'},
+            {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_mapped', 'status': 'error', 'error': 'ZVol %s is busy'%zvol}, routing_key='reply_to', exchange='')
         self.assertTrue(self.check_zvol_busy(zvol))
 
- 
+
     def test_fail_action(self):
         self.client.failAction('routing_key', 'action', 'error_message')
         self.client.queue_connector.publish_message.assert_called_with(
-                {'action': 'action', 'status': 'error', 'error': 'error_message'}, 
-                routing_key='routing_key', 
+                {'action': 'action', 'status': 'error', 'error': 'error_message'},
+                routing_key='routing_key',
                 exchange='')
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
@@ -154,8 +154,8 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to'))
 
         self.client.queue_connector.publish_message.assert_called_with(
-                {'action': 'zvol_unmapped', 'status': 'error', 'error': 'ZVol %s is not mapped'%zvol}, 
-                routing_key='reply_to', 
+                {'action': 'zvol_unmapped', 'status': 'error', 'error': 'ZVol %s is not mapped'%zvol},
+                routing_key='reply_to',
                 exchange='')
         self.assertFalse(self.check_zvol_busy(zvol))
 
@@ -181,7 +181,7 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'del_zvol', 'zvol': zvol},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_deleted', 'status': 'error', 'error': 'ZVol %s not found in database'%zvol}, 
+            {'action': 'zvol_deleted', 'status': 'error', 'error': 'ZVol %s not found in database'%zvol},
             routing_key='reply_to', exchange='')
         self.assertFalse(self.check_zvol_busy(zvol))
 
@@ -203,7 +203,7 @@ class TestNasFunctions(unittest.TestCase):
         target = 'not_found_iqn.2001-04.com.nas-0-1-%s'%zvol
         mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
         self.assertEqual(self.client.find_iscsi_target_num(target), None)
-        
+
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_find_iscsi_target_num_success(self, mockRunCommand):
@@ -211,72 +211,59 @@ class TestNasFunctions(unittest.TestCase):
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
         self.assertEqual(self.client.find_iscsi_target_num(target), '1')
-    
 
-    @mock.patch('imgstorage.imgstoragenas.runCommand')    
+
+    @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_zvol_unmapped_success(self, mockRunCommand):
         zvol = 'vol3_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         self.client.zvol_unmapped(
-            {'action': 'zvol_unmapped', 'target':target, 'status':'success'}, 
+            {'action': 'zvol_unmapped', 'target':target, 'status':'success'},
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_unmapped', 'status': 'success'}, routing_key=u'reply_to', exchange='')
         self.assertFalse(self.check_zvol_busy(zvol))
 
-       
-    @mock.patch('imgstorage.imgstoragenas.runCommand')    
+
+    @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_zvol_unmapped_got_error(self, mockRunCommand):
         zvol = 'vol3_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         self.client.zvol_unmapped(
-            {'action': 'zvol_unmapped', 'target':target, 'status':'error', 'error':'Some error'}, 
+            {'action': 'zvol_unmapped', 'target':target, 'status':'error', 'error':'Some error'},
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_unmapped', 'status': 'error', 'error': 'Error detaching iSCSI target from compute node: Some error'}, routing_key=u'reply_to', exchange='')
         self.assertFalse(self.check_zvol_busy(zvol))
 
-    @mock.patch('imgstorage.imgstoragenas.runCommand') 
-    def test_zvol_mapped_success(self, mockRunCommand):
+
+    def test_zvol_mapped_success(self):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         self.client.zvol_mapped(
-            {'action': 'zvol_mapped', 'target':target, 'bdev': '/dev/mapper/%s-snap'%zvol, 'status':'success'}, 
+            {'action': 'zvol_mapped', 'target':target, 'bdev': 'sdc', 'status':'success'},
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
-        self.client.queue_connector.publish_message.assert_any_call(
-            {'action': 'zvol_mapped', 'status': 'success', 'bdev': '/dev/mapper/%s-snap'%zvol}, routing_key=u'reply_to', exchange='')
-        mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@initial_snapshot'%zvol])
-        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@initial_snapshot'%zvol], ['ssh', 'compute-0-3', 'zfs', 'receive', '-F', 'tank/%s'%zvol])
-
-        self.client.queue_connector.publish_message.assert_any_call(
-            {'action': 'sync_zvol', 'zvol':zvol, 'target':target}, 'reply_to', self.client.NODE_NAME, on_fail=ANY)
-        self.assertTrue(self.check_zvol_busy(zvol))
-        
-    def test_zvol_synced_success(self):
-        zvol = 'vol4_busy'
-        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
-        self.client.zvol_synced(
-            {'action': 'zvol_synced', 'status':'success', 'zvol':zvol},
-            BasicProperties(reply_to='reply_to', correlation_id='message_id'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'zvol_mapped', 'status': 'success', 'bdev': 'sdc'}, routing_key=u'reply_to', exchange='')
         self.assertFalse(self.check_zvol_busy(zvol))
 
     def test_zvol_mapped_got_error(self):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         self.client.zvol_mapped(
-            {'action': 'zvol_mapped', 'target':target, 'status':'error', 'error':'Some error'}, 
+            {'action': 'zvol_mapped', 'target':target, 'status':'error', 'error':'Some error'},
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_mapped', 'status': 'error', 'error': 'Error attaching iSCSI target to compute node: Some error'}, routing_key=u'reply_to', exchange='')
         self.assertTrue(self.check_zvol_busy(zvol)) # TODO IS THIS RIGHT?
-       
+
     def check_zvol_busy(self, zvol):
         with sqlite3.connect(self.client.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('SELECT count(*) from zvol_calls where zvol = ?',[zvol])
             num_rows = cur.fetchone()[0]
             return num_rows > 0
-        
+
 
 tgtadm_response = """
 Target 1: iqn.2001-04.com.nas-0-1-%s
@@ -300,7 +287,7 @@ Target 1: iqn.2001-04.com.nas-0-1-%s
             Readonly: No
             Backing store type: null
             Backing store path: None
-            Backing store flags: 
+            Backing store flags:
         LUN: 1
             Type: disk
             SCSI ID: IET     00010001
@@ -312,7 +299,7 @@ Target 1: iqn.2001-04.com.nas-0-1-%s
             Readonly: No
             Backing store type: rdwr
             Backing store path: /dev/tank/%s
-            Backing store flags: 
+            Backing store flags:
     Account information:
     ACL information:
         10.2.20.250"""

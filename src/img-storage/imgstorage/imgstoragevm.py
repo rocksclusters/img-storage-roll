@@ -65,6 +65,7 @@ import re
 import signal
 import sys
 import traceback
+import rocks.db.helper
 
 class VmDaemon():
 
@@ -76,6 +77,15 @@ class VmDaemon():
         self.pidfile_timeout = 5
         self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'list_dev':self.list_dev, 'sync_zvol':self.sync_zvol }
         self.logger = logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
+        self.sync_enabled = self.is_sync_enabled()
+
+    def is_sync_enabled(self):
+        db = rocks.db.helper.DatabaseHelper()
+        db.connect()
+        sync_enabled = db.getHostAttr(db.getHostname(), 'img_sync').lower() == 'true'
+        db.close()
+        return sync_enabled
+
 
     """
     Received map_zvol command from nas
@@ -88,14 +98,17 @@ class VmDaemon():
 
             if(message['target'] not in mappings.keys()): raise ActionError('Not found %s in targets'%message['target'])
 
-            bdev = mappings[message['target']]
+            bdev = '/dev/%s'%mappings[message['target']]
             zvol = message.get('zvol')
-            runCommand(['zfs', 'create', '-V', '%sgb'%message['size'], 'tank/%s'%zvol])
-            runCommand(['zfs', 'create', '-V', '10gb', 'tank/%s-temp-write'%zvol])
-            time.sleep(5)
-            runCommand(['dmsetup', 'create', '%s-snap'%zvol, 
-                '--table', '0 62914560 snapshot /dev/%s /dev/zvol/tank/%s-temp-write P 16'%(bdev, zvol)])
-            self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'bdev':'/dev/mapper/%s-snap'%zvol, 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+            if(self.sync_enabled):
+                runCommand(['zfs', 'create', '-V', '%sgb'%message['size'], 'tank/%s'%zvol])
+                runCommand(['zfs', 'create', '-V', '10gb', 'tank/%s-temp-write'%zvol])
+                time.sleep(5)
+                runCommand(['dmsetup', 'create', '%s-snap'%zvol,
+                    '--table', '0 62914560 snapshot %s /dev/zvol/tank/%s-temp-write P 16'%(bdev, zvol)])
+                bdev = '/dev/mapper/%s-snap'%zvol
+
+            self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'bdev':bdev, 'status':'success'}, props.reply_to, correlation_id=props.message_id)
 
             self.logger.debug('Successfully mapped %s to %s'%(message['target'], bdev))
         except ActionError, msg:
@@ -152,6 +165,7 @@ class VmDaemon():
         except ActionError, msg:
             self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
             self.logger.error('Error unmapping %s: %s'%(message['target'], str(msg)))
+
 
     def sync_zvol(self, message, props):
         zvol = message.get('zvol')
