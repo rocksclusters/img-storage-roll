@@ -2,7 +2,7 @@
 #
 #	/etc/rc.d/init.d/img-storage-nas
 #
-# chkconfig: 2345 20 80
+# chkconfig: 2345 80 80
 # pidfile: /var/run/imgstoragedaemon.pid
 
 # Source function library.

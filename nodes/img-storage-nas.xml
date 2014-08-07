@@ -29,6 +29,6 @@
 		mkdir /var/log/rocks
 		/sbin/chkconfig tgtd on
 		/sbin/chkconfig iscsid on
-		chkconfig --add img-storage-vm
+		/sbin/chkconfig img-storage-vm on
 	</post>
 </kickstart>

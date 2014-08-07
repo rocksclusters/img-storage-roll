@@ -33,7 +33,7 @@ chmod 400 /opt/rocks/etc/rabbitmq.conf
 </post>
 
 <post>
-rocks report databasesql img_manager | /opt/rocks/mysql/bin/mysql \
+/opt/rocks/bin/rocks report databasesql img_manager | /opt/rocks/mysql/bin/mysql \
         --defaults-extra-file=/root/.rocks.my.cnf --user=root cluster &gt;\
                 /tmp/kvm-database.log
 
