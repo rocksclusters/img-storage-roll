@@ -17,15 +17,15 @@
 	$Log$
 	</changelog>
 
-	<package>python-daemon</package>
-	<package>lockfile</package>
+	<package>foundation-sqlite</package>
+	<package>foundation-pysqlite</package>
+	<package>foundation-python-daemon</package>
+	<package>foundation-python-lockfile</package>
 	<package>img-storage-nas</package>
 	<package>scsi-target-utils</package>
 	<package>iscsi-initiator-utils</package>
 
 	<post>
-		yum install foundation-sqlite
-		yum install foundation-pysqlite
 		mkdir /var/log/rocks
 		/sbin/chkconfig tgtd on
 		/sbin/chkconfig iscsid on
