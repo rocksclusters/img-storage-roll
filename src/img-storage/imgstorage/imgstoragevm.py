@@ -109,7 +109,8 @@ class VmDaemon():
                     '--table', '0 62914560 snapshot %s /dev/zvol/tank/%s-temp-write P 16'%(bdev, zvol)])
                 bdev = '/dev/mapper/%s-snap'%zvol
 
-            self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'bdev':bdev, 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+            self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'bdev':bdev, 'status':'success'},
+                props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
 
             self.logger.debug('Successfully mapped %s to %s'%(message['target'], bdev))
         except ActionError, msg:
@@ -178,7 +179,7 @@ class VmDaemon():
         self.logger.debug("Syncing zvol %s"%zvol)
 
         try:
-            devsize = runCommand(['blockdev', '--getsize', '/dev/%s'%mappings[target]]).getvalue()
+            devsize = runCommand(['blockdev', '--getsize', '/dev/%s'%mappings[target]])[0]
             runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
             runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s snapshot-merge /dev/zvol/tank/%s /dev/zvol/tank/%s-temp-write P 16'%(devsize, zvol, zvol)])
             runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])

@@ -90,6 +90,7 @@ install:: build
 	#  $(myenv) $(PY.PATH) setup.py install --root=/
 	$(myenv) $(PY.PATH) setup.py install --root=$(ROOT)
 	install -m 755 init.d/img-storage-nas $(ROOT)/etc/rc.d/init.d/img-storage-nas -D
+	install -m 755 init.d/img-storage-sync $(ROOT)/etc/rc.d/init.d/img-storage-sync -D
 
 clean::
 	rm -rf build

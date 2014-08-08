@@ -83,7 +83,7 @@ class SyncDaemon():
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
         self.NODE_NAME = RabbitMQLocator.NODE_NAME
 
-        self.logger = logging.getLogger('imgstorage.imgstoragenas.SyncDaemon')
+        self.logger = logging.getLogger('imgstorage.imgstoragesync.SyncDaemon')
 
         db = rocks.db.helper.DatabaseHelper()
         db.connect()
@@ -111,12 +111,13 @@ class SyncDaemon():
 
             if(message['status'] == 'success'):
                 runCommand(['zfs', 'snap', 'tank/%s@initial_snapshot'%zvol])
-                runCommand(['zfs', 'send', 'tank/%s@initial_snapshot'%zvol], ['su', 'root', '-c', 'ssh compute-0-3 zfs receive -F tank/%s'%zvol])
+                runCommand(['zfs', 'send', 'tank/%s@initial_snapshot'%zvol], ['su', 'zfs', '-c', '/usr/bin/ssh compute-0-3 "/sbin/zfs receive -F tank/%s"'%zvol])
+                self.logger.debug('Done sync; sending message back to %s'%props.reply_to)
                 self.queue_connector.publish_message(
                     {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
                     props.reply_to, #reply back to compute node
                     self.NODE_NAME,
-                    on_fail=lambda: self.failAction(reply_to, 'sync_zvol', 'Compute node %s is unavailable to sync zvol %s'%(props.reply_to, zvol)))
+                    on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(props.reply_to, zvol)))
 
     # """
     # Received zvol_unmapped notification from compute node, passing to frontend

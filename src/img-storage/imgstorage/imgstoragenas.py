@@ -218,7 +218,7 @@ class NasDaemon():
                 if row[1] != None: raise ActionError('Error deleting zvol %s: is mapped'%zvol_name)
 
                 self.logger.debug("Invoking zfs destroy %s/%s"%(self.ZPOOL,zvol_name))
-                runCommand(['zfs', 'destroy', '%s/%s'%(self.ZPOOL, zvol_name)])
+                runCommand(['zfs', 'destroy', '%s/%s'%(self.ZPOOL, zvol_name), '-r'])
                 self.logger.debug('zfs destroy success %s'%zvol_name)
 
                 cur.execute('DELETE FROM zvols WHERE zvol = ?',[zvol_name])
