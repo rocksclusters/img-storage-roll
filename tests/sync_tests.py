@@ -27,11 +27,13 @@ class TestNasFunctions(unittest.TestCase):
                 return
         return MockRabbitMQCommonClient
 
-    @mock.patch('imgstorage.imgstoragenas.RabbitMQCommonClient')
-    def setUp(self, mock_rabbit):
+    @mock.patch('imgstorage.imgstoragesync.RabbitMQCommonClient')
+    @mock.patch('imgstorage.imgstoragevm.RabbitMQCommonClient')
+    def setUp(self, mock_rabbit_vm, mock_rabbit_sync):
         self.nas_client = SyncDaemon()
         self.vm_client = VmDaemon()
-        mock_rabbit.publish_message = MagicMock()
+        mock_rabbit_vm.publish_message = MagicMock()
+        mock_rabbit_sync.publish_message = MagicMock()
         self.nas_client.process_message = MagicMock()
         self.vm_client.process_message = MagicMock()
 
@@ -41,6 +43,8 @@ class TestNasFunctions(unittest.TestCase):
 
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
             cur = con.cursor()
+            cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
+            cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, remotehost TEXT)')
             cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol1', None, None))
             cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol2', 'iqn.2001-04.com.nas-0-1-vol2', 'nas-0-1'))
             cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol3_busy', 'iqn.2001-04.com.nas-0-1-vol3_busy', 'nas-0-1'))
@@ -53,24 +57,24 @@ class TestNasFunctions(unittest.TestCase):
         os.remove(self.nas_client.SQLITE_DB)
 
 
-    @mock.patch('imgstorage.imgstoragenas.runCommand')
+    @mock.patch('imgstorage.imgstoragesync.runCommand')
     def test_zvol_mapped_success(self, mockRunCommand):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
 
-        mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@initial_snapshot'%zvol])
-        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@initial_snapshot'%zvol], ['ssh', 'compute-0-3', 'zfs', 'receive', '-F', 'tank/%s'%zvol])
-
         self.nas_client.zvol_mapped(
             {'action': 'zvol_mapped', 'target':target, 'bdev': '/dev/mapper/%s-snap'%zvol, 'status':'success'},
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
+        mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@initial_snapshot'%zvol])
+        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@initial_snapshot'%zvol], ['ssh', 'compute-0-3', 'zfs', 'receive', '-F', 'tank/%s'%zvol])
+
+        print self.nas_client.queue_connector.publish_message.mock_calls
         self.nas_client.queue_connector.publish_message.assert_any_call(
             {'action': 'sync_zvol', 'zvol':zvol, 'target':target}, 'reply_to', self.nas_client.NODE_NAME, on_fail=ANY)
         self.assertTrue(self.check_zvol_busy(zvol))
 
 
-
-    @mock.patch('imgstorage.imgstoragevm.is_sync_enabled', return_value=True)
+    @mock.patch('imgstorage.imgstoragevm.VmDaemon.is_sync_enabled', return_value=True)
     def test_zvol_synced_success(self, mock_sync_enabled):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol

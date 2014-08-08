@@ -163,7 +163,9 @@ class NasDaemon():
                     self.release_zvol(zvol_name)
 
                 self.queue_connector.publish_message(
-                        {'action': 'map_zvol', 'target':iscsi_target, 'nas': ('%s.%s'%(self.NODE_NAME, self.ib_net)) if use_ib else self.NODE_NAME},
+                        {'action': 'map_zvol', 'target':iscsi_target, 
+                            'nas': ('%s.%s'%(self.NODE_NAME, self.ib_net)) if use_ib else self.NODE_NAME,
+                            'size': message['size'], 'zvol':zvol_name},
                         remotehost,
                         self.NODE_NAME,
                         on_fail=lambda: failDeliver(iscsi_target, zvol_name, props.reply_to, remotehost))

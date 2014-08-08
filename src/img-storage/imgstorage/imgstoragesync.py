@@ -107,7 +107,7 @@ class SyncDaemon():
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('SELECT zvol FROM zvols WHERE iscsi_target = ?',[target])
-            (zvol) = cur.fetchone()
+            [zvol] = cur.fetchone()
 
             if(message['status'] == 'success'):
                 runCommand(['zfs', 'snap', 'tank/%s@initial_snapshot'%zvol])
