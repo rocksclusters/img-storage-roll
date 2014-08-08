@@ -10,7 +10,7 @@ import mock
 from imgstorage.imgstoragevm import VmDaemon
 from imgstorage.rabbitmqclient import RabbitMQCommonClient
 from imgstorage import ActionError
-                           
+
 import uuid
 import time
 
@@ -26,7 +26,7 @@ class TestVmFunctions(unittest.TestCase):
             def publish_message(self, message, routing_key=None, reply_to=None, exchange=None, correlation_id=None, on_fail=None):
                 return
         return MockRabbitMQCommonClient
-    
+
     @mock.patch('imgstorage.imgstoragevm.RabbitMQCommonClient')
     def setUp(self, mock_rabbit):
         self.client = VmDaemon()
@@ -38,7 +38,8 @@ class TestVmFunctions(unittest.TestCase):
 
     """ Testing mapping of zvol """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
-    def test_map_zvol_createnew_success(self, mockRunCommand):
+    @mock.patch('imgstorage.imgstoragevm.is_sync_enabled', return_value=False)
+    def test_map_zvol_createnew_success(self, mockSyncEnabled, mockRunCommand):
         target = 'iqn.2001-04.com.nas-0-1-vol2'
         bdev = 'sdc'
 
@@ -55,7 +56,8 @@ class TestVmFunctions(unittest.TestCase):
 
     """ Testing mapping of zvol for missing block device """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
-    def test_map_zvol_createnew_missing_blkdev_error(self, mockRunCommand):
+    @mock.patch('imgstorage.imgstoragevm.is_sync_enabled', return_value=False)
+    def test_map_zvol_createnew_missing_blkdev_error(self, mockSyncEnabled, mockRunCommand):
         target = 'iqn.2001-04.com.nas-0-1-vol2'
         bdev = 'sdc'
 
@@ -64,8 +66,8 @@ class TestVmFunctions(unittest.TestCase):
             {'action': 'map_zvol', 'target':target, 'nas': 'nas-0-1'},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_mapped', 'status': 'error', 'target': target, 
-            'error': 'Not found %s in targets'%target}, 
+            {'action': 'zvol_mapped', 'status': 'error', 'target': target,
+            'error': 'Not found %s in targets'%target},
             'reply_to', correlation_id='message_id')
 
     """ Testing unmapping of zvol """
@@ -103,23 +105,49 @@ class TestVmFunctions(unittest.TestCase):
         def my_side_effect(*args, **kwargs):
             if args[0][:3] == ['iscsiadm', '-m', 'session']:    return StringIO(iscsiadm_session_response%(target, bdev))
             elif args[0][:3] == ['iscsiadm', '-m', 'discovery']:    return StringIO(iscsiadm_discovery_response%target) # find remote targets
-            elif args[0][:3] == ['iscsiadm', '-m', 'node']:    
-                raise ActionError('Some error happened') 
+            elif args[0][:3] == ['iscsiadm', '-m', 'node']:
+                raise ActionError('Some error happened')
 
         mockRunCommand.side_effect = my_side_effect
         self.client.unmap_zvol(
             {'action': 'unmap_zvol', 'target':target},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_unmapped', 'status': 'error', 'target': target, 'error': 'Some error happened'}, 
+            {'action': 'zvol_unmapped', 'status': 'error', 'target': target, 'error': 'Some error happened'},
             'reply_to', correlation_id='message_id')
         mockRunCommand.assert_called_with(['iscsiadm', '-m', 'node', '-T', target, '-u'])
 
+
+    """ Testing zvol sync """
+    @mock.patch('imgstorage.imgstoragevm.runCommand')
+    def test_sync_zvol_success(self, mockRunCommand):
+        zvol= 'vol2'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
+        bdev = 'sdc'
+        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
+        self.client.sync_zvol(
+            {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
+            BasicProperties(reply_to='reply_to', message_id='message_id'))
+        self.client.queue_connector.publish_message.assert_called_with(
+            {'action': 'zvol_synced', 'status': 'success', 'zvol': zvol},
+            'reply_to', correlation_id='message_id')
+        print(mockRunCommand.mock_calls)
+        mockRunCommand.assert_any_call(['blockdev', '--getsize', '/dev/%s'%bdev])
+        mockRunCommand.assert_any_call(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
+        mockRunCommand.assert_any_call(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 12345 snapshot-merge /dev/zvol/tank/%s /dev/zvol/tank/%s-temp-write P 16'%(zvol, zvol)])
+        mockRunCommand.assert_any_call(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
+        mockRunCommand.assert_any_call(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 12345 linear /dev/zvol/tank/%s 0'%(zvol)])
+        assert 8 == mockRunCommand.call_count # 6 + search blockdev
+
+
+
+
     def create_iscsiadm_side_effect(self, target, bdev):
         def iscsiadm_side_effect(*args, **kwargs):
-            if args[0][:3] == ['iscsiadm', '-m', 'session']:    return StringIO(iscsiadm_session_response%(target, bdev)) # list local devices
+            if args[0][:3] == ['iscsiadm', '-m', 'session']:        return StringIO(iscsiadm_session_response%(target, bdev)) # list local devices
             elif args[0][:3] == ['iscsiadm', '-m', 'discovery']:    return StringIO(iscsiadm_discovery_response%target) # find remote targets
-            elif args[0][:3] == ['iscsiadm', '-m', 'node']:    return StringIO('') # connect to iscsi target 
+            elif args[0][:3] == ['iscsiadm', '-m', 'node']:         return StringIO('') # connect to iscsi target
+            elif args[0][0] == 'blockdev':                          return StringIO('12345')
         return iscsiadm_side_effect
 
 iscsiadm_discovery_response = """
@@ -227,4 +255,3 @@ Target: %s
         scsi74 Channel 00 Id 0 Lun: 0
         scsi74 Channel 00 Id 0 Lun: 1
             Attached scsi disk %s      State: transport-offline"""
-

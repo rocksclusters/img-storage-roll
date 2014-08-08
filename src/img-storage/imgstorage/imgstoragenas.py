@@ -83,7 +83,7 @@ class NasDaemon():
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
         self.NODE_NAME = RabbitMQLocator().NODE_NAME
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
 
         db = rocks.db.helper.DatabaseHelper()
         db.connect()
@@ -163,7 +163,9 @@ class NasDaemon():
                     self.release_zvol(zvol_name)
 
                 self.queue_connector.publish_message(
-                        {'action': 'map_zvol', 'target':iscsi_target, 'nas': ('%s.%s'%(self.NODE_NAME, self.ib_net)) if use_ib else self.NODE_NAME},
+                        {'action': 'map_zvol', 'target':iscsi_target, 
+                            'nas': ('%s.%s'%(self.NODE_NAME, self.ib_net)) if use_ib else self.NODE_NAME,
+                            'size': message['size'], 'zvol':zvol_name},
                         remotehost,
                         self.NODE_NAME,
                         on_fail=lambda: failDeliver(iscsi_target, zvol_name, props.reply_to, remotehost))
@@ -308,16 +310,13 @@ class NasDaemon():
 
     def process_message(self, properties, message):
         self.logger.debug("Received message %s"%message)
-        if message['action'] not in self.function_dict.keys():
-            self.queue_connector.publish_message({'status': 'error', 'error':'action_unsupported'}, exchange='', routing_key=properties.reply_to)
-            return
 
-        try:
-            self.function_dict[message['action']](message, properties)
-        except:
-            self.logger.error("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
-            traceback.print_tb(sys.exc_info()[2])
-            self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[1].message}, exchange='', routing_key=properties.reply_to)
+        if message['action'] in self.function_dict.keys():
+            try:
+                self.function_dict[message['action']](message, properties)
+            except:
+                self.logger.exception("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
+                self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[1].message}, exchange='', routing_key=properties.reply_to)
 
     def stop(self):
         self.queue_connector.stop()

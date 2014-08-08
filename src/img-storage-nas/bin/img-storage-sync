@@ -54,9 +54,9 @@
 #
 # @Copyright@
 #
-from imgstorage.imgstoragevm import VmDaemon
+from imgstorage.imgstoragesync import SyncDaemon
 from imgstorage.imgstoragedaemon import *
 from imgstorage import *
 
-handler = setupLogger('imgstorage.imgstoragevm.VmDaemon')
-runDaemon(VmDaemon(), handler)
+handler = setupLogger('imgstorage.imgstoragenas.SyncDaemon')
+runDaemon(SyncDaemon(), handler)

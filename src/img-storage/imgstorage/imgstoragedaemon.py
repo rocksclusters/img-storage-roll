@@ -57,8 +57,7 @@ from daemon import runner
 import signal
 from imgstorage import *
 
-def runDaemon(app):
-    handler = setupLogger(app.__class__.__name__)
+def runDaemon(app, handler):
     daemon_runner = runner.DaemonRunner(app)
 
     #This ensures that the logger file handle does not get closed during daemonization

@@ -1,0 +1,46 @@
+#!/bin/bash
+#
+#	/etc/rc.d/init.d/img-storage-sync
+#
+# chkconfig: 2345 80 80
+# pidfile: /var/run/imgstoragedaemon.pid
+
+# Source function library.
+. /etc/init.d/functions
+
+start() {
+	echo -n "Starting img-storage-sync: "
+	/opt/rocks/bin/img-storage-sync start
+	touch /var/lock/subsys/img-storage-sync
+	return 0
+}
+
+stop() {
+	echo -n "Shutting down img-storage-sync: "
+	#img-storage-sync stop
+	killproc /opt/rocks/bin/img-storage-sync
+	rm -f /var/lock/subsys/img-storage-sync
+	return 0
+}
+
+case "$1" in
+    start)
+	start
+	;;
+    stop)
+	stop
+	;;
+    status)
+	#<report the status of the daemons in free-form format,
+	status img-storage-sync
+	;;
+    restart)
+    	stop
+	start
+	;;
+    *)
+	echo "Usage: img-storage-sync {start|stop|status|restart]"
+	exit 1
+	;;
+esac
+exit $?
