@@ -63,16 +63,15 @@ import uuid
 
 class RabbitMQLocator(object):
     LOGGER = logging.getLogger(__name__)
-
-    def __init__(self):
-        db = rocks.db.helper.DatabaseHelper()
-        db.connect()
-        self.NODE_NAME = db.getHostname()
-        self.RABBITMQ_URL = db.getHostAttr(db.getHostname(), 'rabbitmq_url')
-        db.close()
-        with open ("/opt/rocks/etc/rabbitmq.conf", "r") as rabbit_pw_file:
-            passwd=rabbit_pw_file.read().rstrip('\n')
-            self.RABBITMQ_URL = self.RABBITMQ_URL.replace('{pass}',passwd)
+    
+    db = rocks.db.helper.DatabaseHelper()
+    db.connect()
+    NODE_NAME = db.getHostname()
+    RABBITMQ_URL = db.getHostAttr(db.getHostname(), 'rabbitmq_url')
+    db.close()
+    with open ("/opt/rocks/etc/rabbitmq.conf", "r") as rabbit_pw_file:
+        passwd=rabbit_pw_file.read().rstrip('\n')
+        RABBITMQ_URL = RABBITMQ_URL.replace('{pass}',passwd)
 
 class RabbitMQCommonClient:
 

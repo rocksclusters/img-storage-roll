@@ -58,5 +58,5 @@ from imgstorage.imgstoragesync import SyncDaemon
 from imgstorage.imgstoragedaemon import *
 from imgstorage import *
 
-handler = setupLogger('imgstorage.imgstoragenas.SyncDaemon')
+handler = setupLogger('imgstorage.imgstoragesync.SyncDaemon')
 runDaemon(SyncDaemon(), handler)

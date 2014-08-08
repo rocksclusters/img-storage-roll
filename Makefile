@@ -66,36 +66,26 @@ default: roll
 all: base nas vm fe
 
 reall:
-	ssh nas-0-1 'service img-storage-nas restart'
-	ssh compute-0-2 'service img-storage-vm restart'
+	ssh nas-0-0 'service img-storage-nas restart'
 	ssh compute-0-3 'service img-storage-vm restart'
-	service img-storage-vm restart
 
 base:
 	cd src/img-storage && make rpm
-	scp RPMS/noarch/img-storage-6.2-0.noarch.rpm nas-0-1:
-	ssh nas-0-1 'yum reinstall ./img-storage-6.2-0.noarch.rpm'
-	scp RPMS/noarch/img-storage-6.2-0.noarch.rpm compute-0-2:
-	ssh compute-0-2 'yum reinstall ./img-storage-6.2-0.noarch.rpm'
+	scp RPMS/noarch/img-storage-6.2-0.noarch.rpm nas-0-0:
+	ssh nas-0-0 'yum reinstall ./img-storage-6.2-0.noarch.rpm'
 	scp RPMS/noarch/img-storage-6.2-0.noarch.rpm compute-0-3:
 	ssh compute-0-3 'yum reinstall ./img-storage-6.2-0.noarch.rpm'
 	yum reinstall RPMS/noarch/img-storage-6.2-0.noarch.rpm
 
 nas:
 	cd src/img-storage-nas && make rpm
-	scp RPMS/noarch/img-storage-nas-6.2-0.noarch.rpm zfs-0-0:
-	ssh zfs-0-0 'yum reinstall ./img-storage-nas-6.2-0.noarch.rpm'
-	ssh zfs-0-0 'service img-storage-nas restart'
-	scp RPMS/noarch/img-storage-nas-6.2-0.noarch.rpm nas-0-1:
-	ssh nas-0-1 'yum reinstall ./img-storage-nas-6.2-0.noarch.rpm'
-	ssh nas-0-1 'service img-storage-nas restart'
+	scp RPMS/noarch/img-storage-nas-6.2-0.noarch.rpm nas-0-0:
+	ssh nas-0-0 'yum reinstall ./img-storage-nas-6.2-0.noarch.rpm'
+	ssh nas-0-0 'service img-storage-nas restart'
 
 vm:
 	cd src/img-storage-vm && make rpm
-	scp RPMS/noarch/img-storage-vm-6.2-0.noarch.rpm compute-0-2:
 	scp RPMS/noarch/img-storage-vm-6.2-0.noarch.rpm compute-0-3:
-	ssh compute-0-2 'yum reinstall ./img-storage-vm-6.2-0.noarch.rpm'
-	ssh compute-0-2 'service img-storage-vm restart'
 	ssh compute-0-3 'yum reinstall ./img-storage-vm-6.2-0.noarch.rpm'
 	ssh compute-0-3 'service img-storage-vm restart'
 

@@ -54,7 +54,7 @@
 #
 # @Copyright@
 #
-from rabbitmqclient import RabbitMQCommonClient
+from rabbitmqclient import RabbitMQCommonClient, RabbitMQLocator
 from imgstorage import *
 import logging
 
@@ -70,6 +70,7 @@ import rocks.db.helper
 class VmDaemon():
 
     def __init__(self):
+        self.NODE_NAME = RabbitMQLocator.NODE_NAME
         self.stdin_path = '/dev/null'
         self.stdout_path = '/dev/null'
         self.stderr_path = '/tmp/err.log'
@@ -82,7 +83,7 @@ class VmDaemon():
     def is_sync_enabled(self):
         db = rocks.db.helper.DatabaseHelper()
         db.connect()
-        sync_enabled = db.getHostAttr(db.getHostname(), 'img_sync').lower() == 'true'
+        sync_enabled = False if db.getHostAttr(db.getHostname(), 'img_sync') is None else db.getHostAttr(db.getHostname(), 'img_sync').lower() == 'true'
         db.close()
         return sync_enabled
 

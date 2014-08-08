@@ -81,7 +81,7 @@ class NasDaemon():
 
         self.ZPOOL = 'tank'
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
-        self.NODE_NAME = RabbitMQLocator().NODE_NAME
+        self.NODE_NAME = RabbitMQLocator.NODE_NAME
 
         self.logger = logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
 

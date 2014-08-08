@@ -3,7 +3,7 @@
 #	/etc/rc.d/init.d/img-storage-sync
 #
 # chkconfig: 2345 80 80
-# pidfile: /var/run/imgstoragedaemon.pid
+# pidfile: /var/run/imgstoragesyncdaemon.pid
 
 # Source function library.
 . /etc/init.d/functions
