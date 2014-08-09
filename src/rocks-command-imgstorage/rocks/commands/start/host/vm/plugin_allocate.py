@@ -2,13 +2,13 @@
 # 
 # @Copyright@
 # 
-# 				Rocks(r)
-# 		         www.rocksclusters.org
-# 		         version 5.6 (Emerald Boa)
-# 		         version 6.1 (Emerald Boa)
+#               Rocks(r)
+#                www.rocksclusters.org
+#                version 5.6 (Emerald Boa)
+#                version 6.1 (Emerald Boa)
 # 
 # Copyright (c) 2000 - 2013 The Regents of the University of California.
-# All rights reserved.	
+# All rights reserved.  
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -25,9 +25,9 @@
 # 3. All advertising and press materials, printed or electronic, mentioning
 # features or use of this software must display the following acknowledgement: 
 # 
-# 	"This product includes software developed by the Rocks(r)
-# 	Cluster Group at the San Diego Supercomputer Center at the
-# 	University of California, San Diego and its contributors."
+#   "This product includes software developed by the Rocks(r)
+#   Cluster Group at the San Diego Supercomputer Center at the
+#   University of California, San Diego and its contributors."
 # 
 # 4. Except as permitted for the purposes of acknowledgment in paragraph 3,
 # neither the name or logo of this software nor the names of its
@@ -63,28 +63,30 @@ from imgstorage.commandlauncher import CommandLauncher
 
 class Plugin(rocks.commands.Plugin):
 
-	def provides(self):
-		return 'plugin_allocate'
+    def provides(self):
+        return 'plugin_allocate'
 
-	def run(self, node):
-		# here you can relocate your VM in rocks DB
-		# node is of type rocks.db.mappings.base.Node
-		if not node.vm_defs.physNode or len(node.vm_defs.disks) <= 0:
-			# TODO maybe we should fail
-			print "Unable to allocate storage for ", node.name
-			return
-		disk = node.vm_defs.disks[0]
-		phys = node.vm_defs.physNode.name
-		size = str(disk.size)
-		volume = node.name + '-vol'
-		nas_name = disk.img_nas_server.server_name
-		device = CommandLauncher().callAddHostStoragemap(nas_name, volume, phys, size)
-		disk.vbd_type = "phy"
-		#disk.prefix = os.path.dirname(device)
-		disk.prefix = '/dev/'
-		disk.name = os.path.basename(device)
-		print "mapping done on ", volume, " device ", device
-		return
+    def run(self, node):
+        # here you can relocate your VM in rocks DB
+        # node is of type rocks.db.mappings.base.Node
+        if not node.vm_defs.physNode or len(node.vm_defs.disks) <= 0:
+            # TODO maybe we should fail
+            print "Unable to allocate storage for ", node.name
+            return
+        disk = node.vm_defs.disks[0]
+        phys = node.vm_defs.physNode.name
+        size = str(disk.size)
+        volume = node.name + '-vol'
+        if not disk.img_nas_server:
+            raise rocks.util.CommandError("NAS value is not set. Unable to start vm.")
+        nas_name = disk.img_nas_server.server_name
+        device = CommandLauncher().callAddHostStoragemap(nas_name, volume, phys, size)
+        disk.vbd_type = "phy"
+        disk.prefix = os.path.dirname(device)
+        #disk.prefix = '/dev/'
+        disk.name = os.path.basename(device)
+        print "mapping done on ", volume, " device ", device
+        return
 
 
 

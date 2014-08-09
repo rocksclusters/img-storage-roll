@@ -74,8 +74,10 @@ class TestNasFunctions(unittest.TestCase):
         self.assertTrue(self.check_zvol_busy(zvol))
 
 
+    @mock.patch('imgstorage.find_iscsi_target_num', return_value=1)
     @mock.patch('imgstorage.imgstoragevm.VmDaemon.is_sync_enabled', return_value=True)
-    def test_zvol_synced_success(self, mock_sync_enabled):
+    @mock.patch('imgstorage.imgstoragesync.runCommand')
+    def test_zvol_synced_success(self, mock_run_command, mock_sync_enabled, mock_target_num):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         self.nas_client.zvol_synced(

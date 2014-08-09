@@ -162,8 +162,12 @@ class VmDaemon():
         mappings_map = self.get_blk_dev_list()
 
         try:
-           if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
-                self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+            #if(self.sync_enabled):
+                #runCommand(['dmsetup', 'remove', ''])
+                pass
+            #else:
+                if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
+                    self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
         except ActionError, msg:
             self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
             self.logger.error('Error unmapping %s: %s'%(message['target'], str(msg)))
@@ -187,6 +191,8 @@ class VmDaemon():
             runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
             runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s linear /dev/zvol/tank/%s 0'%(devsize, zvol)])
             runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
+            runCommand(['zfs', 'destroy', 'tank/%s-temp-write'%zvol])
+            self.disconnect_iscsi(message['target'])
 
             self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'success'}, props.reply_to, correlation_id=props.message_id)
         except ActionError, msg:

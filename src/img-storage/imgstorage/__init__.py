@@ -88,8 +88,18 @@ def setupLogger(logger):
     handler = logging.FileHandler("/var/log/rocks/img-storage.log")
     handler.setFormatter(formatter)
 
-    for log_name in (logger, 'pika.channel', 'pika.connection', 'rabbit_client.RabbitMQClient'):
+    #for log_name in (logger, 'pika.channel', 'pika.connection', 'rabbit_client.RabbitMQClient'):
+    for log_name in ([logger]):
         logging.getLogger(log_name).setLevel(logging.DEBUG)
         logging.getLogger(log_name).addHandler(handler)
 
     return handler
+
+def find_iscsi_target_num(target):
+    out = runCommand(['tgtadm', '--op', 'show', '--mode', 'target'])
+    for line in out:
+        if line.startswith('Target ') and line.split()[2] == target:
+            tgt_num = line.split()[1][:-1]
+            return tgt_num
+    return None
+

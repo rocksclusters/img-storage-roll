@@ -55,7 +55,7 @@
 # @Copyright@
 #
 from rabbitmqclient import RabbitMQCommonClient, RabbitMQLocator
-from imgstorage import runCommand, ActionError, ZvolBusyActionError
+from imgstorage import runCommand, ActionError, ZvolBusyActionError, find_iscsi_target_num
 import logging
 
 import traceback
@@ -187,7 +187,7 @@ class NasDaemon():
                 row = cur.fetchone()
                 if row == None: raise ActionError('ZVol %s not found in database'%zvol_name)
                 if row[1] == None: raise ActionError('ZVol %s is not mapped'%zvol_name)
-                if self.find_iscsi_target_num(row[1]) == None: raise ActionError('iSCSI target does not exist for ZVol %s'%zvol_name)
+                if find_iscsi_target_num(row[1]) == None: raise ActionError('iSCSI target does not exist for ZVol %s'%zvol_name)
 
                 self.lock_zvol(zvol_name, props.reply_to)
                 self.queue_connector.publish_message(
@@ -283,22 +283,12 @@ class NasDaemon():
 
     def detach_target(self, target):
         with sqlite3.connect(self.SQLITE_DB) as con:
-            tgt_num = self.find_iscsi_target_num(target)
+            tgt_num = find_iscsi_target_num(target)
             runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num])# remove iscsi target
 
             cur = con.cursor()
             cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
             con.commit()
-
-    def find_iscsi_target_num(self, target):
-        out = runCommand(['tgtadm', '--op', 'show', '--mode', 'target'])
-        self.logger.debug("Looking for target's number in output of tgtadm")
-        for line in out:
-            if line.startswith('Target ') and line.split()[2] == target:
-                tgt_num = line.split()[1][:-1]
-                self.logger.debug("target number is %s"%tgt_num)
-                return tgt_num
-        return None
 
     def list_zvols(self, message, properties):
         with sqlite3.connect(self.SQLITE_DB) as con:

@@ -55,7 +55,7 @@
 # @Copyright@
 #
 from rabbitmqclient import RabbitMQCommonClient, RabbitMQLocator
-from imgstorage import runCommand, ActionError, ZvolBusyActionError
+from imgstorage import runCommand, ActionError, ZvolBusyActionError, find_iscsi_target_num
 import logging
 
 import traceback
@@ -150,11 +150,26 @@ class SyncDaemon():
     #         self.failAction(reply_to, 'zvol_unmapped', str(err))
 
 
+    def detach_target(self, target):
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            tgt_num = find_iscsi_target_num(target)
+            runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num])# remove iscsi target
+
+            cur = con.cursor()
+            cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
+            con.commit()
+
+
     """
     Received zvol_synced notification from compute node
     """
     def zvol_synced(self, message, props):
-        self.release_zvol(message['zvol'])
+        zvol = message['zvol']
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?',[zvol])
+            [target] = cur.fetchone()    
+            self.detach_target(target)
 
     def process_message(self, properties, message):
         self.logger.debug("Received message %s"%message)

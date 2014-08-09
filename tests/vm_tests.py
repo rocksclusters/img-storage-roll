@@ -38,7 +38,7 @@ class TestVmFunctions(unittest.TestCase):
 
     """ Testing mapping of zvol """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
-    @mock.patch('imgstorage.imgstoragevm.is_sync_enabled', return_value=False)
+    @mock.patch('imgstorage.imgstoragevm.VmDaemon.is_sync_enabled', return_value=False)
     def test_map_zvol_createnew_success(self, mockSyncEnabled, mockRunCommand):
         target = 'iqn.2001-04.com.nas-0-1-vol2'
         bdev = 'sdc'
@@ -56,7 +56,7 @@ class TestVmFunctions(unittest.TestCase):
 
     """ Testing mapping of zvol for missing block device """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
-    @mock.patch('imgstorage.imgstoragevm.is_sync_enabled', return_value=False)
+    @mock.patch('imgstorage.imgstoragevm.VmDaemon.is_sync_enabled', return_value=False)
     def test_map_zvol_createnew_missing_blkdev_error(self, mockSyncEnabled, mockRunCommand):
         target = 'iqn.2001-04.com.nas-0-1-vol2'
         bdev = 'sdc'
