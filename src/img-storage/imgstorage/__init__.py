@@ -95,11 +95,3 @@ def setupLogger(logger):
 
     return handler
 
-def find_iscsi_target_num(target):
-    out = runCommand(['tgtadm', '--op', 'show', '--mode', 'target'])
-    for line in out:
-        if line.startswith('Target ') and line.split()[2] == target:
-            tgt_num = line.split()[1][:-1]
-            return tgt_num
-    return None
-

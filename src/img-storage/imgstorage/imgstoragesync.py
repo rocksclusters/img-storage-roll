@@ -55,7 +55,7 @@
 # @Copyright@
 #
 from rabbitmqclient import RabbitMQCommonClient, RabbitMQLocator
-from imgstorage import runCommand, ActionError, ZvolBusyActionError, find_iscsi_target_num
+from imgstorage import runCommand, ActionError, ZvolBusyActionError
 import logging
 
 import traceback
@@ -152,7 +152,7 @@ class SyncDaemon():
 
     def detach_target(self, target):
         with sqlite3.connect(self.SQLITE_DB) as con:
-            tgt_num = find_iscsi_target_num(target)
+            tgt_num = self.find_iscsi_target_num(target)
             runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num])# remove iscsi target
 
             cur = con.cursor()
@@ -197,3 +197,13 @@ class SyncDaemon():
             cur = con.cursor()
             cur.execute('DELETE FROM zvol_calls WHERE zvol = ?',[zvol])
             con.commit()
+
+
+    def find_iscsi_target_num(self, target):
+        out = runCommand(['tgtadm', '--op', 'show', '--mode', 'target'])
+        for line in out:
+            if line.startswith('Target ') and line.split()[2] == target:
+                tgt_num = line.split()[1][:-1]
+                return tgt_num
+        return None
+

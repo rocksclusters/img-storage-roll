@@ -164,8 +164,10 @@ class VmDaemon():
         try:
             #if(self.sync_enabled):
                 #runCommand(['dmsetup', 'remove', ''])
-                pass
+                #pass
             #else:
+                print message['target'] not in mappings_map.keys()
+                print self.disconnect_iscsi(message['target'])
                 if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
                     self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
         except ActionError, msg:

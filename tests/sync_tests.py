@@ -65,21 +65,21 @@ class TestNasFunctions(unittest.TestCase):
         self.nas_client.zvol_mapped(
             {'action': 'zvol_mapped', 'target':target, 'bdev': '/dev/mapper/%s-snap'%zvol, 'status':'success'},
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
+        print mockRunCommand.mock_calls
         mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@initial_snapshot'%zvol])
-        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@initial_snapshot'%zvol], ['ssh', 'compute-0-3', 'zfs', 'receive', '-F', 'tank/%s'%zvol])
+        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@initial_snapshot'%zvol], ['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3 "/sbin/zfs receive -F tank/%s"'%zvol])
 
-        print self.nas_client.queue_connector.publish_message.mock_calls
         self.nas_client.queue_connector.publish_message.assert_any_call(
             {'action': 'sync_zvol', 'zvol':zvol, 'target':target}, 'reply_to', self.nas_client.NODE_NAME, on_fail=ANY)
         self.assertTrue(self.check_zvol_busy(zvol))
 
 
-    @mock.patch('imgstorage.find_iscsi_target_num', return_value=1)
     @mock.patch('imgstorage.imgstoragevm.VmDaemon.is_sync_enabled', return_value=True)
     @mock.patch('imgstorage.imgstoragesync.runCommand')
-    def test_zvol_synced_success(self, mock_run_command, mock_sync_enabled, mock_target_num):
-        zvol = 'vol4_busy'
+    def test_zvol_synced_success(self, mock_run_command, mock_sync_enabled):
+        zvol = 'vol2'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
+        mock_run_command.return_value = (iscsiadm_session_response%(target, zvol)).splitlines()
         self.nas_client.zvol_synced(
             {'action': 'zvol_synced', 'status':'success', 'zvol':zvol},
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
@@ -148,3 +148,105 @@ Using transport: iscsi
 Creating new target (name=iqn.2001-04.com.nas-0-1-%s, tid=1)
 Adding a logical unit (/dev/tank/%s) to target, tid=1
 Accepting connections only from 10.1.1.1"""
+
+iscsiadm_session_response = """
+iSCSI Transport Class version 2.0-870
+version 6.2.0-873.10.el6
+Target: iqn.2001-04.com.nas-0-1-compute-0-2-0-vol
+    Current Portal: 10.2.20.254:3260,1
+    Persistent Portal: 10.2.20.254:3260,1
+        **********
+        Interface:
+        **********
+        Iface Name: default
+        Iface Transport: tcp
+        Iface Initiatorname: iqn.1994-05.com.redhat:6453f1cc15cf
+        Iface IPaddress: 10.2.20.252
+        Iface HWaddress: <empty>
+        Iface Netdev: <empty>
+        SID: 49
+        iSCSI Connection State: LOGGED IN
+        iSCSI Session State: LOGGED_IN
+        Internal iscsid Session State: NO CHANGE
+        *********
+        Timeouts:
+        *********
+        Recovery Timeout: 120
+        Target Reset Timeout: 30
+        LUN Reset Timeout: 30
+        Abort Timeout: 15
+        *****
+        CHAP:
+        *****
+        username: <empty>
+        password: ********
+        username_in: <empty>
+        password_in: ********
+        ************************
+        Negotiated iSCSI params:
+        ************************
+        HeaderDigest: None
+        DataDigest: None
+        MaxRecvDataSegmentLength: 262144
+        MaxXmitDataSegmentLength: 8192
+        FirstBurstLength: 65536
+        MaxBurstLength: 262144
+        ImmediateData: Yes
+        InitialR2T: Yes
+        MaxOutstandingR2T: 1
+        ************************
+        Attached SCSI devices:
+        ************************
+        Host Number: 54 State: running
+        scsi54 Channel 00 Id 0 Lun: 0
+        scsi54 Channel 00 Id 0 Lun: 1
+            Attached scsi disk sdb      State: running
+Target: %s
+    Current Portal: 10.2.20.247:3260,1
+    Persistent Portal: 10.2.20.247:3260,1
+        **********
+        Interface:
+        **********
+        Iface Name: default
+        Iface Transport: tcp
+        Iface Initiatorname: iqn.1994-05.com.redhat:6453f1cc15cf
+        Iface IPaddress: <empty>
+        Iface HWaddress: <empty>
+        Iface Netdev: <empty>
+        SID: 69
+        iSCSI Connection State: TRANSPORT WAIT
+        iSCSI Session State: FREE
+        Internal iscsid Session State: REOPEN
+        *********
+        Timeouts:
+        *********
+        Recovery Timeout: 120
+        Target Reset Timeout: 30
+        LUN Reset Timeout: 30
+        Abort Timeout: 15
+        *****
+        CHAP:
+        *****
+        username: <empty>
+        password: ********
+        username_in: <empty>
+        password_in: ********
+        ************************
+        Negotiated iSCSI params:
+        ************************
+        HeaderDigest: None
+        DataDigest: None
+        MaxRecvDataSegmentLength: 262144
+        MaxXmitDataSegmentLength: 8192
+        FirstBurstLength: 65536
+        MaxBurstLength: 262144
+        ImmediateData: Yes
+        InitialR2T: Yes
+        MaxOutstandingR2T: 1
+        ************************
+        Attached SCSI devices:
+        ************************
+        Host Number: 74 State: running
+        scsi74 Channel 00 Id 0 Lun: 0
+        scsi74 Channel 00 Id 0 Lun: 1
+            Attached scsi disk %s      State: transport-offline"""

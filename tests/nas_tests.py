@@ -9,7 +9,6 @@ from mock import MagicMock, ANY
 import mock
 from imgstorage.imgstoragenas import NasDaemon
 from imgstorage.rabbitmqclient import RabbitMQCommonClient
-from imgstorage import find_iscsi_target_num
 
 import uuid
 import time
@@ -131,7 +130,7 @@ class TestNasFunctions(unittest.TestCase):
         self.assertTrue(self.check_zvol_busy(zvol))
 
 
-    @mock.patch('imgstorage.runCommand')
+    @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_teardown_busy(self, mockRunCommand):
         zvol = 'vol3_busy'
         mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
@@ -198,20 +197,20 @@ class TestNasFunctions(unittest.TestCase):
             routing_key='reply_to', exchange='')
         self.assertFalse(self.check_zvol_busy(zvol))
 
-    @mock.patch('imgstorage.runCommand')
+    @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_find_iscsi_target_num_not_found(self, mockRunCommand):
         zvol = 'vol1'
         target = 'not_found_iqn.2001-04.com.nas-0-1-%s'%zvol
         mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
-        self.assertEqual(find_iscsi_target_num(target), None)
+        self.assertEqual(self.client.find_iscsi_target_num(target), None)
 
 
-    @mock.patch('imgstorage.runCommand')
+    @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_find_iscsi_target_num_success(self, mockRunCommand):
         zvol = 'vol1'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
-        self.assertEqual(find_iscsi_target_num(target), '1')
+        self.assertEqual(self.client.find_iscsi_target_num(target), '1')
 
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')

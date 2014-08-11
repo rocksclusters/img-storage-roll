@@ -48,7 +48,7 @@ class TestVmFunctions(unittest.TestCase):
             {'action': 'map_zvol', 'target':target, 'nas': 'nas-0-1'},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_mapped', 'status': 'success', 'bdev': bdev, 'target': target}, 'reply_to', correlation_id='message_id')
+            {'action': 'zvol_mapped', 'status': 'success', 'bdev': '/dev/%s'%bdev, 'target': target}, 'reply_to', reply_to=self.client.NODE_NAME, correlation_id='message_id')
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'discovery', '-t', 'sendtargets', '-p', 'nas-0-1'])
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'node', '-T', target, '-p', 'nas-0-1', '-l'])
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'session', '-P3'])
@@ -80,9 +80,11 @@ class TestVmFunctions(unittest.TestCase):
         self.client.unmap_zvol(
             {'action': 'unmap_zvol', 'target':target},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
+        print self.client.queue_connector.publish_message.mock_calls
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_unmapped', 'status': 'success', 'target': target}, 'reply_to', correlation_id='message_id')
-        mockRunCommand.assert_called_with(['iscsiadm', '-m', 'node', '-T', target, '-u'])
+        mockRunCommand.assert_any_call(['iscsiadm', '-m', 'node', '-T', target, '-u'])
+        mockRunCommand.assert_any_call(['iscsiadm', '-m', 'session', '-P3'])
 
     """ Testing unmapping of zvol when not found - still returns success """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
@@ -92,10 +94,13 @@ class TestVmFunctions(unittest.TestCase):
 
         mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
         self.client.unmap_zvol(
-            {'action': 'unmap_zvol', 'target':target},
+            {'action': 'unmap_zvol', 'target':target+"not_found"},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
+        print self.client.queue_connector.publish_message.mock_calls
+
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_unmapped', 'status': 'success', 'target': target}, 'reply_to', correlation_id='message_id')
+            {'action': 'zvol_unmapped', 'status': 'success', 'target': target+"not_found"}, 'reply_to', correlation_id='message_id')
+
 
     """ Testing unmapping of zvol with error from system call """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
@@ -131,23 +136,22 @@ class TestVmFunctions(unittest.TestCase):
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_synced', 'status': 'success', 'zvol': zvol},
             'reply_to', correlation_id='message_id')
-        print(mockRunCommand.mock_calls)
+        mockRunCommand.assert_any_call(['iscsiadm', '-m', 'session', '-P3'])
         mockRunCommand.assert_any_call(['blockdev', '--getsize', '/dev/%s'%bdev])
         mockRunCommand.assert_any_call(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
         mockRunCommand.assert_any_call(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 12345 snapshot-merge /dev/zvol/tank/%s /dev/zvol/tank/%s-temp-write P 16'%(zvol, zvol)])
         mockRunCommand.assert_any_call(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
         mockRunCommand.assert_any_call(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 12345 linear /dev/zvol/tank/%s 0'%(zvol)])
-        assert 8 == mockRunCommand.call_count # 6 + search blockdev
-
-
-
+        mockRunCommand.assert_any_call(['zfs', 'destroy', 'tank/vol2-temp-write'])
+        mockRunCommand.assert_any_call(['iscsiadm', '-m', 'node', '-T', 'iqn.2001-04.com.nas-0-1-vol2', '-u'])
+        assert 10 == mockRunCommand.call_count
 
     def create_iscsiadm_side_effect(self, target, bdev):
         def iscsiadm_side_effect(*args, **kwargs):
-            if args[0][:3] == ['iscsiadm', '-m', 'session']:        return StringIO(iscsiadm_session_response%(target, bdev)) # list local devices
-            elif args[0][:3] == ['iscsiadm', '-m', 'discovery']:    return StringIO(iscsiadm_discovery_response%target) # find remote targets
-            elif args[0][:3] == ['iscsiadm', '-m', 'node']:         return StringIO('') # connect to iscsi target
-            elif args[0][0] == 'blockdev':                          return StringIO('12345')
+            if args[0][:3] == ['iscsiadm', '-m', 'session']:        return (iscsiadm_session_response%(target, bdev)).splitlines() # list local devices
+            elif args[0][:3] == ['iscsiadm', '-m', 'discovery']:    return (iscsiadm_discovery_response%target).splitlines() # find remote targets
+            elif args[0][:3] == ['iscsiadm', '-m', 'node']:         return '\n'.splitlines() # connect to iscsi target
+            elif args[0][0] == 'blockdev':                          return '12345'.splitlines()
         return iscsiadm_side_effect
 
 iscsiadm_discovery_response = """
