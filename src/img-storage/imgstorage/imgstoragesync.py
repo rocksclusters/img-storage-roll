@@ -89,6 +89,7 @@ class SyncDaemon():
         db.connect()
         self.ib_net = db.getHostAttr(db.getHostname(), 'IB_net')
         db.close()
+        db.closeSession()
 
     def run(self):
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message)
@@ -109,7 +110,13 @@ class SyncDaemon():
             cur.execute('SELECT zvol FROM zvols WHERE iscsi_target = ?',[target])
             [zvol] = cur.fetchone()
 
-            if(message['status'] == 'success'):
+            db = rocks.db.helper.DatabaseHelper()
+            db.connect()
+            is_sync_node = db.getHostAttr(props.reply_to, 'img_sync')
+            db.close()
+ 
+
+            if(is_sync_node and message['status'] == 'success'):
                 runCommand(['zfs', 'snap', 'tank/%s@initial_snapshot'%zvol])
                 runCommand(['zfs', 'send', 'tank/%s@initial_snapshot'%zvol], ['su', 'zfs', '-c', '/usr/bin/ssh compute-0-3 "/sbin/zfs receive -F tank/%s"'%zvol])
                 self.logger.debug('Done sync; sending message back to %s'%props.reply_to)
