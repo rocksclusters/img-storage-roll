@@ -80,6 +80,8 @@ class VmDaemon():
         self.logger = logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
         self.sync_enabled = self.is_sync_enabled()
 
+        rocks.db.helper.DatabaseHelper().closeSession() # to reopen after daemonization
+
     def is_sync_enabled(self):
         db = rocks.db.helper.DatabaseHelper()
         db.connect()
@@ -106,7 +108,7 @@ class VmDaemon():
                 runCommand(['zfs', 'create', '-V', '10gb', 'tank/%s-temp-write'%zvol])
                 time.sleep(5)
                 runCommand(['dmsetup', 'create', '%s-snap'%zvol,
-                    '--table', '0 62914560 snapshot %s /dev/zvol/tank/%s-temp-write P 16'%(bdev, zvol)])
+                    '--table', '0 20971520 snapshot %s /dev/zvol/tank/%s-temp-write P 16'%(bdev, zvol)]) # 10GB temp
                 bdev = '/dev/mapper/%s-snap'%zvol
 
             self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'bdev':bdev, 'status':'success'},
@@ -115,7 +117,7 @@ class VmDaemon():
             self.logger.debug('Successfully mapped %s to %s'%(message['target'], bdev))
         except ActionError, msg:
             self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
-            self.logger.error('Error mapping %s: %s'%(message['target'], str(msg)))
+            self.logger.exception('Error mapping %s: %s'%(message['target'], str(msg)))
 
 
     def list_dev(self, message, props):
@@ -158,20 +160,21 @@ class VmDaemon():
     """
     def unmap_zvol(self, message, props):
         self.logger.debug("Tearing down zvol %s"%message['target'])
-
+        zvol = message['zvol']
         mappings_map = self.get_blk_dev_list()
 
         try:
-            #if(self.sync_enabled):
-                #runCommand(['dmsetup', 'remove', ''])
-                #pass
-            #else:
-                print message['target'] not in mappings_map.keys()
-                print self.disconnect_iscsi(message['target'])
+            if(self.sync_enabled):
+                try:
+                    runCommand(['dmsetup', 'remove', '%s-snap'%zvol])
+                except ActionError, msg:
+                    self.logger.exception(msg)
+                self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+            else:
                 if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
-                    self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+                    self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, correlation_id=props.message_id)
         except ActionError, msg:
-            self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
+            self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
             self.logger.error('Error unmapping %s: %s'%(message['target'], str(msg)))
 
 

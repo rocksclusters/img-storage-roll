@@ -82,13 +82,11 @@ class NasDaemon():
         self.ZPOOL = 'tank'
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
         self.NODE_NAME = RabbitMQLocator.NODE_NAME
+        self.ib_net = RabbitMQLocator.IB_NET
+
+        rocks.db.helper.DatabaseHelper().closeSession() # to reopen after daemonization
 
         self.logger = logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
-
-        db = rocks.db.helper.DatabaseHelper()
-        db.connect()
-        self.ib_net = db.getHostAttr(db.getHostname(), 'IB_net')
-        db.close()
 
     def run(self):
         with sqlite3.connect(self.SQLITE_DB) as con:
@@ -158,7 +156,7 @@ class NasDaemon():
                 con.commit()
 
                 def failDeliver(target, zvol, reply_to, remotehost):
-                    self.detach_target(target)
+                    self.detach_target(target, zvol)
                     self.failAction(props.reply_to, 'zvol_mapped', 'Compute node %s is unavailable'%remotehost)
                     self.release_zvol(zvol_name)
 
@@ -180,21 +178,22 @@ class NasDaemon():
     def unmap_zvol(self, message, props):
         zvol_name = message['zvol']
         self.logger.debug("Tearing down zvol %s"%zvol_name)
+
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             try :
                 cur.execute('SELECT remotehost, iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
                 row = cur.fetchone()
                 if row == None: raise ActionError('ZVol %s not found in database'%zvol_name)
-                if row[1] == None: raise ActionError('ZVol %s is not mapped'%zvol_name)
-                if self.find_iscsi_target_num(row[1]) == None: raise ActionError('iSCSI target does not exist for ZVol %s'%zvol_name)
+                remotehost, target = row
+                if remotehost == None: raise ActionError('ZVol %s is not mapped'%zvol_name)
 
                 self.lock_zvol(zvol_name, props.reply_to)
                 self.queue_connector.publish_message(
-                        {'action': 'unmap_zvol', 'target':row[1]},
-                        row[0],
+                        {'action': 'unmap_zvol', 'target':target, 'zvol':zvol_name},
+                        remotehost,
                         self.NODE_NAME,
-                        on_fail=lambda: self.failAction(props.reply_to, 'zvol_unmapped', 'Compute node %s is unavailable'%row[0])
+                        on_fail=lambda: self.failAction(props.reply_to, 'zvol_unmapped', 'Compute node %s is unavailable'%remotehost)
                 )
                 self.logger.debug("Tearing down zvol %s sent"%zvol_name)
 
@@ -256,9 +255,9 @@ class NasDaemon():
     """
     def zvol_unmapped(self, message, props):
         target = message['target']
+        zvol = message['zvol']
         self.logger.debug("Got zvol %s unmapped message"%(target))
 
-        zvol = None
         reply_to = None
 
         try:
@@ -266,13 +265,13 @@ class NasDaemon():
                 cur = con.cursor()
 
                 # get request destination
-                cur.execute('SELECT reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
-                reply_to, zvol = cur.fetchone()
+                cur.execute('SELECT reply_to FROM zvol_calls WHERE zvol = ?',[zvol])
+                [reply_to] = cur.fetchone()
 
                 if(message['status'] == 'error'):
                     raise ActionError('Error detaching iSCSI target from compute node: %s'%message.get('error'))
 
-                self.detach_target(target)
+                self.detach_target(target, zvol)
 
                 self.release_zvol(zvol)
                 self.queue_connector.publish_message({'action': 'zvol_unmapped', 'status': 'success'}, exchange='', routing_key=reply_to)
@@ -281,13 +280,14 @@ class NasDaemon():
             self.release_zvol(zvol)
             self.failAction(reply_to, 'zvol_unmapped', str(err))
 
-    def detach_target(self, target):
+    def detach_target(self, target, zvol):
         with sqlite3.connect(self.SQLITE_DB) as con:
-            tgt_num = self.find_iscsi_target_num(target)
-            runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num])# remove iscsi target
+            if(target):
+                tgt_num = self.find_iscsi_target_num(target)
+                runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num])# remove iscsi target
 
             cur = con.cursor()
-            cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
+            cur.execute('UPDATE zvols SET iscsi_target = NULL, remotehost = NULL where zvol = ?',[zvol])
             con.commit()
 
     def list_zvols(self, message, properties):
@@ -335,3 +335,10 @@ class NasDaemon():
                 return tgt_num
         return None
 
+    """ Get information from attributes if image sync is enabled for the node """
+    def is_sync_node(self, remotehost):
+        db = rocks.db.helper.DatabaseHelper()
+        db.connect()
+        is_sync_node = db.getHostAttr(remotehost, 'img_sync')
+        db.close()
+        return is_sync_node

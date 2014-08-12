@@ -58,20 +58,39 @@ class TestNasFunctions(unittest.TestCase):
 
 
     @mock.patch('imgstorage.imgstoragesync.runCommand')
-    def test_zvol_mapped_success(self, mockRunCommand):
+    @mock.patch('imgstorage.imgstoragesync.uuid.uuid1', return_value = 'c83c3476-21a8-11e4-8eea-80000048fe80')
+    @mock.patch('imgstorage.imgstoragesync.rocks.db.helper.DatabaseHelper.getHostAttr', return_value=True)
+    def test_zvol_mapped_success(self, mockHostSyncAttr, mockUUID, mockRunCommand):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
 
         self.nas_client.zvol_mapped(
             {'action': 'zvol_mapped', 'target':target, 'bdev': '/dev/mapper/%s-snap'%zvol, 'status':'success'},
-            BasicProperties(reply_to='reply_to', correlation_id='message_id'))
+            BasicProperties(reply_to='compute-0-3', correlation_id='message_id'))
         print mockRunCommand.mock_calls
-        mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@initial_snapshot'%zvol])
-        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@initial_snapshot'%zvol], ['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3 "/sbin/zfs receive -F tank/%s"'%zvol])
+
+        mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@c83c3476-21a8-11e4-8eea-80000048fe80'%zvol])
+        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@c83c3476-21a8-11e4-8eea-80000048fe80'%zvol], ['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3 "/sbin/zfs receive -F tank/%s"'%zvol])
 
         self.nas_client.queue_connector.publish_message.assert_any_call(
-            {'action': 'sync_zvol', 'zvol':zvol, 'target':target}, 'reply_to', self.nas_client.NODE_NAME, on_fail=ANY)
+            {'action': 'sync_zvol', 'zvol':zvol, 'target':target}, 'compute-0-3', self.nas_client.NODE_NAME, on_fail=ANY)
         self.assertTrue(self.check_zvol_busy(zvol))
+    
+
+    @mock.patch('imgstorage.imgstoragesync.runCommand')
+    @mock.patch('imgstorage.imgstoragesync.uuid.uuid1', return_value = 'c83c3476-21a8-11e4-8eea-80000048fe80')
+    @mock.patch('imgstorage.imgstoragesync.rocks.db.helper.DatabaseHelper.getHostAttr', return_value=True)
+    def test_zvol_unmapped_success(self, mockHostSyncAttr, mockUUID, mockRunCommand):
+        zvol = 'vol4_busy'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
+
+        self.nas_client.zvol_unmapped(
+            {'action': 'zvol_unmapped', 'target':target, 'zvol': zvol, 'status':'success'},
+            BasicProperties(reply_to='compute-0-3', correlation_id='message_id'))
+
+        print mockRunCommand.mock_calls
+        mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@c83c3476-21a8-11e4-8eea-80000048fe80'%zvol])
+        mockRunCommand.assert_any_call(['zfs', 'receive', u'tank/%s@c83c3476-21a8-11e4-8eea-80000048fe80'%zvol], ['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3 "/sbin/zfs send -F tank/%s"'%zvol])
 
 
     @mock.patch('imgstorage.imgstoragevm.VmDaemon.is_sync_enabled', return_value=True)
@@ -84,16 +103,6 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'zvol_synced', 'status':'success', 'zvol':zvol},
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.assertFalse(self.check_zvol_busy(zvol))
-
-    # def test_zvol_mapped_got_error(self):
-    #     zvol = 'vol4_busy'
-    #     target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
-    #     self.client.zvol_mapped(
-    #         {'action': 'zvol_mapped', 'target':target, 'status':'error', 'error':'Some error'},
-    #         BasicProperties(reply_to='reply_to', correlation_id='message_id'))
-    #     self.client.queue_connector.publish_message.assert_called_with(
-    #         {'action': 'zvol_mapped', 'status': 'error', 'error': 'Error attaching iSCSI target to compute node: Some error'}, routing_key=u'reply_to', exchange='')
-    #     self.assertTrue(self.check_zvol_busy(zvol)) # TODO IS THIS RIGHT?
 
     def check_zvol_busy(self, zvol):
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:

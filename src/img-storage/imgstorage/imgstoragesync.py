@@ -59,7 +59,7 @@ from imgstorage import runCommand, ActionError, ZvolBusyActionError
 import logging
 
 import traceback
-
+import uuid
 import time
 import json
 
@@ -82,14 +82,11 @@ class SyncDaemon():
         self.ZPOOL = 'tank'
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
         self.NODE_NAME = RabbitMQLocator.NODE_NAME
+        self.ib_net = RabbitMQLocator.IB_NET
+        
+        rocks.db.helper.DatabaseHelper().closeSession() # to reopen after daemonization
 
         self.logger = logging.getLogger('imgstorage.imgstoragesync.SyncDaemon')
-
-        db = rocks.db.helper.DatabaseHelper()
-        db.connect()
-        self.ib_net = db.getHostAttr(db.getHostname(), 'IB_net')
-        db.close()
-        db.closeSession()
 
     def run(self):
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message)
@@ -100,25 +97,27 @@ class SyncDaemon():
     """
     def zvol_mapped(self, message, props):
         target = message['target']
-
         zvol = None
         reply_to = None
+
+        if(message['status'] != 'success'):
+            return
 
         self.logger.debug("Got zvol mapped message %s"%target)
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('SELECT zvol FROM zvols WHERE iscsi_target = ?',[target])
             [zvol] = cur.fetchone()
-
             db = rocks.db.helper.DatabaseHelper()
             db.connect()
             is_sync_node = db.getHostAttr(props.reply_to, 'img_sync')
             db.close()
  
-
-            if(is_sync_node and message['status'] == 'success'):
-                runCommand(['zfs', 'snap', 'tank/%s@initial_snapshot'%zvol])
-                runCommand(['zfs', 'send', 'tank/%s@initial_snapshot'%zvol], ['su', 'zfs', '-c', '/usr/bin/ssh compute-0-3 "/sbin/zfs receive -F tank/%s"'%zvol])
+            snap_name = uuid.uuid1()
+            if(is_sync_node):
+                self.logger.debug("Sending snapshot %s"%snap_name)
+                runCommand(['zfs', 'snap', 'tank/%s@%s'%(zvol, snap_name)])
+                runCommand(['zfs', 'send', 'tank/%s@%s'%(zvol, snap_name)], ['su', 'zfs', '-c', '/usr/bin/ssh compute-0-3 "/sbin/zfs receive -F tank/%s"'%zvol])
                 self.logger.debug('Done sync; sending message back to %s'%props.reply_to)
                 self.queue_connector.publish_message(
                     {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
@@ -126,37 +125,26 @@ class SyncDaemon():
                     self.NODE_NAME,
                     on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(props.reply_to, zvol)))
 
-    # """
-    # Received zvol_unmapped notification from compute node, passing to frontend
-    # """
-    # def zvol_unmapped(self, message, props):
-    #     target = message['target']
-    #     self.logger.debug("Got zvol %s unmapped message"%(target))
-    #
-    #     zvol = None
-    #     reply_to = None
-    #
-    #     try:
-    #         with sqlite3.connect(self.SQLITE_DB) as con:
-    #             cur = con.cursor()
-    #
-    #             # get request destination
-    #             cur.execute('SELECT reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
-    #             reply_to, zvol = cur.fetchone()
-    #
-    #             if(message['status'] == 'error'):
-    #                 raise ActionError('Error detaching iSCSI target from compute node: %s'%message.get('error'))
-    #
-    #             self.detach_target(target)
-    #
-    #             self.release_zvol(zvol)
-    #             self.queue_connector.publish_message({'action': 'zvol_unmapped', 'status': 'success'}, exchange='', routing_key=reply_to)
-    #
-    #     except ActionError, err:
-    #         self.release_zvol(zvol)
-    #         self.failAction(reply_to, 'zvol_unmapped', str(err))
+    def zvol_unmapped(self, message, props):
+        target = message['target']
+        zvol = message['zvol']
 
+        if(message['status'] != 'success'):
+            return
 
+        db = rocks.db.helper.DatabaseHelper()
+        db.connect()
+        is_sync_node = db.getHostAttr(props.reply_to, 'img_sync')
+        db.close()
+
+        snap_name = uuid.uuid1()
+        if(is_sync_node and message['status'] == 'success'):
+            self.logger.debug("Receiving snapshot %s"%snap_name)
+            runCommand(['zfs', 'snap', 'tank/%s@%s'%(zvol, snap_name)])
+            runCommand(['zfs', 'receive', 'tank/%s@%s'%(zvol, snap_name)], ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -F tank/%s"'%(props.reply_to, zvol)])
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy tank/%s -r'%(props.reply_to, zvol)]) 
+            self.logger.info("Sync manager finished destroying %s and creted snapshot %s"%(zvol, snap_name))
+        
     def detach_target(self, target):
         with sqlite3.connect(self.SQLITE_DB) as con:
             tgt_num = self.find_iscsi_target_num(target)

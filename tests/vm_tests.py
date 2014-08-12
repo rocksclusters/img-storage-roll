@@ -73,39 +73,42 @@ class TestVmFunctions(unittest.TestCase):
     """ Testing unmapping of zvol """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
     def test_map_zvol_unmap_success(self, mockRunCommand):
-        target = 'iqn.2001-04.com.nas-0-1-vol2'
+        zvol = 'vol2'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         bdev = 'sdc'
 
         mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
         self.client.unmap_zvol(
-            {'action': 'unmap_zvol', 'target':target},
+            {'action': 'unmap_zvol', 'target':target, 'zvol':zvol},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         print self.client.queue_connector.publish_message.mock_calls
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_unmapped', 'status': 'success', 'target': target}, 'reply_to', correlation_id='message_id')
+            {'action': 'zvol_unmapped', 'status': 'success', 'target': target, 'zvol':zvol}, 'reply_to', correlation_id='message_id')
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'node', '-T', target, '-u'])
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'session', '-P3'])
 
     """ Testing unmapping of zvol when not found - still returns success """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
     def test_map_zvol_unmap_not_found(self, mockRunCommand):
-        target = 'iqn.2001-04.com.nas-0-1-vol2'
+        zvol = 'vol2'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         bdev = 'sdc'
 
         mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
         self.client.unmap_zvol(
-            {'action': 'unmap_zvol', 'target':target+"not_found"},
+            {'action': 'unmap_zvol', 'target':target+"not_found", 'zvol':zvol},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         print self.client.queue_connector.publish_message.mock_calls
 
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_unmapped', 'status': 'success', 'target': target+"not_found"}, 'reply_to', correlation_id='message_id')
+            {'action': 'zvol_unmapped', 'status': 'success', 'target': target+"not_found", 'zvol':zvol}, 'reply_to', correlation_id='message_id')
 
 
     """ Testing unmapping of zvol with error from system call """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
     def test_map_zvol_unmap_error(self, mockRunCommand):
-        target = 'iqn.2001-04.com.nas-0-1-vol2'
+        zvol = 'vol2'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         bdev = 'sdc'
         def my_side_effect(*args, **kwargs):
             if args[0][:3] == ['iscsiadm', '-m', 'session']:    return StringIO(iscsiadm_session_response%(target, bdev))
@@ -115,10 +118,10 @@ class TestVmFunctions(unittest.TestCase):
 
         mockRunCommand.side_effect = my_side_effect
         self.client.unmap_zvol(
-            {'action': 'unmap_zvol', 'target':target},
+            {'action': 'unmap_zvol', 'target':target, 'zvol':zvol},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_unmapped', 'status': 'error', 'target': target, 'error': 'Some error happened'},
+            {'action': 'zvol_unmapped', 'status': 'error', 'target': target, 'zvol':zvol, 'error': 'Some error happened'},
             'reply_to', correlation_id='message_id')
         mockRunCommand.assert_called_with(['iscsiadm', '-m', 'node', '-T', target, '-u'])
 

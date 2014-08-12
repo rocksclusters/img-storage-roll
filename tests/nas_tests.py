@@ -38,10 +38,10 @@ class TestNasFunctions(unittest.TestCase):
         with sqlite3.connect(self.client.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol1', None, None))
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol2', 'iqn.2001-04.com.nas-0-1-vol2', 'nas-0-1'))
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol3_busy', 'iqn.2001-04.com.nas-0-1-vol3_busy', 'nas-0-1'))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol2', 'iqn.2001-04.com.nas-0-1-vol2', 'compute-0-3'))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol3_busy', 'iqn.2001-04.com.nas-0-1-vol3_busy', 'compute-0-3'))
             cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',('vol3_busy', 'reply_to', time.time()))
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol4_busy', 'iqn.2001-04.com.nas-0-1-vol4_busy', 'nas-0-1'))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol4_busy', 'iqn.2001-04.com.nas-0-1-vol4_busy', 'compute-0-3'))
             cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',('vol4_busy', 'reply_to', time.time()))
             con.commit()
 
@@ -115,7 +115,8 @@ class TestNasFunctions(unittest.TestCase):
                 exchange='')
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
-    def test_teardown_success(self, mockRunCommand):
+    @mock.patch('imgstorage.imgstoragenas.rocks.db.helper.DatabaseHelper.getHostAttr', return_value=False)
+    def test_teardown_success(self, mockHostSyncAttr, mockRunCommand):
         zvol = 'vol2'
         mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
 
@@ -123,15 +124,14 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'unmap_zvol', 'zvol': zvol},
             BasicProperties(reply_to='reply_to'))
 
-        mockRunCommand.assert_called_with(['tgtadm', '--op', 'show', '--mode', 'target'])
-
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'unmap_zvol', 'target': u'iqn.2001-04.com.nas-0-1-%s'%zvol}, u'nas-0-1', self.client.NODE_NAME, on_fail=ANY)
+            {'action': 'unmap_zvol', 'target': u'iqn.2001-04.com.nas-0-1-%s'%zvol, 'zvol':zvol}, u'compute-0-3', self.client.NODE_NAME, on_fail=ANY)
         self.assertTrue(self.check_zvol_busy(zvol))
 
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
-    def test_teardown_busy(self, mockRunCommand):
+    @mock.patch('imgstorage.imgstoragenas.rocks.db.helper.DatabaseHelper.getHostAttr', return_value=False)
+    def test_teardown_busy(self, mockHostSyncAttr, mockRunCommand):
         zvol = 'vol3_busy'
         mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
 
@@ -218,7 +218,7 @@ class TestNasFunctions(unittest.TestCase):
         zvol = 'vol3_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         self.client.zvol_unmapped(
-            {'action': 'zvol_unmapped', 'target':target, 'status':'success'},
+            {'action': 'zvol_unmapped', 'target':target, 'zvol':zvol, 'status':'success'},
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_unmapped', 'status': 'success'}, routing_key=u'reply_to', exchange='')
@@ -230,7 +230,7 @@ class TestNasFunctions(unittest.TestCase):
         zvol = 'vol3_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         self.client.zvol_unmapped(
-            {'action': 'zvol_unmapped', 'target':target, 'status':'error', 'error':'Some error'},
+            {'action': 'zvol_unmapped', 'target':target, 'zvol':zvol, 'status':'error', 'error':'Some error'},
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_unmapped', 'status': 'error', 'error': 'Error detaching iSCSI target from compute node: Some error'}, routing_key=u'reply_to', exchange='')
