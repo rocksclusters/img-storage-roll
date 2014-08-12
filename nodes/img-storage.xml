@@ -33,6 +33,10 @@ admin_pass=$(&lt; /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c26)
 /usr/sbin/rabbitmqctl set_permissions -p / rocks ".*" ".*" ".*"
 echo ${admin_pass} &gt; /opt/rocks/etc/rabbitmq.conf
 chmod 400 /opt/rocks/etc/rabbitmq.conf
+
+# adding rabbitmq to 411 so we push the password to the nodes
+echo "FILES_NOCOMMENT += /opt/rocks/etc/rabbitmq.conf" >> /var/411/Files.mk
+/usr/bin/make -C /var/411 411.mk
 </post>
 
 <post>
