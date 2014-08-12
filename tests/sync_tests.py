@@ -58,9 +58,9 @@ class TestNasFunctions(unittest.TestCase):
 
 
     @mock.patch('imgstorage.imgstoragesync.runCommand')
-    @mock.patch('imgstorage.imgstoragesync.uuid.uuid1', return_value = 'c83c3476-21a8-11e4-8eea-80000048fe80')
+    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.cur_time', return_value = '1407869051186')
     @mock.patch('imgstorage.imgstoragesync.rocks.db.helper.DatabaseHelper.getHostAttr', return_value=True)
-    def test_zvol_mapped_success(self, mockHostSyncAttr, mockUUID, mockRunCommand):
+    def test_zvol_mapped_success(self, mockHostSyncAttr, mockCurTime, mockRunCommand):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
 
@@ -69,8 +69,8 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='compute-0-3', correlation_id='message_id'))
         print mockRunCommand.mock_calls
 
-        mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@c83c3476-21a8-11e4-8eea-80000048fe80'%zvol])
-        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@c83c3476-21a8-11e4-8eea-80000048fe80'%zvol], ['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3 "/sbin/zfs receive -F tank/%s"'%zvol])
+        mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@1407869051186'%zvol])
+        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@1407869051186'%zvol], ['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3 "/sbin/zfs receive -F tank/%s"'%zvol])
 
         self.nas_client.queue_connector.publish_message.assert_any_call(
             {'action': 'sync_zvol', 'zvol':zvol, 'target':target}, 'compute-0-3', self.nas_client.NODE_NAME, on_fail=ANY)
@@ -78,9 +78,10 @@ class TestNasFunctions(unittest.TestCase):
     
 
     @mock.patch('imgstorage.imgstoragesync.runCommand')
-    @mock.patch('imgstorage.imgstoragesync.uuid.uuid1', return_value = 'c83c3476-21a8-11e4-8eea-80000048fe80')
+    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.cur_time', return_value = '1407869051186')
+    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.find_last_snapshot', return_value='1407871705494')
     @mock.patch('imgstorage.imgstoragesync.rocks.db.helper.DatabaseHelper.getHostAttr', return_value=True)
-    def test_zvol_unmapped_success(self, mockHostSyncAttr, mockUUID, mockRunCommand):
+    def test_zvol_unmapped_success(self, mockHostSyncAttr, mockLastSnapshot, mockCurTime, mockRunCommand):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
 
@@ -89,8 +90,8 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='compute-0-3', correlation_id='message_id'))
 
         print mockRunCommand.mock_calls
-        mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@c83c3476-21a8-11e4-8eea-80000048fe80'%zvol])
-        mockRunCommand.assert_any_call(['zfs', 'receive', u'tank/%s@c83c3476-21a8-11e4-8eea-80000048fe80'%zvol], ['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3 "/sbin/zfs send -F tank/%s"'%zvol])
+        mockRunCommand.assert_any_call(['su', 'zfs', '-c', '/usr/bin/ssh compute-0-3 "/sbin/zfs snap tank/%s@1407869051186"'%zvol])
+        mockRunCommand.assert_any_call(['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3 "/sbin/zfs send -i tank/%s@1407871705494 tank/%s@1407869051186"'%(zvol, zvol)], ['zfs', 'receive', '-F', u'tank/%s'%zvol])
 
 
     @mock.patch('imgstorage.imgstoragevm.VmDaemon.is_sync_enabled', return_value=True)
@@ -103,6 +104,13 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'zvol_synced', 'status':'success', 'zvol':zvol},
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.assertFalse(self.check_zvol_busy(zvol))
+
+
+    @mock.patch('imgstorage.imgstoragesync.runCommand')
+    def test_find_last_snapshot(self, mock_run_command):
+        zvol = 'vol3'
+        mock_run_command.return_value = zfs_list_response.splitlines()
+        self.assertEqual(self.nas_client.find_last_snapshot(zvol), '1407872271816')
 
     def check_zvol_busy(self, zvol):
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
@@ -259,3 +267,16 @@ Target: %s
         scsi74 Channel 00 Id 0 Lun: 0
         scsi74 Channel 00 Id 0 Lun: 1
             Attached scsi disk %s      State: transport-offline"""
+
+zfs_list_response = """
+NAME                                             USED  AVAIL  REFER  MOUNTPOINT
+tank/vol2@1407871125717                         1.66K      -  26.6K  -
+tank/vol2@1407871144409                             0      -  26.6K  -
+tank/vol3@1407871530335                         1.66K      -  26.6K  -
+tank/vol3@1407871537905                             0      -  26.6K  -
+tank/vol3@1407871835844                             0      -  26.6K  -
+tank/vol3@1407872122976                             0      -   303M  -
+tank/vol3@1407872222305                             0      -   303M  -
+tank/vol3@1407872271816                             0      -   304M  -
+tank/vol4_busy@1407871700570                         1.66K      -  26.6K  -
+tank/vol4_busy@1407871705494                             0      -  26.6K  -"""

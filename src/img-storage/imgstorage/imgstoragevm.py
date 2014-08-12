@@ -169,12 +169,12 @@ class VmDaemon():
                     runCommand(['dmsetup', 'remove', '%s-snap'%zvol])
                 except ActionError, msg:
                     self.logger.exception(msg)
-                self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+                self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
             else:
                 if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
-                    self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, correlation_id=props.message_id)
+                    self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
         except ActionError, msg:
-            self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
+            self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'error', 'error':str(msg)}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
             self.logger.error('Error unmapping %s: %s'%(message['target'], str(msg)))
 
 

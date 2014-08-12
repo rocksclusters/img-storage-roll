@@ -83,7 +83,7 @@ class TestVmFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         print self.client.queue_connector.publish_message.mock_calls
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_unmapped', 'status': 'success', 'target': target, 'zvol':zvol}, 'reply_to', correlation_id='message_id')
+            {'action': 'zvol_unmapped', 'status': 'success', 'target': target, 'zvol':zvol}, 'reply_to', reply_to=self.client.NODE_NAME, correlation_id='message_id')
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'node', '-T', target, '-u'])
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'session', '-P3'])
 
@@ -101,7 +101,7 @@ class TestVmFunctions(unittest.TestCase):
         print self.client.queue_connector.publish_message.mock_calls
 
         self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_unmapped', 'status': 'success', 'target': target+"not_found", 'zvol':zvol}, 'reply_to', correlation_id='message_id')
+            {'action': 'zvol_unmapped', 'status': 'success', 'target': target+"not_found", 'zvol':zvol}, 'reply_to', reply_to=self.client.NODE_NAME, correlation_id='message_id')
 
 
     """ Testing unmapping of zvol with error from system call """
@@ -122,7 +122,7 @@ class TestVmFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_unmapped', 'status': 'error', 'target': target, 'zvol':zvol, 'error': 'Some error happened'},
-            'reply_to', correlation_id='message_id')
+            'reply_to', reply_to=self.client.NODE_NAME,  correlation_id='message_id')
         mockRunCommand.assert_called_with(['iscsiadm', '-m', 'node', '-T', target, '-u'])
 
 

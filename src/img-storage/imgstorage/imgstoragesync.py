@@ -59,7 +59,6 @@ from imgstorage import runCommand, ActionError, ZvolBusyActionError
 import logging
 
 import traceback
-import uuid
 import time
 import json
 
@@ -77,7 +76,7 @@ class SyncDaemon():
         self.stderr_path = '/tmp/syncerr.log'
         self.pidfile_path =  '/var/run/img-storage-sync.pid'
         self.pidfile_timeout = 5
-        self.function_dict = {'zvol_mapped':self.zvol_mapped, 'zvol_synced':self.zvol_synced }
+        self.function_dict = {'zvol_mapped':self.zvol_mapped, 'zvol_synced':self.zvol_synced, 'zvol_unmapped':self.zvol_unmapped }
 
         self.ZPOOL = 'tank'
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
@@ -113,7 +112,7 @@ class SyncDaemon():
             is_sync_node = db.getHostAttr(props.reply_to, 'img_sync')
             db.close()
  
-            snap_name = uuid.uuid1()
+            snap_name = self.cur_time()
             if(is_sync_node):
                 self.logger.debug("Sending snapshot %s"%snap_name)
                 runCommand(['zfs', 'snap', 'tank/%s@%s'%(zvol, snap_name)])
@@ -137,12 +136,13 @@ class SyncDaemon():
         is_sync_node = db.getHostAttr(props.reply_to, 'img_sync')
         db.close()
 
-        snap_name = uuid.uuid1()
+        snap_name = self.cur_time()
         if(is_sync_node and message['status'] == 'success'):
             self.logger.debug("Receiving snapshot %s"%snap_name)
-            runCommand(['zfs', 'snap', 'tank/%s@%s'%(zvol, snap_name)])
-            runCommand(['zfs', 'receive', 'tank/%s@%s'%(zvol, snap_name)], ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -F tank/%s"'%(props.reply_to, zvol)])
-            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy tank/%s -r'%(props.reply_to, zvol)]) 
+            last_snapshot = self.find_last_snapshot(zvol)
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap tank/%s@%s"'%(props.reply_to, zvol, snap_name)])
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i tank/%s@%s tank/%s@%s"'%(props.reply_to, zvol, last_snapshot, zvol, snap_name)], ['zfs', 'receive', '-F', 'tank/%s'%(zvol)])
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy tank/%s -r"'%(props.reply_to, zvol)]) 
             self.logger.info("Sync manager finished destroying %s and creted snapshot %s"%(zvol, snap_name))
         
     def detach_target(self, target):
@@ -202,3 +202,13 @@ class SyncDaemon():
                 return tgt_num
         return None
 
+    def find_last_snapshot(self, zvol):
+        out = runCommand(['zfs', 'list', '-t', 'snapshot'])
+        last_snap = None
+        for line in out:
+            if line.startswith('%s/%s'%(self.ZPOOL, zvol)):
+                last_snap = line.split()[0].split('@')[1]
+        return last_snap
+
+    def cur_time(self):
+        return str(int(round(time.time() * 1000)))
