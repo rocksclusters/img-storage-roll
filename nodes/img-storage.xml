@@ -24,10 +24,13 @@
 <post>
 /sbin/chkconfig rabbitmq-server on
 /usr/lib/rabbitmq/bin/rabbitmq-plugins enable rabbitmq_management
+
+# start the server and set up user credential
+/sbin/service rabbitmq-server start
 admin_pass=$(&lt; /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c26)
-rabbitmqctl add_user rocks ${admin_pass}
-rabbitmqctl set_user_tags rocks administrator
-rabbitmqctl set_permissions -p / rocks ".*" ".*" ".*"
+/usr/sbin/rabbitmqctl add_user rocks ${admin_pass}
+/usr/sbin/rabbitmqctl set_user_tags rocks administrator
+/usr/sbin/rabbitmqctl set_permissions -p / rocks ".*" ".*" ".*"
 echo ${admin_pass} &gt; /opt/rocks/etc/rabbitmq.conf
 chmod 400 /opt/rocks/etc/rabbitmq.conf
 </post>
