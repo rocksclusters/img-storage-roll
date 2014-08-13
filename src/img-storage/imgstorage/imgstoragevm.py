@@ -80,6 +80,8 @@ class VmDaemon():
         self.logger = logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
         self.sync_enabled = self.is_sync_enabled()
 
+        self.temp_size = 35
+
         rocks.db.helper.DatabaseHelper().closeSession() # to reopen after daemonization
 
     def is_sync_enabled(self):
@@ -104,11 +106,12 @@ class VmDaemon():
             bdev = '/dev/%s'%mappings[message['target']]
             zvol = message.get('zvol')
             if(self.sync_enabled):
+                temp_size_cur = min(self.temp_size, message['size'])
                 runCommand(['zfs', 'create', '-V', '%sgb'%message['size'], 'tank/%s'%zvol])
-                runCommand(['zfs', 'create', '-V', '40gb', 'tank/%s-temp-write'%zvol])
-                time.sleep(5)
+                runCommand(['zfs', 'create', '-V', '%sgb'%temp_size_cur, 'tank/%s-temp-write'%zvol])
+                time.sleep(2)
                 runCommand(['dmsetup', 'create', '%s-snap'%zvol,
-                    '--table', '0 83886080 snapshot %s /dev/zvol/tank/%s-temp-write P 16'%(bdev, zvol)]) # 10GB temp
+                    '--table', '0 %s snapshot %s /dev/zvol/tank/%s-temp-write P 16'%(int(1024**3*temp_size_cur/512), bdev, zvol)])
                 bdev = '/dev/mapper/%s-snap'%zvol
 
             self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'bdev':bdev, 'status':'success'},
@@ -116,7 +119,7 @@ class VmDaemon():
 
             self.logger.debug('Successfully mapped %s to %s'%(message['target'], bdev))
         except ActionError, msg:
-            self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
+            self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
             self.logger.exception('Error mapping %s: %s'%(message['target'], str(msg)))
 
 
@@ -191,9 +194,18 @@ class VmDaemon():
             devsize = runCommand(['blockdev', '--getsize', '/dev/%s'%mappings[target]])[0]
             runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
             runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s snapshot-merge /dev/zvol/tank/%s /dev/zvol/tank/%s-temp-write P 16'%(devsize, zvol, zvol)])
-            #runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
-            self.logger.debug('Reloaded local storage to zvol and temp')
-            #runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
+            runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
+            synced_snap = False
+            while not synced_snap:
+                sync_status = runCommand(['dmsetup', 'status', '%s-snap'%zvol])
+                stats = re.findall(r"[\w]+", sync_status[0])
+                synced_snap = (stats[4] == stats[6])
+                if not synced_snap:
+                    self.logger.debug("Waiting for sync 4 6 '%s' %s %s"%(sync_status[0], stats[4], stats[6]))
+                    time.sleep(5)
+                
+            self.logger.debug('Reloaded local storage to zvol and temp %s'%runCommand(['dmsetup', 'status', '%s-snap'%zvol])[0])
+            runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
             runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s linear /dev/zvol/tank/%s 0'%(devsize, zvol)])
             runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
             self.logger.debug('Synced local storage to local')

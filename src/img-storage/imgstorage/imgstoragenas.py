@@ -244,7 +244,9 @@ class NasDaemon():
             cur.execute('SELECT reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
             reply_to, zvol = cur.fetchone()
 
-            self.release_zvol(zvol)
+            if(not self.is_sync_node(props.reply_to)): #otherwise released in sync daemon
+                self.release_zvol(zvol)
+
             if(message['status'] == 'success'):
                 self.queue_connector.publish_message({'action': 'zvol_mapped', 'bdev':message['bdev'], 'status': 'success'}, exchange='', routing_key=reply_to)
             else:

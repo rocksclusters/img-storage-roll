@@ -86,8 +86,10 @@ class SyncDaemon():
         rocks.db.helper.DatabaseHelper().closeSession() # to reopen after daemonization
 
         self.logger = logging.getLogger('imgstorage.imgstoragesync.SyncDaemon')
+        self.logger.debug("init sync")
 
     def run(self):
+        self.logger.debug("Started sync")
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message)
         self.queue_connector.run()
 
@@ -107,16 +109,15 @@ class SyncDaemon():
             cur = con.cursor()
             cur.execute('SELECT zvol FROM zvols WHERE iscsi_target = ?',[target])
             [zvol] = cur.fetchone()
-            db = rocks.db.helper.DatabaseHelper()
-            db.connect()
-            is_sync_node = db.getHostAttr(props.reply_to, 'img_sync')
-            db.close()
  
             snap_name = self.cur_time()
-            if(is_sync_node):
+            if(self.is_sync_node(props.reply_to)):
+                remotehost = props.reply_to
+                if(self.ib_net):
+                    remotehost += ".%s"%self.ib_net
                 self.logger.debug("Sending snapshot %s"%snap_name)
                 runCommand(['zfs', 'snap', 'tank/%s@%s'%(zvol, snap_name)])
-                runCommand(['zfs', 'send', 'tank/%s@%s'%(zvol, snap_name)], ['su', 'zfs', '-c', '/usr/bin/ssh compute-0-3 "/sbin/zfs receive -F tank/%s"'%zvol])
+                runCommand(['zfs', 'send', 'tank/%s@%s'%(zvol, snap_name)], ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F tank/%s"'%(remotehost, zvol)])
                 self.logger.debug('Done sync; sending message back to %s'%props.reply_to)
                 self.queue_connector.publish_message(
                     {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
@@ -131,18 +132,16 @@ class SyncDaemon():
         if(message['status'] != 'success'):
             return
 
-        db = rocks.db.helper.DatabaseHelper()
-        db.connect()
-        is_sync_node = db.getHostAttr(props.reply_to, 'img_sync')
-        db.close()
-
         snap_name = self.cur_time()
-        if(is_sync_node and message['status'] == 'success'):
+        if(self.is_sync_node(props.reply_to) and message['status'] == 'success'):
+            remotehost = props.reply_to
+            if(self.ib_net):
+                remotehost += ".%s"%self.ib_net
             self.logger.debug("Receiving snapshot %s"%snap_name)
             last_snapshot = self.find_last_snapshot(zvol)
-            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap tank/%s@%s"'%(props.reply_to, zvol, snap_name)])
-            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i tank/%s@%s tank/%s@%s"'%(props.reply_to, zvol, last_snapshot, zvol, snap_name)], ['zfs', 'receive', '-F', 'tank/%s'%(zvol)])
-            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy tank/%s -r"'%(props.reply_to, zvol)]) 
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap tank/%s@%s"'%(remotehost, zvol, snap_name)])
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i tank/%s@%s tank/%s@%s"'%(remotehost, zvol, last_snapshot, zvol, snap_name)], ['zfs', 'receive', '-F', 'tank/%s'%(zvol)])
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy tank/%s -r"'%(remotehost, zvol)]) 
             self.logger.info("Sync manager finished destroying %s and creted snapshot %s"%(zvol, snap_name))
         
     def detach_target(self, target):
@@ -165,6 +164,7 @@ class SyncDaemon():
             cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?',[zvol])
             [target] = cur.fetchone()    
             self.detach_target(target)
+            self.release_zvol(zvol)
 
     def process_message(self, properties, message):
         self.logger.debug("Received message %s"%message)
@@ -212,3 +212,10 @@ class SyncDaemon():
 
     def cur_time(self):
         return str(int(round(time.time() * 1000)))
+
+    def is_sync_node(self, node):
+        db = rocks.db.helper.DatabaseHelper()
+        db.connect()
+        is_sync_node = db.getHostAttr(node, 'img_sync')
+        db.close()
+        return is_sync_node
