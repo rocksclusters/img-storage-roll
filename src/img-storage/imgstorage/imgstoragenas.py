@@ -284,7 +284,8 @@ class NasDaemon():
         with sqlite3.connect(self.SQLITE_DB) as con:
             if(target):
                 tgt_num = self.find_iscsi_target_num(target)
-                runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num])# remove iscsi target
+                if(tgt_num):
+                    runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num])# remove iscsi target
 
             cur = con.cursor()
             cur.execute('UPDATE zvols SET iscsi_target = NULL, remotehost = NULL where zvol = ?',[zvol])

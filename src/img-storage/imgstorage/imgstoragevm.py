@@ -105,10 +105,10 @@ class VmDaemon():
             zvol = message.get('zvol')
             if(self.sync_enabled):
                 runCommand(['zfs', 'create', '-V', '%sgb'%message['size'], 'tank/%s'%zvol])
-                runCommand(['zfs', 'create', '-V', '10gb', 'tank/%s-temp-write'%zvol])
+                runCommand(['zfs', 'create', '-V', '40gb', 'tank/%s-temp-write'%zvol])
                 time.sleep(5)
                 runCommand(['dmsetup', 'create', '%s-snap'%zvol,
-                    '--table', '0 20971520 snapshot %s /dev/zvol/tank/%s-temp-write P 16'%(bdev, zvol)]) # 10GB temp
+                    '--table', '0 83886080 snapshot %s /dev/zvol/tank/%s-temp-write P 16'%(bdev, zvol)]) # 10GB temp
                 bdev = '/dev/mapper/%s-snap'%zvol
 
             self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'bdev':bdev, 'status':'success'},
@@ -191,11 +191,12 @@ class VmDaemon():
             devsize = runCommand(['blockdev', '--getsize', '/dev/%s'%mappings[target]])[0]
             runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
             runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s snapshot-merge /dev/zvol/tank/%s /dev/zvol/tank/%s-temp-write P 16'%(devsize, zvol, zvol)])
-            runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
-            self.logger.debug('Synced local storage')
-            runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
+            #runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
+            self.logger.debug('Reloaded local storage to zvol and temp')
+            #runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
             runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s linear /dev/zvol/tank/%s 0'%(devsize, zvol)])
             runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
+            self.logger.debug('Synced local storage to local')
             runCommand(['zfs', 'destroy', 'tank/%s-temp-write'%zvol])
             self.disconnect_iscsi(message['target'])
 

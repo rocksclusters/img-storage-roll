@@ -3,10 +3,10 @@
 #
 # @Copyright@
 # 
-# 				Rocks(r)
-# 		         www.rocksclusters.org
-# 		         version 5.6 (Emerald Boa)
-# 		         version 6.1 (Emerald Boa)
+#				Rocks(r)
+#				 www.rocksclusters.org
+#				 version 5.6 (Emerald Boa)
+#				 version 6.1 (Emerald Boa)
 # 
 # Copyright (c) 2000 - 2013 The Regents of the University of California.
 # All rights reserved.	
@@ -26,9 +26,9 @@
 # 3. All advertising and press materials, printed or electronic, mentioning
 # features or use of this software must display the following acknowledgement: 
 # 
-# 	"This product includes software developed by the Rocks(r)
-# 	Cluster Group at the San Diego Supercomputer Center at the
-# 	University of California, San Diego and its contributors."
+#	"This product includes software developed by the Rocks(r)
+#	Cluster Group at the San Diego Supercomputer Center at the
+#	University of California, San Diego and its contributors."
 # 
 # 4. Except as permitted for the purposes of acknowledgment in paragraph 3,
 # neither the name or logo of this software nor the names of its
@@ -66,15 +66,22 @@ default: roll
 all: base nas vm fe
 
 reall:
-	ssh nas-0-0 'service img-storage-nas restart'
-	ssh nas-0-0 'service img-storage-sync restart'
-	ssh compute-0-3 'service img-storage-vm restart'
+	ssh nas-0-0 'service img-storage-nas restart'&
+	ssh nas-0-0 'service img-storage-sync restart'&
+	ssh compute-0-1 'service img-storage-vm restart'&
+	ssh compute-0-2 'service img-storage-vm restart'&
+	ssh compute-0-3 'service img-storage-vm restart'&
+	service img-storage-vm restart&
 
 base:
 	cd src/img-storage && make rpm
 	scp RPMS/noarch/img-storage-6.2-0.noarch.rpm nas-0-0:
 	ssh nas-0-0 'yum reinstall ./img-storage-6.2-0.noarch.rpm'
+	scp RPMS/noarch/img-storage-6.2-0.noarch.rpm compute-0-1:
+	ssh compute-0-1 'yum reinstall ./img-storage-6.2-0.noarch.rpm'
+	scp RPMS/noarch/img-storage-6.2-0.noarch.rpm compute-0-2:
 	scp RPMS/noarch/img-storage-6.2-0.noarch.rpm compute-0-3:
+	ssh compute-0-2 'yum reinstall ./img-storage-6.2-0.noarch.rpm'
 	ssh compute-0-3 'yum reinstall ./img-storage-6.2-0.noarch.rpm'
 	yum reinstall RPMS/noarch/img-storage-6.2-0.noarch.rpm
 
@@ -86,9 +93,17 @@ nas:
 
 vm:
 	cd src/img-storage-vm && make rpm
+	scp RPMS/noarch/img-storage-vm-6.2-0.noarch.rpm compute-0-1:
+	ssh compute-0-1 'yum reinstall ./img-storage-vm-6.2-0.noarch.rpm'
+	scp RPMS/noarch/img-storage-vm-6.2-0.noarch.rpm compute-0-2:
+	ssh compute-0-2 'yum reinstall ./img-storage-vm-6.2-0.noarch.rpm'
 	scp RPMS/noarch/img-storage-vm-6.2-0.noarch.rpm compute-0-3:
 	ssh compute-0-3 'yum reinstall ./img-storage-vm-6.2-0.noarch.rpm'
+	ssh compute-0-1 'service img-storage-vm restart'
+	ssh compute-0-2 'service img-storage-vm restart'
 	ssh compute-0-3 'service img-storage-vm restart'
+	yum reinstall RPMS/noarch/img-storage-vm-6.2-0.noarch.rpm
+	service img-storage-vm restart
 
 fe:
 	cd src/rocks-command-imgstorage && make rpm
