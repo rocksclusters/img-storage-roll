@@ -27,11 +27,11 @@
 	  <tail>server</tail>
 	</order>
 
-	<edge from="compute">
+	<edge from="client" cond="img_storage_vm">
 	  <to>img-storage-vm</to>
 	</edge>
 
-	<edge from="nas">
+	<edge from="client" cond="img_storage_nas">
 	  <to>img-storage-nas</to>
 	</edge>
 

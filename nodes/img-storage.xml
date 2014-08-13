@@ -42,6 +42,13 @@ chmod 400 /opt/rocks/etc/rabbitmq.conf
 # adding rabbitmq to 411 so we push the password to the nodes
 echo "FILES_NOCOMMENT += /opt/rocks/etc/rabbitmq.conf" >> /var/411/Files.mk
 /usr/bin/make -C /var/411 411.mk
+
+# setting default attribute to install daemon
+# all vm-container run the vm daemon
+/opt/rocks/bin/rocks set appliance attr vm-container img_storage_vm true
+# all nas installs the nas daemon
+/opt/rocks/bin/rocks set appliance attr nas img_storage_nas true
+
 </post>
 
 <post>
