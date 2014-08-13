@@ -25,10 +25,28 @@
 	<package>scsi-target-utils</package>
 	<package>iscsi-initiator-utils</package>
 
-	<post>
-		mkdir /var/log/rocks
-		/sbin/chkconfig tgtd on
-		/sbin/chkconfig iscsid on
-		/sbin/chkconfig img-storage-nas on
-	</post>
+<post>
+mkdir /var/log/rocks
+/sbin/chkconfig tgtd on
+/sbin/chkconfig iscsid on
+/sbin/chkconfig img-storage-nas on
+
+<file name="/etc/rc.d/rocksconfig.d/post-99-restart-img-storage" perms="755">
+#!/bin/bash
+#
+# while for the config file to be ready
+
+while [ ! -f /opt/rocks/etc/rabbitmq.conf ] ; do 
+	sleep 1;
+done
+
+/sbin/service img-storage-nas start
+
+# we need this only the first boot after the installation
+# after that the file will be there
+rm /etc/rc.d/rocksconfig.d/post-02-on-the-fly
+</file>
+
+</post>
+
 </kickstart>

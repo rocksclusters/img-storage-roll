@@ -33,6 +33,22 @@ admin_pass=$(&lt; /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c26)
 /usr/sbin/rabbitmqctl set_permissions -p / rocks ".*" ".*" ".*"
 echo ${admin_pass} &gt; /opt/rocks/etc/rabbitmq.conf
 chmod 400 /opt/rocks/etc/rabbitmq.conf
+
+# setting rabbit URL for client nodes
+/opt/rocks/bin/rocks set attr rabbitmq_url \
+	"amqp://rocks:{pass}@&Kickstart_PrivateHostname;:5672/?connection_attempts=1000&amp;frame_max=64000&amp;heartbeat_interval=5"
+
+
+# adding rabbitmq to 411 so we push the password to the nodes
+echo "FILES_NOCOMMENT += /opt/rocks/etc/rabbitmq.conf" >> /var/411/Files.mk
+/usr/bin/make -C /var/411 411.mk
+
+# setting default attribute to install daemon
+# all vm-container run the vm daemon
+/opt/rocks/bin/rocks set appliance attr vm-container img_storage_vm true
+# all nas installs the nas daemon
+/opt/rocks/bin/rocks set appliance attr nas img_storage_nas true
+
 </post>
 
 <post>
