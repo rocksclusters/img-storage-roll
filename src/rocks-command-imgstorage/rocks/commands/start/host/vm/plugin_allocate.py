@@ -70,24 +70,22 @@ class Plugin(rocks.commands.Plugin):
         # here you can relocate your VM in rocks DB
         # node is of type rocks.db.mappings.base.Node
         if not node.vm_defs.physNode or len(node.vm_defs.disks) <= 0:
-            # TODO maybe we should fail
-            print "Unable to allocate storage for ", node.name
-            return
+            raise rocks.util.CommandError("Unable to allocate storage for " + \
+			node.name)
         disk = node.vm_defs.disks[0]
         phys = node.vm_defs.physNode.name
         size = str(disk.size)
         volume = node.name + '-vol'
-        if not disk.img_nas_server:
-            raise rocks.util.CommandError("NAS value is not set. Unable to start vm.")
+        if not (disk.img_nas_server and disk.img_nas_server.server_name):
+            raise rocks.util.CommandError("NAS value is not set (use rocks set" \
+                    " host vm nas to set it).\nUnable to start vm.")
         nas_name = disk.img_nas_server.server_name
         device = CommandLauncher().callAddHostStoragemap(nas_name, volume, phys, size)
         disk.vbd_type = "phy"
         disk.prefix = os.path.dirname(device)
-        #disk.prefix = '/dev/'
         disk.name = os.path.basename(device)
-        print "mapping done on ", volume, " device ", device
+        print nas_name + ":" + volume + " mapped to " + phys + ":" + device
         return
-
 
 
 RollName = "img-storage"
