@@ -36,7 +36,7 @@ chmod 400 /opt/rocks/etc/rabbitmq.conf
 
 # setting rabbit URL for client nodes
 /opt/rocks/bin/rocks set attr rabbitmq_url \
-	"amqp://rocks:{pass}@&Kickstart_PrivateHostname;:5672/?connection_attempts=1000&amp;frame_max=64000&amp;heartbeat_interval=5"
+	"amqp://rocks:{pass}@&Kickstart_PrivateHostname;:5672/%2F?connection_attempts=1000&amp;frame_max=64000&amp;heartbeat_interval=5"
 
 
 # adding rabbitmq to 411 so we push the password to the nodes
