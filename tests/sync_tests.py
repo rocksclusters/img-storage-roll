@@ -70,7 +70,7 @@ class TestNasFunctions(unittest.TestCase):
         print mockRunCommand.mock_calls
 
         mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@1407869051186'%zvol])
-        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@1407869051186'%zvol], ['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3 "/sbin/zfs receive -F tank/%s"'%zvol])
+        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@1407869051186'%zvol], ['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3.ibnet "/sbin/zfs receive -F tank/%s"'%zvol])
 
         self.nas_client.queue_connector.publish_message.assert_any_call(
             {'action': 'sync_zvol', 'zvol':zvol, 'target':target}, 'compute-0-3', self.nas_client.NODE_NAME, on_fail=ANY)
@@ -90,8 +90,8 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='compute-0-3', correlation_id='message_id'))
 
         print mockRunCommand.mock_calls
-        mockRunCommand.assert_any_call(['su', 'zfs', '-c', '/usr/bin/ssh compute-0-3 "/sbin/zfs snap tank/%s@1407869051186"'%zvol])
-        mockRunCommand.assert_any_call(['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3 "/sbin/zfs send -i tank/%s@1407871705494 tank/%s@1407869051186"'%(zvol, zvol)], ['zfs', 'receive', '-F', u'tank/%s'%zvol])
+        mockRunCommand.assert_any_call(['su', 'zfs', '-c', '/usr/bin/ssh compute-0-3.ibnet "/sbin/zfs snap tank/%s@1407869051186"'%zvol])
+        mockRunCommand.assert_any_call(['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3.ibnet "/sbin/zfs send -i tank/%s@1407871705494 tank/%s@1407869051186"'%(zvol, zvol)], ['zfs', 'receive', '-F', u'tank/%s'%zvol])
 
 
     @mock.patch('imgstorage.imgstoragevm.VmDaemon.is_sync_enabled', return_value=True)

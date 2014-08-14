@@ -106,7 +106,7 @@ class VmDaemon():
             bdev = '/dev/%s'%mappings[message['target']]
             zvol = message.get('zvol')
             if(self.sync_enabled):
-                temp_size_cur = min(self.temp_size, message['size'])
+                temp_size_cur = min(self.temp_size, message['size']-1)
                 runCommand(['zfs', 'create', '-V', '%sgb'%message['size'], 'tank/%s'%zvol])
                 runCommand(['zfs', 'create', '-V', '%sgb'%temp_size_cur, 'tank/%s-temp-write'%zvol])
                 time.sleep(2)

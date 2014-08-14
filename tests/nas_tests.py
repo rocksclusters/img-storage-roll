@@ -237,7 +237,8 @@ class TestNasFunctions(unittest.TestCase):
         self.assertFalse(self.check_zvol_busy(zvol))
 
 
-    def test_zvol_mapped_success(self):
+    @mock.patch('imgstorage.imgstoragenas.NasDaemon.is_sync_node', return_value=False)
+    def test_zvol_mapped_success(self, mockSyncEnabled):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         self.client.zvol_mapped(
@@ -247,7 +248,8 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'zvol_mapped', 'status': 'success', 'bdev': 'sdc'}, routing_key=u'reply_to', exchange='')
         self.assertFalse(self.check_zvol_busy(zvol))
 
-    def test_zvol_mapped_got_error(self):
+    @mock.patch('imgstorage.imgstoragenas.NasDaemon.is_sync_node', return_value=False)
+    def test_zvol_mapped_got_error(self, mockNasDaemon):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         self.client.zvol_mapped(

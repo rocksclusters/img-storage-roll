@@ -68,7 +68,7 @@ class TestVmFunctions(unittest.TestCase):
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_mapped', 'status': 'error', 'target': target,
             'error': 'Not found %s in targets'%target},
-            'reply_to', correlation_id='message_id')
+            'reply_to', reply_to=self.client.NODE_NAME, correlation_id='message_id')
 
     """ Testing unmapping of zvol """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
@@ -147,13 +147,14 @@ class TestVmFunctions(unittest.TestCase):
         mockRunCommand.assert_any_call(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 12345 linear /dev/zvol/tank/%s 0'%(zvol)])
         mockRunCommand.assert_any_call(['zfs', 'destroy', 'tank/vol2-temp-write'])
         mockRunCommand.assert_any_call(['iscsiadm', '-m', 'node', '-T', 'iqn.2001-04.com.nas-0-1-vol2', '-u'])
-        assert 10 == mockRunCommand.call_count
+        assert 12 == mockRunCommand.call_count
 
     def create_iscsiadm_side_effect(self, target, bdev):
         def iscsiadm_side_effect(*args, **kwargs):
             if args[0][:3] == ['iscsiadm', '-m', 'session']:        return (iscsiadm_session_response%(target, bdev)).splitlines() # list local devices
             elif args[0][:3] == ['iscsiadm', '-m', 'discovery']:    return (iscsiadm_discovery_response%target).splitlines() # find remote targets
             elif args[0][:3] == ['iscsiadm', '-m', 'node']:         return '\n'.splitlines() # connect to iscsi target
+            elif args[0][:2] == ['dmsetup', 'status']:         return dmsetup_status_response.splitlines()
             elif args[0][0] == 'blockdev':                          return '12345'.splitlines()
         return iscsiadm_side_effect
 
@@ -262,3 +263,5 @@ Target: %s
         scsi74 Channel 00 Id 0 Lun: 0
         scsi74 Channel 00 Id 0 Lun: 1
             Attached scsi disk %s      State: transport-offline"""
+
+dmsetup_status_response="0 75497472 snapshot-merge 32/73400320 32"
