@@ -67,6 +67,8 @@ import sys
 import traceback
 import rocks.db.helper
 
+from pysqlite2 import dbapi2 as sqlite3
+
 class VmDaemon():
 
     def __init__(self):
@@ -79,8 +81,11 @@ class VmDaemon():
         self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'list_dev':self.list_dev, 'sync_zvol':self.sync_zvol }
         self.logger = logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
         self.sync_enabled = self.is_sync_enabled()
+        self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
 
         self.temp_size = 35
+
+        self.sync_poller_id = None
 
         rocks.db.helper.DatabaseHelper().closeSession() # to reopen after daemonization
 
@@ -97,14 +102,16 @@ class VmDaemon():
     """
     def map_zvol(self, message, props):
         self.logger.debug("Setting zvol %s"%message['target'])
+        zvol = message.get('zvol')
         try:
+            self.lock_zvol(zvol)
             self.connect_iscsi(message['target'], message['nas'])
             mappings = self.get_blk_dev_list()
 
             if(message['target'] not in mappings.keys()): raise ActionError('Not found %s in targets'%message['target'])
 
             bdev = '/dev/%s'%mappings[message['target']]
-            zvol = message.get('zvol')
+
             if(self.sync_enabled):
                 temp_size_cur = min(self.temp_size, int(message['size'])-1)
                 runCommand(['zfs', 'create', '-V', '%sgb'%message['size'], 'tank/%s'%zvol])
@@ -113,12 +120,15 @@ class VmDaemon():
                 runCommand(['dmsetup', 'create', '%s-snap'%zvol,
                     '--table', '0 %s snapshot %s /dev/zvol/tank/%s-temp-write P 16'%(int(1024**3*temp_size_cur/512), bdev, zvol)])
                 bdev = '/dev/mapper/%s-snap'%zvol
+            else:
+                self.release_zvol(zvol)
 
             self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'bdev':bdev, 'status':'success'},
                 props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
 
             self.logger.debug('Successfully mapped %s to %s'%(message['target'], bdev))
         except ActionError, msg:
+            self.release_zvol(zvol)
             self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
             self.logger.exception('Error mapping %s: %s'%(message['target'], str(msg)))
 
@@ -167,14 +177,18 @@ class VmDaemon():
         mappings_map = self.get_blk_dev_list()
 
         try:
+            self.lock_zvol(zvol)
             if(self.sync_enabled):
                 try:
                     runCommand(['dmsetup', 'remove', '%s-snap'%zvol])
                 except ActionError, msg:
                     self.logger.exception(msg)
+
+                self.release_zvol(zvol)
                 self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
             else:
                 if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
+                    self.release_zvol(zvol)
                     self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
         except ActionError, msg:
             self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'error', 'error':str(msg)}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
@@ -186,36 +200,77 @@ class VmDaemon():
         target = message.get('target')
 
         mappings = self.get_blk_dev_list()
-        if(target not in mappings.keys()): raise ActionError('Not found %s in targets'%target)
-
-        self.logger.debug("Syncing zvol %s"%zvol)
-
         try:
+            if(target not in mappings.keys()):
+                raise ActionError('Not found %s in targets'%target)
+
             devsize = runCommand(['blockdev', '--getsize', '/dev/%s'%mappings[target]])[0]
-            runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
-            runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s snapshot-merge /dev/zvol/tank/%s /dev/zvol/tank/%s-temp-write P 16'%(devsize, zvol, zvol)])
-            runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
-            synced_snap = False
-            while not synced_snap:
+
+            with sqlite3.connect(self.SQLITE_DB) as con:
+                cur = con.cursor()
+                cur.execute('UPDATE zvol_calls SET devsize = ?, iscsi_target = ?, reply_to = ?, correlation_id = ?, time = ? WHERE zvol = ?',
+                        [devsize, target,props.reply_to, props.message_id, time.time(),  zvol])
+
+                con.commit()
+        except ActionError, msg:
+            self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'error', 'error':str(msg)}, 
+                    props.reply_to, correlation_id=props.message_id)
+
+            self.logger.exception('Error syncing %s: %s'%(zvol, str(msg)))
+ 
+
+        if(not self.sync_poller_id):
+            self.sync_poller_id = self.queue_connector._connection.add_timeout(10, self.run_sync)
+
+    def run_sync(self):
+        self.logger.debug("Starting run_sync")
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('select zvol, iscsi_target, devsize, reply_to, correlation_id, started from zvol_calls ORDER BY time ASC LIMIT 1')
+            row = cur.fetchone()
+            if(not row):
+                self.logger.debug("Quitting run_sync")
+                self.sync_poller_id = None
+                return
+
+            zvol, target, devsize, reply_to, correlation_id, started = row
+
+            try:
+                if(not started):
+                    self.logger.debug("Starting new sync %s"%zvol)
+                    runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
+                    runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s snapshot-merge /dev/zvol/tank/%s /dev/zvol/tank/%s-temp-write P 16'%(devsize, zvol, zvol)])
+                    runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
+                    cur.execute('UPDATE zvol_calls SET started = 1 WHERE zvol = ?', [zvol])
+                    con.commit()
+
                 sync_status = runCommand(['dmsetup', 'status', '%s-snap'%zvol])
                 stats = re.findall(r"[\w]+", sync_status[0])
-                synced_snap = (stats[4] == stats[6])
-                if not synced_snap:
-                    self.logger.debug("Waiting for sync 4 6 '%s' %s %s"%(sync_status[0], stats[4], stats[6]))
-                    time.sleep(5)
-                
-            self.logger.debug('Reloaded local storage to zvol and temp %s'%runCommand(['dmsetup', 'status', '%s-snap'%zvol])[0])
-            runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
-            runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s linear /dev/zvol/tank/%s 0'%(devsize, zvol)])
-            runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
-            self.logger.debug('Synced local storage to local')
-            runCommand(['zfs', 'destroy', 'tank/%s-temp-write'%zvol])
-            self.disconnect_iscsi(message['target'])
+                if not (stats[4] == stats[6]):
+                    self.logger.debug("Waiting for sync '%s' %s %s"%(sync_status[0], stats[4], stats[6]))
+                else:
+                    cur.execute('DELETE FROM zvol_calls WHERE zvol = ?', [zvol])
+                    con.commit()
 
-            self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'success'}, props.reply_to, correlation_id=props.message_id)
-        except ActionError, msg:
-            self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'error', 'error':str(msg)}, props.reply_to, correlation_id=props.message_id)
-            self.logger.error('Error syncing %s: %s'%(zvol, str(msg)))
+                    self.logger.debug('Reloaded local storage to zvol and temp %s'%runCommand(['dmsetup', 'status', '%s-snap'%zvol])[0])
+                    runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
+                    runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s linear /dev/zvol/tank/%s 0'%(devsize, zvol)])
+                    runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
+                    self.logger.debug('Synced local storage to local')
+                    runCommand(['zfs', 'destroy', 'tank/%s-temp-write'%zvol])
+                    self.disconnect_iscsi(target)
+
+                    self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'success'}, reply_to, correlation_id=correlation_id)
+            except ActionError, msg:
+                cur.execute('DELETE FROM zvol_calls WHERE zvol = ?', [zvol])
+                con.commit()
+
+                self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'error', 'error':str(msg)}, reply_to, correlation_id=correlation_id)
+                self.logger.error('Error syncing %s: %s'%(zvol, str(msg)))
+
+            self.logger.debug("Scheduling another run_sync")
+            self.sync_poller_id = self.queue_connector._connection.add_timeout(10, self.run_sync)
+
 
     def process_message(self, props, message):
         self.logger.debug("Received message %s"%message)
@@ -231,9 +286,32 @@ class VmDaemon():
             self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[1].message}, exchange='', routing_key=props.reply_to, correlation_id=props.message_id)
 
     def run(self):
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, devsize INT, reply_to TEXT, correlation_id TEXT, started BOOLEAN default 0, time INT)')
+            con.commit()
+
+
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message)
         self.queue_connector.run()
 
     def stop(self):
         self.queue_connector.stop()
         self.logger.info('RabbitMQ connector stopping called')
+
+
+    def lock_zvol(self, zvol_name):
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            try:
+                cur.execute('INSERT INTO zvol_calls (zvol) VALUES (?)',[zvol_name])
+                con.commit()
+            except sqlite3.IntegrityError, msg:
+                self.logger.exception(msg)
+                raise ZvolBusyActionError('ZVol %s is busy'%zvol_name)
+
+    def release_zvol(self, zvol):
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('DELETE FROM zvol_calls WHERE zvol = ?',[zvol])
+            con.commit()

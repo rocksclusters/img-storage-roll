@@ -35,17 +35,26 @@ class TestVmFunctions(unittest.TestCase):
 
         self.client.run()
 
+        self.client.SQLITE_DB = '/tmp/test_db_%s'%uuid.uuid4()
+        self.client.run()
+
+        with sqlite3.connect(self.client.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('INSERT INTO zvol_calls VALUES (?,?,?,?,?,?,?)',('vol1', 'iqn.2001-04.com.nas-0-1-vol1', 12345, 'reply_to', 'corr_id', 0, 1))
+            con.commit()
+
 
     """ Testing mapping of zvol """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
     @mock.patch('imgstorage.imgstoragevm.VmDaemon.is_sync_enabled', return_value=False)
     def test_map_zvol_createnew_success(self, mockSyncEnabled, mockRunCommand):
-        target = 'iqn.2001-04.com.nas-0-1-vol2'
+        zvol = 'vol2'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         bdev = 'sdc'
 
         mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
         self.client.map_zvol(
-            {'action': 'map_zvol', 'target':target, 'nas': 'nas-0-1'},
+            {'action': 'map_zvol', 'target':target, 'nas': 'nas-0-1', 'size':'35', 'zvol':zvol},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_mapped', 'status': 'success', 'bdev': '/dev/%s'%bdev, 'target': target}, 'reply_to', reply_to=self.client.NODE_NAME, correlation_id='message_id')
@@ -58,12 +67,13 @@ class TestVmFunctions(unittest.TestCase):
     @mock.patch('imgstorage.imgstoragevm.runCommand')
     @mock.patch('imgstorage.imgstoragevm.VmDaemon.is_sync_enabled', return_value=False)
     def test_map_zvol_createnew_missing_blkdev_error(self, mockSyncEnabled, mockRunCommand):
-        target = 'iqn.2001-04.com.nas-0-1-vol2'
+        zvol = 'vol2'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         bdev = 'sdc'
 
         mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target+"_missing_target", bdev)
         self.client.map_zvol(
-            {'action': 'map_zvol', 'target':target, 'nas': 'nas-0-1'},
+            {'action': 'map_zvol', 'target':target, 'nas': 'nas-0-1', 'size':'35', 'zvol':zvol},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_mapped', 'status': 'error', 'target': target,
@@ -72,7 +82,7 @@ class TestVmFunctions(unittest.TestCase):
 
     """ Testing unmapping of zvol """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
-    def test_map_zvol_unmap_success(self, mockRunCommand):
+    def test_unmap_zvol_success(self, mockRunCommand):
         zvol = 'vol2'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         bdev = 'sdc'
@@ -89,7 +99,7 @@ class TestVmFunctions(unittest.TestCase):
 
     """ Testing unmapping of zvol when not found - still returns success """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
-    def test_map_zvol_unmap_not_found(self, mockRunCommand):
+    def test_unmap_zvol_not_found(self, mockRunCommand):
         zvol = 'vol2'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         bdev = 'sdc'
@@ -125,38 +135,14 @@ class TestVmFunctions(unittest.TestCase):
             'reply_to', reply_to=self.client.NODE_NAME,  correlation_id='message_id')
         mockRunCommand.assert_called_with(['iscsiadm', '-m', 'node', '-T', target, '-u'])
 
-
-    """ Testing zvol sync """
-    @mock.patch('imgstorage.imgstoragevm.runCommand')
-    def test_sync_zvol_success(self, mockRunCommand):
-        zvol= 'vol2'
-        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
-        bdev = 'sdc'
-        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
-        self.client.sync_zvol(
-            {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
-            BasicProperties(reply_to='reply_to', message_id='message_id'))
-        self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_synced', 'status': 'success', 'zvol': zvol},
-            'reply_to', correlation_id='message_id')
-        mockRunCommand.assert_any_call(['iscsiadm', '-m', 'session', '-P3'])
-        mockRunCommand.assert_any_call(['blockdev', '--getsize', '/dev/%s'%bdev])
-        mockRunCommand.assert_any_call(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
-        mockRunCommand.assert_any_call(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 12345 snapshot-merge /dev/zvol/tank/%s /dev/zvol/tank/%s-temp-write P 16'%(zvol, zvol)])
-        mockRunCommand.assert_any_call(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
-        mockRunCommand.assert_any_call(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 12345 linear /dev/zvol/tank/%s 0'%(zvol)])
-        mockRunCommand.assert_any_call(['zfs', 'destroy', 'tank/vol2-temp-write'])
-        mockRunCommand.assert_any_call(['iscsiadm', '-m', 'node', '-T', 'iqn.2001-04.com.nas-0-1-vol2', '-u'])
-        assert 12 == mockRunCommand.call_count
-
     def create_iscsiadm_side_effect(self, target, bdev):
         def iscsiadm_side_effect(*args, **kwargs):
             if args[0][:3] == ['iscsiadm', '-m', 'session']:        return (iscsiadm_session_response%(target, bdev)).splitlines() # list local devices
             elif args[0][:3] == ['iscsiadm', '-m', 'discovery']:    return (iscsiadm_discovery_response%target).splitlines() # find remote targets
             elif args[0][:3] == ['iscsiadm', '-m', 'node']:         return '\n'.splitlines() # connect to iscsi target
-            elif args[0][:2] == ['dmsetup', 'status']:         return dmsetup_status_response.splitlines()
             elif args[0][0] == 'blockdev':                          return '12345'.splitlines()
         return iscsiadm_side_effect
+
 
 iscsiadm_discovery_response = """
 10.2.20.247:3260,1 iqn.2001-04.com.nas-0-1-vm-hpcdev-pub03-1-vol
@@ -264,4 +250,3 @@ Target: %s
         scsi74 Channel 00 Id 0 Lun: 1
             Attached scsi disk %s      State: transport-offline"""
 
-dmsetup_status_response="0 75497472 snapshot-merge 32/73400320 32"

@@ -17,6 +17,8 @@
 	$Log$
 	</changelog>
 
+	<package>foundation-sqlite</package>
+	<package>foundation-pysqlite</package>
 	<package>foundation-python-daemon</package>
 	<package>foundation-python-lockfile</package>
 	<package>img-storage-vm</package>
