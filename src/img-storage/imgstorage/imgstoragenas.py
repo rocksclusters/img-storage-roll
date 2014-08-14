@@ -214,7 +214,7 @@ class NasDaemon():
                 cur.execute('SELECT remotehost, iscsi_target FROM zvols WHERE zvol = ?',[zvol_name])
                 row = cur.fetchone()
                 if row == None: raise ActionError('ZVol %s not found in database'%zvol_name)
-                if row[1] != None: raise ActionError('Error deleting zvol %s: is mapped'%zvol_name)
+                if row[0] != None: raise ActionError('Error deleting zvol %s: is mapped'%zvol_name)
 
                 self.logger.debug("Invoking zfs destroy %s/%s"%(self.ZPOOL,zvol_name))
                 runCommand(['zfs', 'destroy', '%s/%s'%(self.ZPOOL, zvol_name), '-r'])
