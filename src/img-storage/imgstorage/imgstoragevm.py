@@ -211,7 +211,7 @@ class VmDaemon():
                 cur = con.cursor()
                 cur.execute('UPDATE sync_queue SET devsize = ?, iscsi_target = ?, reply_to = ?, correlation_id = ?, time = ? WHERE zvol = ?',
                         [devsize, target,props.reply_to, props.message_id, time.time(),  zvol])
-
+                self.logger.debug("Updated the db for zvol %s : %s"%(zvol, devsize))
                 con.commit()
         except ActionError, msg:
             self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'error', 'error':str(msg)}, 
@@ -233,7 +233,7 @@ class VmDaemon():
                 self.logger.debug("Quitting run_sync")
                 self.sync_poller_id = None
                 return
-
+            self.logger.debug(row)
             zvol, target, devsize, reply_to, correlation_id, started = row
 
             try:
@@ -266,8 +266,8 @@ class VmDaemon():
                 cur.execute('DELETE FROM sync_queue WHERE zvol = ?', [zvol])
                 con.commit()
 
+                self.logger.exception('Error syncing %s: %s'%(zvol, str(msg)))
                 self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'error', 'error':str(msg)}, reply_to, correlation_id=correlation_id)
-                self.logger.error('Error syncing %s: %s'%(zvol, str(msg)))
 
             self.logger.debug("Scheduling another run_sync")
             self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.run_sync)

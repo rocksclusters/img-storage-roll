@@ -105,7 +105,6 @@ class SyncDaemon():
 
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message)
         self.queue_connector.run()
-        self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
 
 
     """
@@ -122,10 +121,13 @@ class SyncDaemon():
 
 
         self.logger.debug("Got zvol mapped message %s"%target)
-        with sqlite3.connect(self.SQLITE_DB) as con:
-            cur = con.cursor()
-            cur.execute('INSERT INTO sync_queue SELECT zvol,?,1,? FROM zvols WHERE iscsi_target = ? ', [props.reply_to, time.time(), target])
-            con.commit()
+        try:
+            with sqlite3.connect(self.SQLITE_DB) as con:
+                cur = con.cursor()
+                cur.execute('INSERT INTO sync_queue SELECT zvol,?,1,? FROM zvols WHERE iscsi_target = ? ', [props.reply_to, time.time(), target])
+                con.commit()
+        except:
+            self.logger.exception("Error adding new task to the queue")
         if(not self.sync_poller_id):
             self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
 
@@ -143,48 +145,44 @@ class SyncDaemon():
                     ['zfs', 'receive', '-F', 'tank/%s'%(zvol)])
             runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy tank/%s -r"'%(remotehost, zvol)]) 
 
-        self.logger.debug("sync run")
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('SELECT zvols.iscsi_target, sync_queue.remotehost, sync_queue.is_sending, zvols.zvol FROM sync_queue '+
                 ' JOIN zvols ON sync_queue.zvol = zvols.zvol ORDER BY sync_queue.time ASC LIMIT 1')
             row = cur.fetchone()
 
-            if(not row):
-                self.logger.debug("Stopping sync polling as there are no more jobs")
-                self.sync_poller_id = None
-                return
+            if(row):
+                target, remotehost, is_sending, zvol  = row
+                self.logger.debug("Have sync job %s"%zvol)
 
-            target, remotehost, is_sending, zvol  = row
+                if(not self.sync_result):
+                    if(self.ib_net):
+                        remotehost += ".%s"%self.ib_net
 
-            if(not self.sync_result):
-                if(self.ib_net):
-                    remotehost += ".%s"%self.ib_net
+                    self.logger.debug("Starting new sync %s"%(zvol))
+                    if is_sending:
+                        self.sync_result = self.pool.apply_async(upload_snapshot, [zvol, self.cur_time(), remotehost])
+                    else:
+                        self.sync_result = self.pool.apply_async(download_snapshot, [zvol, self.cur_time(), remotehost, self.find_last_snapshot(zvol)])
 
-                self.logger.debug("Starting new sync %s"%(zvol))
-                if is_sending:
-                    self.sync_result = self.pool.apply_async(upload_snapshot, [zvol, self.cur_time(), remotehost])
-                else:
-                    self.sync_result = self.pool.apply_async(download_snapshot, [zvol, self.cur_time(), remotehost, self.find_last_snapshot(zvol)])
+                elif(self.sync_result.ready()):
+                    self.logger.debug("Sync %s is ready"%zvol)
 
-            elif(self.sync_result.ready()):
-                self.logger.debug("Sync %s is ready"%zvol)
-
-                try:
-                    self.sync_result.get()
-                    if(is_sending):
-                        self.queue_connector.publish_message(
-                            {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
-                            remotehost, #reply back to compute node
-                            self.NODE_NAME,
-                            on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(remotehost, zvol)))
-                except ActionError, msg:
-                    self.logger.exception('Error performing sync for %s: %s'%(zvol, str(msg)))
-                finally:
-                    self.sync_result = None
-                    cur.execute('DELETE FROM sync_queue WHERE zvol = ?', [zvol])
-                    con.commit()
-                    
+                    try:
+                        self.sync_result.get()
+                        if(is_sending):
+                            self.queue_connector.publish_message(
+                                {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
+                                remotehost, #reply back to compute node
+                                self.NODE_NAME,
+                                on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(remotehost, zvol)))
+                    except ActionError, msg:
+                        self.logger.exception('Error performing sync for %s: %s'%(zvol, str(msg)))
+                    finally:
+                        self.sync_result = None
+                        cur.execute('DELETE FROM sync_queue WHERE zvol = ?', [zvol])
+                        con.commit()
+                        
 
 
             self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
