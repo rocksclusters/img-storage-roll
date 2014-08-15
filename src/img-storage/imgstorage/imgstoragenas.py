@@ -334,8 +334,7 @@ class NasDaemon():
         out = runCommand(['tgtadm', '--op', 'show', '--mode', 'target'])
         for line in out:
             if line.startswith('Target ') and line.split()[2] == target:
-                tgt_num = line.split()[1][:-1]
-                return tgt_num
+                return line.split()[1][:-1]
         return None
 
     """ Get information from attributes if image sync is enabled for the node """

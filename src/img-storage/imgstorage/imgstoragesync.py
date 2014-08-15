@@ -92,7 +92,6 @@ class SyncDaemon():
         rocks.db.helper.DatabaseHelper().closeSession() # to reopen after daemonization
 
         self.logger = logging.getLogger('imgstorage.imgstoragesync.SyncDaemon')
-        self.logger.debug("init sync")
 
     def run(self):
         self.pool = ThreadPool(processes=1)
@@ -113,11 +112,8 @@ class SyncDaemon():
     def zvol_mapped(self, message, props):
         target = message['target']
 
-        if(message['status'] != 'success'):
-            return
-
-        if(not self.is_sync_node(props.reply_to)):
-            return
+        if(message['status'] != 'success'):         return
+        if(not self.is_sync_node(props.reply_to)):  return
 
 
         self.logger.debug("Got zvol mapped message %s"%target)
@@ -128,6 +124,7 @@ class SyncDaemon():
                 con.commit()
         except:
             self.logger.exception("Error adding new task to the queue")
+
         if(not self.sync_poller_id):
             self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
 
@@ -192,11 +189,8 @@ class SyncDaemon():
     def zvol_unmapped(self, message, props):
         zvol = message['zvol']
 
-        if(message['status'] != 'success'):
-            return
-
-        if(not self.is_sync_node(props.reply_to)):
-            return
+        if(message['status'] != 'success'):         return
+        if(not self.is_sync_node(props.reply_to)):  return
 
         self.logger.debug("Got zvol unmapped message %s"%zvol)
         with sqlite3.connect(self.SQLITE_DB) as con:
