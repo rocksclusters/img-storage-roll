@@ -105,6 +105,7 @@ class SyncDaemon():
 
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message)
         self.queue_connector.run()
+        self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
 
 
     """
@@ -130,17 +131,17 @@ class SyncDaemon():
 
 
     def schedule_next_sync(self):
-        def make_sync(is_sending, zvol, snap_name, remotehost, last_snapshot=None):
-            if(is_sending):
-                runCommand(['zfs', 'snap', 'tank/%s@%s'%(zvol, snap_name)])
-                runCommand(['zfs', 'send', 'tank/%s@%s'%(zvol, snap_name)], 
-                        ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F tank/%s"'%(remotehost, zvol)])
-            else:
-                runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap tank/%s@%s"'%(remotehost, zvol, snap_name)])
-                runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i tank/%s@%s tank/%s@%s"'%
-                                (remotehost, zvol, last_snapshot, zvol, snap_name)], 
-                        ['zfs', 'receive', '-F', 'tank/%s'%(zvol)])
-                runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy tank/%s -r"'%(remotehost, zvol)]) 
+        def upload_snapshot(zvol, snap_name, remotehost):
+            runCommand(['zfs', 'snap', 'tank/%s@%s'%(zvol, snap_name)])
+            runCommand(['zfs', 'send', 'tank/%s@%s'%(zvol, snap_name)], 
+                    ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F tank/%s"'%(remotehost, zvol)])
+
+        def download_snapshot(zvol, snap_name, remotehost, last_snapshot):
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap tank/%s@%s"'%(remotehost, zvol, snap_name)])
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i tank/%s@%s tank/%s@%s"'%
+                            (remotehost, zvol, last_snapshot, zvol, snap_name)], 
+                    ['zfs', 'receive', '-F', 'tank/%s'%(zvol)])
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy tank/%s -r"'%(remotehost, zvol)]) 
 
         self.logger.debug("sync run")
         with sqlite3.connect(self.SQLITE_DB) as con:
@@ -154,7 +155,6 @@ class SyncDaemon():
                 self.sync_poller_id = None
                 return
 
-            self.logger.debug("make_sync has new job")
             target, remotehost, is_sending, zvol  = row
 
             if(not self.sync_result):
@@ -162,21 +162,30 @@ class SyncDaemon():
                     remotehost += ".%s"%self.ib_net
 
                 self.logger.debug("Starting new sync %s"%(zvol))
-                self.sync_result = self.pool.apply_async(make_sync, 
-                        [is_sending, zvol, self.cur_time(), remotehost,
-                            (None if is_sending else self.find_last_snapshot(zvol))])
+                if is_sending:
+                    self.sync_result = self.pool.apply_async(upload_snapshot, [zvol, self.cur_time(), remotehost])
+                else:
+                    self.sync_result = self.pool.apply_async(download_snapshot, [zvol, self.cur_time(), remotehost, self.find_last_snapshot(zvol)])
 
             elif(self.sync_result.ready()):
                 self.logger.debug("Sync %s is ready"%zvol)
-                if(is_sending):
-                    self.queue_connector.publish_message(
-                        {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
-                        remotehost, #reply back to compute node
-                        self.NODE_NAME,
-                        on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(remotehost, zvol)))
-                self.sync_result = None
-                cur.execute('DELETE FROM sync_queue WHERE zvol = ?', [zvol])
-                con.commit()
+
+                try:
+                    self.sync_result.get()
+                    if(is_sending):
+                        self.queue_connector.publish_message(
+                            {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
+                            remotehost, #reply back to compute node
+                            self.NODE_NAME,
+                            on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(remotehost, zvol)))
+                except ActionError, msg:
+                    self.logger.exception('Error performing sync for %s: %s'%(zvol, str(msg)))
+                finally:
+                    self.sync_result = None
+                    cur.execute('DELETE FROM sync_queue WHERE zvol = ?', [zvol])
+                    con.commit()
+                    
+
 
             self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
 
