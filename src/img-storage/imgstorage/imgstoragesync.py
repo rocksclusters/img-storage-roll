@@ -62,6 +62,8 @@ import traceback
 import time
 import json
 
+from multiprocessing.pool import ThreadPool
+
 from pysqlite2 import dbapi2 as sqlite3
 import sys
 import signal
@@ -82,7 +84,12 @@ class SyncDaemon():
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
         self.NODE_NAME = RabbitMQLocator.NODE_NAME
         self.ib_net = RabbitMQLocator.IB_NET
-        
+       
+        pool = ThreadPool(processes=1)
+        self.sync_result = None
+        self.SYNC_CHECK_TIMEOUT = 10
+        self.sync_poller_id = None
+ 
         rocks.db.helper.DatabaseHelper().closeSession() # to reopen after daemonization
 
         self.logger = logging.getLogger('imgstorage.imgstoragesync.SyncDaemon')
@@ -90,60 +97,109 @@ class SyncDaemon():
 
     def run(self):
         self.logger.debug("Started sync")
+
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('CREATE TABLE IF NOT EXISTS sync_queue(zvol TEXT PRIMARY KEY NOT NULL, remotehost TEXT, is_sending BOOLEAN, time INT)')
+            con.commit()
+
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message)
         self.queue_connector.run()
+
+
 
     """
     Received zvol_mapped notification from compute node
     """
     def zvol_mapped(self, message, props):
         target = message['target']
-        zvol = None
-        reply_to = None
 
         if(message['status'] != 'success'):
             return
 
+        if(not self.is_sync_node(props.reply_to)):
+            return
+
+
         self.logger.debug("Got zvol mapped message %s"%target)
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('SELECT zvol FROM zvols WHERE iscsi_target = ?',[target])
-            [zvol] = cur.fetchone()
- 
-            snap_name = self.cur_time()
-            if(self.is_sync_node(props.reply_to)):
-                remotehost = props.reply_to
+            cur.execute('INSERT INTO sync_queue SELECT zvol,?,1,? FROM zvols WHERE iscsi_target = ? ', [props.reply_to, time.time(), target])
+            con.commit()
+        if(not self.sync_poller_id):
+            self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
+
+
+    def schedule_next_sync(self):
+        self.logger.debug("starting new sync check")
+        if(not self.sync_result):
+            self.logger.debug("Starting new make_sync job")
+            sync_result = pool.apply_async(self.make_sync)
+            self.logger.debug(sync_result)
+        elif(self.sync_result.ready()):
+            result = self.sync_result.get()
+            if(result):
+                self.queue_connector.publish_message(
+                    {'action': 'sync_zvol', 'zvol':result['zvol'], 'target':result['target']},
+                    result['reply_to'], #reply back to compute node
+                    self.NODE_NAME,
+                    on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(result['reply_to'], result['zvol'])))
+            self.sync_result = None
+
+        self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
+
+
+
+    def make_sync(self):
+        self.logger.debug("make_sync begin")
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('SELECT zvols.iscsi_target, sync_queue.remotehost, sync_queue.is_sending, zvols.zvol FROM sync_queue '+
+                ' JOIN zvols ON sync_queue.zvol = zvols.zvol ORDER BY sync_queue.time ASC LIMIT 1')
+            row = cur.fetchone()
+            if(row):
+                self.logger.debug("make_sync has new job")
+                target, remotehost, is_sending, zvol  = row
+
+                snap_name = self.cur_time()
                 if(self.ib_net):
                     remotehost += ".%s"%self.ib_net
-                self.logger.debug("Sending snapshot %s"%snap_name)
-                runCommand(['zfs', 'snap', 'tank/%s@%s'%(zvol, snap_name)])
-                runCommand(['zfs', 'send', 'tank/%s@%s'%(zvol, snap_name)], ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F tank/%s"'%(remotehost, zvol)])
-                self.logger.debug('Done sync; sending message back to %s'%props.reply_to)
-                self.queue_connector.publish_message(
-                    {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
-                    props.reply_to, #reply back to compute node
-                    self.NODE_NAME,
-                    on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(props.reply_to, zvol)))
+
+                if(is_sending):
+                    self.logger.debug("Sending snapshot %s"%snap_name)
+                    runCommand(['zfs', 'snap', 'tank/%s@%s'%(zvol, snap_name)])
+                    runCommand(['zfs', 'send', 'tank/%s@%s'%(zvol, snap_name)], ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F tank/%s"'%(remotehost, zvol)])
+                    self.logger.debug('Done sync; sending message back to %s'%remotehost)
+                    return {'zvol':zvol, 'target':target, 'reply_to':remotehost}
+                else:
+                    self.logger.debug("Receiving snapshot %s"%snap_name)
+                    last_snapshot = self.find_last_snapshot(zvol)
+                    runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap tank/%s@%s"'%(remotehost, zvol, snap_name)])
+                    runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i tank/%s@%s tank/%s@%s"'%(remotehost, zvol, last_snapshot, zvol, snap_name)], ['zfs', 'receive', '-F', 'tank/%s'%(zvol)])
+                    runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy tank/%s -r"'%(remotehost, zvol)]) 
+                    self.logger.info("Sync manager finished destroying %s and creted snapshot %s"%(zvol, snap_name))
+
+
+
 
     def zvol_unmapped(self, message, props):
-        target = message['target']
         zvol = message['zvol']
 
         if(message['status'] != 'success'):
             return
 
-        snap_name = self.cur_time()
-        if(self.is_sync_node(props.reply_to) and message['status'] == 'success'):
-            remotehost = props.reply_to
-            if(self.ib_net):
-                remotehost += ".%s"%self.ib_net
-            self.logger.debug("Receiving snapshot %s"%snap_name)
-            last_snapshot = self.find_last_snapshot(zvol)
-            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap tank/%s@%s"'%(remotehost, zvol, snap_name)])
-            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i tank/%s@%s tank/%s@%s"'%(remotehost, zvol, last_snapshot, zvol, snap_name)], ['zfs', 'receive', '-F', 'tank/%s'%(zvol)])
-            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy tank/%s -r"'%(remotehost, zvol)]) 
-            self.logger.info("Sync manager finished destroying %s and creted snapshot %s"%(zvol, snap_name))
+        if(not self.is_sync_node(props.reply_to)):
+            return
+
+        self.logger.debug("Got zvol unmapped message %s"%zvol)
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('INSERT INTO sync_queue VALUES(?,?,0,?)', [zvol, props.reply_to, time.time()])
+            con.commit()
         
+        if(not self.sync_poller_id):
+            self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
+    
     def detach_target(self, target):
         with sqlite3.connect(self.SQLITE_DB) as con:
             tgt_num = self.find_iscsi_target_num(target)

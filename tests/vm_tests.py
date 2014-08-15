@@ -40,7 +40,7 @@ class TestVmFunctions(unittest.TestCase):
 
         with sqlite3.connect(self.client.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('INSERT INTO zvol_calls VALUES (?,?,?,?,?,?,?)',('vol1', 'iqn.2001-04.com.nas-0-1-vol1', 12345, 'reply_to', 'corr_id', 0, 1))
+            cur.execute('INSERT INTO sync_queue VALUES (?,?,?,?,?,?,?)',('vol1', 'iqn.2001-04.com.nas-0-1-vol1', 12345, 'reply_to', 'corr_id', 0, 1))
             con.commit()
 
 

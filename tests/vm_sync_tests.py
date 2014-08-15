@@ -37,7 +37,7 @@ class TestVmSyncFunctions(unittest.TestCase):
 
         with sqlite3.connect(self.vm_client.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('INSERT INTO zvol_calls VALUES (?,?,?,?,?,?,?)',('vol1', 'iqn.2001-04.com.nas-0-1-vol1', 12345, 'reply_to', 'corr_id', 0, 1))
+            cur.execute('INSERT INTO sync_queue VALUES (?,?,?,?,?,?,?)',('vol1', 'iqn.2001-04.com.nas-0-1-vol1', 12345, 'reply_to', 'corr_id', 0, 1))
             con.commit()
 
     def tearDown(self):
@@ -107,7 +107,7 @@ class TestVmSyncFunctions(unittest.TestCase):
     def check_zvol_busy(self, zvol):
         with sqlite3.connect(self.vm_client.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('SELECT count(*) from zvol_calls where zvol = ?',[zvol])
+            cur.execute('SELECT count(*) from sync_queue where zvol = ?',[zvol])
             num_rows = cur.fetchone()[0]
             return num_rows > 0
 

@@ -89,10 +89,6 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'zvol_unmapped', 'target':target, 'zvol': zvol, 'status':'success'},
             BasicProperties(reply_to='compute-0-3', correlation_id='message_id'))
 
-        print mockRunCommand.mock_calls
-        mockRunCommand.assert_any_call(['su', 'zfs', '-c', '/usr/bin/ssh compute-0-3.ibnet "/sbin/zfs snap tank/%s@1407869051186"'%zvol])
-        mockRunCommand.assert_any_call(['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3.ibnet "/sbin/zfs send -i tank/%s@1407871705494 tank/%s@1407869051186"'%(zvol, zvol)], ['zfs', 'receive', '-F', u'tank/%s'%zvol])
-
 
     @mock.patch('imgstorage.imgstoragevm.VmDaemon.is_sync_enabled', return_value=True)
     @mock.patch('imgstorage.imgstoragesync.runCommand')
@@ -105,6 +101,51 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.assertFalse(self.check_zvol_busy(zvol))
 
+    @mock.patch('imgstorage.imgstoragevm.VmDaemon.is_sync_enabled', return_value=True)
+    @mock.patch('imgstorage.imgstoragesync.runCommand')
+    def test_zvol_mapped_success(self, mock_run_command, mock_sync_enabled):
+        zvol = 'vol2'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
+        bdev = 'sdc'
+        mock_run_command.return_value = (iscsiadm_session_response%(target, zvol)).splitlines()
+        self.nas_client.zvol_synced(
+            {'action': 'zvol_mapped', 'target':target, 'bdev':bdev, 'zvol':zvol, 'status':'success'},
+            BasicProperties(reply_to='reply_to', correlation_id='message_id'))
+
+    @mock.patch('imgstorage.imgstoragesync.runCommand')
+    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.find_last_snapshot', return_value='1407871705494')
+    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.cur_time', return_value = '1407869051186')
+    def test_make_sync_download(self, mock_cur_time, mock_last_snapshot, mock_run_command):
+
+        with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('INSERT INTO sync_queue VALUES(?,?,0,?)', ['vol3_busy', 'compute-0-3', time.time()])
+            con.commit()
+
+        self.nas_client.make_sync()
+        print mock_run_command.mock_calls
+        zvol = 'vol3_busy'
+        mock_run_command.assert_any_call(['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3.ibnet "/sbin/zfs snap tank/%s@1407869051186"'%(zvol)])
+        mock_run_command.assert_any_call(['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3.ibnet "/sbin/zfs send -i tank/%s@1407871705494 tank/%s@1407869051186"'%(zvol, zvol)], ['zfs', 'receive', '-F', u'tank/%s'%zvol])
+        mock_run_command.assert_any_call(['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3.ibnet "/sbin/zfs destroy tank/%s -r"'%zvol])
+
+
+
+    @mock.patch('imgstorage.imgstoragesync.runCommand')
+    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.find_last_snapshot', return_value='1407871705494')
+    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.cur_time', return_value = '1407869051186')
+    def test_make_sync_upload(self, mock_cur_time, mock_last_snapshot, mock_run_command):
+        with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('INSERT INTO sync_queue VALUES(?,?,1,?)', ['vol3_busy', 'compute-0-3', time.time()])
+            con.commit()
+
+        self.nas_client.make_sync()
+        print mock_run_command.mock_calls
+        zvol = 'vol3_busy'
+        mock_run_command.assert_any_call(['zfs', 'snap', u'tank/%s@1407869051186'%zvol])
+        mock_run_command.assert_any_call(['zfs', 'send', u'tank/%s@1407869051186'%zvol], ['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3.ibnet "/sbin/zfs receive -F tank/%s"'%zvol])
+        print mock_run_command.mock_calls
 
     @mock.patch('imgstorage.imgstoragesync.runCommand')
     def test_find_last_snapshot(self, mock_run_command):

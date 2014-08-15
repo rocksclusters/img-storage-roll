@@ -86,6 +86,7 @@ class VmDaemon():
         self.temp_size = 35
 
         self.sync_poller_id = None
+        self.SYNC_CHECK_TIMEOUT = 10
 
         rocks.db.helper.DatabaseHelper().closeSession() # to reopen after daemonization
 
@@ -208,7 +209,7 @@ class VmDaemon():
 
             with sqlite3.connect(self.SQLITE_DB) as con:
                 cur = con.cursor()
-                cur.execute('UPDATE zvol_calls SET devsize = ?, iscsi_target = ?, reply_to = ?, correlation_id = ?, time = ? WHERE zvol = ?',
+                cur.execute('UPDATE sync_queue SET devsize = ?, iscsi_target = ?, reply_to = ?, correlation_id = ?, time = ? WHERE zvol = ?',
                         [devsize, target,props.reply_to, props.message_id, time.time(),  zvol])
 
                 con.commit()
@@ -220,13 +221,13 @@ class VmDaemon():
  
 
         if(not self.sync_poller_id):
-            self.sync_poller_id = self.queue_connector._connection.add_timeout(10, self.run_sync)
+            self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.run_sync)
 
     def run_sync(self):
         self.logger.debug("Starting run_sync")
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('select zvol, iscsi_target, devsize, reply_to, correlation_id, started from zvol_calls ORDER BY time ASC LIMIT 1')
+            cur.execute('select zvol, iscsi_target, devsize, reply_to, correlation_id, started from sync_queue ORDER BY time ASC LIMIT 1')
             row = cur.fetchone()
             if(not row):
                 self.logger.debug("Quitting run_sync")
@@ -241,7 +242,7 @@ class VmDaemon():
                     runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
                     runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s snapshot-merge /dev/zvol/tank/%s /dev/zvol/tank/%s-temp-write P 16'%(devsize, zvol, zvol)])
                     runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
-                    cur.execute('UPDATE zvol_calls SET started = 1 WHERE zvol = ?', [zvol])
+                    cur.execute('UPDATE sync_queue SET started = 1 WHERE zvol = ?', [zvol])
                     con.commit()
 
                 sync_status = runCommand(['dmsetup', 'status', '%s-snap'%zvol])
@@ -249,7 +250,7 @@ class VmDaemon():
                 if not (stats[4] == stats[6]):
                     self.logger.debug("Waiting for sync '%s' %s %s"%(sync_status[0], stats[4], stats[6]))
                 else:
-                    cur.execute('DELETE FROM zvol_calls WHERE zvol = ?', [zvol])
+                    cur.execute('DELETE FROM sync_queue WHERE zvol = ?', [zvol])
                     con.commit()
 
                     self.logger.debug('Reloaded local storage to zvol and temp %s'%runCommand(['dmsetup', 'status', '%s-snap'%zvol])[0])
@@ -262,14 +263,14 @@ class VmDaemon():
 
                     self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'success'}, reply_to, correlation_id=correlation_id)
             except ActionError, msg:
-                cur.execute('DELETE FROM zvol_calls WHERE zvol = ?', [zvol])
+                cur.execute('DELETE FROM sync_queue WHERE zvol = ?', [zvol])
                 con.commit()
 
                 self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'error', 'error':str(msg)}, reply_to, correlation_id=correlation_id)
                 self.logger.error('Error syncing %s: %s'%(zvol, str(msg)))
 
             self.logger.debug("Scheduling another run_sync")
-            self.sync_poller_id = self.queue_connector._connection.add_timeout(10, self.run_sync)
+            self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.run_sync)
 
 
     def process_message(self, props, message):
@@ -288,7 +289,7 @@ class VmDaemon():
     def run(self):
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, devsize INT, reply_to TEXT, correlation_id TEXT, started BOOLEAN default 0, time INT)')
+            cur.execute('CREATE TABLE IF NOT EXISTS sync_queue(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, devsize INT, reply_to TEXT, correlation_id TEXT, started BOOLEAN default 0, time INT)')
             con.commit()
 
 
@@ -304,7 +305,7 @@ class VmDaemon():
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             try:
-                cur.execute('INSERT INTO zvol_calls (zvol) VALUES (?)',[zvol_name])
+                cur.execute('INSERT INTO sync_queue (zvol) VALUES (?)',[zvol_name])
                 con.commit()
             except sqlite3.IntegrityError, msg:
                 self.logger.exception(msg)
@@ -313,5 +314,5 @@ class VmDaemon():
     def release_zvol(self, zvol):
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('DELETE FROM zvol_calls WHERE zvol = ?',[zvol])
+            cur.execute('DELETE FROM sync_queue WHERE zvol = ?',[zvol])
             con.commit()
