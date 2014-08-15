@@ -85,7 +85,7 @@ class SyncDaemon():
         self.NODE_NAME = RabbitMQLocator.NODE_NAME
         self.ib_net = RabbitMQLocator.IB_NET
        
-        pool = ThreadPool(processes=1)
+        self.pool = ThreadPool(processes=1)
         self.sync_result = None
         self.SYNC_CHECK_TIMEOUT = 10
         self.sync_poller_id = None
@@ -131,11 +131,8 @@ class SyncDaemon():
 
 
     def schedule_next_sync(self):
-        self.logger.debug("starting new sync check")
         if(not self.sync_result):
-            self.logger.debug("Starting new make_sync job")
-            sync_result = pool.apply_async(self.make_sync)
-            self.logger.debug(sync_result)
+            sync_result = self.pool.apply_async(self.make_sync, self)
         elif(self.sync_result.ready()):
             result = self.sync_result.get()
             if(result):

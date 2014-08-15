@@ -112,6 +112,11 @@ class TestNasFunctions(unittest.TestCase):
             {'action': 'zvol_mapped', 'target':target, 'bdev':bdev, 'zvol':zvol, 'status':'success'},
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
 
+    @mock.patch('imgstorage.imgstoragevm.VmDaemon.is_sync_enabled', return_value=True)
+    @mock.patch('imgstorage.imgstoragesync.runCommand')
+    def test_schedule_next(self, mock_run_command, mock_sync_enabled):
+        self.nas_client.schedule_next_sync()
+
     @mock.patch('imgstorage.imgstoragesync.runCommand')
     @mock.patch('imgstorage.imgstoragesync.SyncDaemon.find_last_snapshot', return_value='1407871705494')
     @mock.patch('imgstorage.imgstoragesync.SyncDaemon.cur_time', return_value = '1407869051186')
