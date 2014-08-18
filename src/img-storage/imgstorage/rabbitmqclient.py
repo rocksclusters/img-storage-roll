@@ -70,8 +70,12 @@ class RabbitMQLocator(object):
     IB_NET = db.getHostAttr(db.getHostname(), 'IB_net')
     db.close()
     RABBITMQ_URL = None
+    ZPOOL = None
     with open ("/opt/rocks/etc/rabbitmq.conf", "r") as rabbit_pw_file:
         RABBITMQ_URL = rabbit_pw_file.read().rstrip('\n')
+
+    with open("/opt/rocks/etc/zfs_img.conf", "r") as zpool_config_file:
+        ZPOOL = zpool_config_file.read().rstrip('\n')
 
 class RabbitMQCommonClient:
 

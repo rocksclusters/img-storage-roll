@@ -82,6 +82,7 @@ class VmDaemon():
         self.logger = logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
         self.sync_enabled = self.is_sync_enabled()
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
+        self.ZPOOL = RabbitMQLocator.ZPOOL
 
         self.temp_size = 35
 
@@ -115,11 +116,11 @@ class VmDaemon():
 
             if(self.sync_enabled):
                 temp_size_cur = min(self.temp_size, int(message['size'])-1)
-                runCommand(['zfs', 'create', '-V', '%sgb'%message['size'], 'tank/%s'%zvol])
-                runCommand(['zfs', 'create', '-V', '%sgb'%temp_size_cur, 'tank/%s-temp-write'%zvol])
+                runCommand(['zfs', 'create', '-V', '%sgb'%message['size'], '%s/%s'%(self.ZPOOL, zvol)])
+                runCommand(['zfs', 'create', '-V', '%sgb'%temp_size_cur, '%s/%s-temp-write'%(self.ZPOOL, zvol)])
                 time.sleep(2)
                 runCommand(['dmsetup', 'create', '%s-snap'%zvol,
-                    '--table', '0 %s snapshot %s /dev/zvol/tank/%s-temp-write P 16'%(int(1024**3*temp_size_cur/512), bdev, zvol)])
+                    '--table', '0 %s snapshot %s /dev/zvol/%s/%s-temp-write P 16'%(int(1024**3*temp_size_cur/512), bdev, self.ZPOOL, zvol)])
                 bdev = '/dev/mapper/%s-snap'%zvol
             else:
                 self.release_zvol(zvol)
@@ -237,13 +238,15 @@ class VmDaemon():
             zvol, target, devsize, reply_to, correlation_id, started = row
 
             try:
+                start = time.time()
                 if(not started):
                     self.logger.debug("Starting new sync %s"%zvol)
                     runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
-                    runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s snapshot-merge /dev/zvol/tank/%s /dev/zvol/tank/%s-temp-write P 16'%(devsize, zvol, zvol)])
+                    runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s snapshot-merge /dev/zvol/%s/%s /dev/zvol/%s/%s-temp-write P 16'%(devsize, self.ZPOOL, zvol, self.ZPOOL, zvol)])
                     runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
                     cur.execute('UPDATE sync_queue SET started = 1 WHERE zvol = ?', [zvol])
                     con.commit()
+                    self.logger.debug('Initial sync finished in %s'%(time.time()-start))
 
                 sync_status = runCommand(['dmsetup', 'status', '%s-snap'%zvol])
                 stats = re.findall(r"[\w]+", sync_status[0])
@@ -253,15 +256,16 @@ class VmDaemon():
                     cur.execute('DELETE FROM sync_queue WHERE zvol = ?', [zvol])
                     con.commit()
 
-                    self.logger.debug('Reloaded local storage to zvol and temp %s'%runCommand(['dmsetup', 'status', '%s-snap'%zvol])[0])
+                    self.logger.debug('Reloaded local storage to zvol and temp %s in %s'%(runCommand(['dmsetup', 'status', '%s-snap'%zvol])[0], time.time()-start))
                     runCommand(['dmsetup', 'suspend', '/dev/mapper/%s-snap'%zvol])
-                    runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s linear /dev/zvol/tank/%s 0'%(devsize, zvol)])
+                    runCommand(['dmsetup', 'reload', '/dev/mapper/%s-snap'%zvol, '--table', '0 %s linear /dev/zvol/%s/%s 0'%(devsize, self.ZPOOL, zvol)])
                     runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
-                    self.logger.debug('Synced local storage to local')
-                    runCommand(['zfs', 'destroy', 'tank/%s-temp-write'%zvol])
+                    self.logger.debug('Synced local storage to local in %s'%(time.time()-start))
+                    runCommand(['zfs', 'destroy', '%s/%s-temp-write'%(self.ZPOOL, zvol)])
                     self.disconnect_iscsi(target)
 
                     self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'success'}, reply_to, correlation_id=correlation_id)
+                    self.logger.debug("Sync time: %s"%(time.time() - start))
             except ActionError, msg:
                 cur.execute('DELETE FROM sync_queue WHERE zvol = ?', [zvol])
                 con.commit()

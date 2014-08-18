@@ -79,7 +79,7 @@ class NasDaemon():
         self.pidfile_timeout = 5
         self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'zvol_mapped':self.zvol_mapped, 'zvol_unmapped': self.zvol_unmapped, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol }
 
-        self.ZPOOL = 'tank'
+        self.ZPOOL = RabbitMQLocator.ZPOOL
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
         self.NODE_NAME = RabbitMQLocator.NODE_NAME
         self.ib_net = RabbitMQLocator.IB_NET

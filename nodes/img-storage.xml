@@ -36,8 +36,11 @@ echo "amqp://rocks:${admin_pass}@&Kickstart_PrivateHostname;:5672/%2F?connection
 chmod 400 /opt/rocks/etc/rabbitmq.conf
 
 
+echo "tank" &gt; /opt/rocks/etc/zfs_img.conf
+
 # adding rabbitmq to 411 so we push the password to the nodes
-echo "FILES_NOCOMMENT += /opt/rocks/etc/rabbitmq.conf" >> /var/411/Files.mk
+echo "FILES_NOCOMMENT += /opt/rocks/etc/rabbitmq.conf" &gt;&gt; /var/411/Files.mk
+echo "FILES_NOCOMMENT += /opt/rocks/etc/zfs_img.conf" &gt;&gt; /var/411/Files.mk
 /usr/bin/make -C /var/411 411.mk
 
 # setting default attribute to install daemon

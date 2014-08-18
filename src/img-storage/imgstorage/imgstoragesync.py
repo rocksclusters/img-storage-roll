@@ -80,7 +80,7 @@ class SyncDaemon():
         self.pidfile_timeout = 5
         self.function_dict = {'zvol_mapped':self.zvol_mapped, 'zvol_synced':self.zvol_synced, 'zvol_unmapped':self.zvol_unmapped }
 
-        self.ZPOOL = 'tank'
+        self.ZPOOL = RabbitMQLocator.ZPOOL
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
         self.NODE_NAME = RabbitMQLocator.NODE_NAME
         self.ib_net = RabbitMQLocator.IB_NET
@@ -131,16 +131,18 @@ class SyncDaemon():
 
     def schedule_next_sync(self):
         def upload_snapshot(zvol, snap_name, remotehost):
-            runCommand(['zfs', 'snap', 'tank/%s@%s'%(zvol, snap_name)])
-            runCommand(['zfs', 'send', 'tank/%s@%s'%(zvol, snap_name)], 
-                    ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F tank/%s"'%(remotehost, zvol)])
+            runCommand(['zfs', 'snap', '%s/%s@%s'%(self.ZPOOL, zvol, snap_name)])
+            try: runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s@%s"'%(self.ZPOOL, zvol, snap_name)])
+            except: pass # just in case...
+            runCommand(['zfs', 'send', '%s/%s@%s'%(self.ZPOOL, zvol, snap_name)], 
+                    ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F %s/%s"'%(remotehost, self.ZPOOL, zvol)])
 
         def download_snapshot(zvol, snap_name, remotehost, last_snapshot):
-            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap tank/%s@%s"'%(remotehost, zvol, snap_name)])
-            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i tank/%s@%s tank/%s@%s"'%
-                            (remotehost, zvol, last_snapshot, zvol, snap_name)], 
-                    ['zfs', 'receive', '-F', 'tank/%s'%(zvol)])
-            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy tank/%s -r"'%(remotehost, zvol)]) 
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap %s/%s@%s"'%(remotehost, self.ZPOOL, zvol, snap_name)])
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i %s/%s@%s %s/%s@%s"'%
+                            (remotehost, self.ZPOOL, zvol, last_snapshot, self.ZPOOL, zvol, snap_name)], 
+                    ['zfs', 'receive', '-F', '%s/%s'%(self.ZPOOL, zvol)])
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'%(remotehost, self.ZPOOL, zvol)]) 
 
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
