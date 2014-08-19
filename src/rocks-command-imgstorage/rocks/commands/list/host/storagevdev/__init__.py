@@ -29,17 +29,14 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command)
         """
 
         def run(self, params, args):
-                (args, compute) = self.fillPositionalArgs(('compute'))
-
-                if not compute:
-                        self.abort("you must enter the compute name")
+            self.beginOutput()
+            for compute in self.getHostnames(args):
                 # debugging output
                 map = CommandLauncher().callListHostStoragevdev(compute)
-                self.beginOutput()
                 for d in map.keys():
                     self.addOutput(compute, (d, map[d]['status'], map[d]['size'], map[d].get('synced')))
                 headers=['compute','device', 'status', 'size (GB)', 'synced']
-                self.endOutput(headers)
+            self.endOutput(headers)
 
 
 
