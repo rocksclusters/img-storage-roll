@@ -8,6 +8,7 @@ import unittest
 from mock import MagicMock, ANY
 import mock
 from imgstorage.imgstoragesync import SyncDaemon
+from imgstorage.imgstoragenas import NasDaemon
 from imgstorage.imgstoragevm import VmDaemon
 from imgstorage.rabbitmqclient import RabbitMQCommonClient
 
@@ -152,6 +153,33 @@ class TestNasFunctions(unittest.TestCase):
         zvol = 'vol3'
         mock_run_command.return_value = zfs_list_response.splitlines()
         self.assertEqual(self.nas_client.find_last_snapshot(zvol), '1407872271816')
+
+    @mock.patch('imgstorage.imgstoragenas.RabbitMQCommonClient')
+    def test_get_status(self, mock_rabbit_nas):
+        self.nas_client = NasDaemon()
+        mock_rabbit_nas.publish_message = MagicMock()
+        self.nas_client.process_message = MagicMock()
+
+        self.nas_client.SQLITE_DB = '/tmp/test_db_%s'%uuid.uuid4()
+        self.nas_client.run()
+
+        with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
+            cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, remotehost TEXT)')
+            cur.execute('CREATE TABLE IF NOT EXISTS sync_queue(zvol TEXT PRIMARY KEY NOT NULL, remotehost TEXT, is_sending BOOLEAN, time INT)')
+            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol1', None, None))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol2', 'iqn.2001-04.com.nas-0-1-vol2', 'nas-0-1'))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol3_busy', 'iqn.2001-04.com.nas-0-1-vol3_busy', 'nas-0-1'))
+            cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',('vol3_busy', 'reply_to', time.time()))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol4_busy', 'iqn.2001-04.com.nas-0-1-vol4_busy', 'nas-0-1'))
+            cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',('vol4_busy', 'reply_to', time.time()))
+            cur.execute('INSERT INTO sync_queue VALUES (?,?,1,?)',('vol4_busy', 'reply_to', time.time()))
+            con.commit()
+
+        self.nas_client.get_status({'action': 'get_status'},
+                    BasicProperties(reply_to='reply_to', correlation_id='message_id'))
+        self.assertTrue(False)
 
     def check_zvol_busy(self, zvol):
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
