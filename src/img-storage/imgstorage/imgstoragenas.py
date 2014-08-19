@@ -340,8 +340,13 @@ class NasDaemon():
 
     """ Get information from attributes if image sync is enabled for the node """
     def is_sync_node(self, remotehost):
-        db = rocks.db.helper.DatabaseHelper()
-        db.connect()
-        is_sync_node = db.getHostAttr(remotehost, 'img_sync')
-        db.close()
+        try:
+            db = rocks.db.helper.DatabaseHelper()
+            db.connect()
+            is_sync_node = db.getHostAttr(remotehost, 'img_sync')
+            db.close()
+        except Exception, e:
+            self.logger.exception("Unable to get img_sycn attribute: " + str(e))
+            return False
         return is_sync_node
+
