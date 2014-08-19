@@ -81,7 +81,7 @@ class RabbitMQCommonClient:
 
     LOGGER = logging.getLogger(__name__)
 
-    def __init__(self, exchange, exchange_type, process_message=None):
+    def __init__(self, exchange, exchange_type, process_message=None, on_open=None):
         """Create a new instance of the consumer class, passing in the AMQP
         URL used to connect to RabbitMQ.
 
@@ -94,6 +94,7 @@ class RabbitMQCommonClient:
         self._consumer_tag = None
         self._url = RabbitMQLocator().RABBITMQ_URL
         self.process_message = process_message
+        self.on_connection_open_client=on_open
         self.exchange = exchange
         self.exchange_type = exchange_type
         self.routing_key = RabbitMQLocator().NODE_NAME
@@ -111,9 +112,13 @@ class RabbitMQCommonClient:
             self.LOGGER.info('Connecting to %s', self._url)
 
             try:
-                return pika.SelectConnection(pika.URLParameters(self._url),
+                sel_con = pika.SelectConnection(pika.URLParameters(self._url),
                                      self.on_connection_open,
                                      stop_ioloop_on_close=False)
+
+                if(self.on_connection_open_client):
+                    sel_con.add_on_open_callback(self.on_connection_open_client)
+                return sel_con
             except:
                 time.sleep(5)
                 pass

@@ -78,7 +78,7 @@ class SyncDaemon():
         self.stderr_path = '/tmp/syncerr.log'
         self.pidfile_path =  '/var/run/img-storage-sync.pid'
         self.pidfile_timeout = 5
-        self.function_dict = {'zvol_mapped':self.zvol_mapped, 'zvol_synced':self.zvol_synced, 'zvol_unmapped':self.zvol_unmapped }
+        self.function_dict = {'zvol_mapped':self.zvol_mapped, 'zvol_synced':self.zvol_synced, 'zvol_unmapped':self.zvol_unmapped, 'list_sync': self.list_sync }
 
         self.ZPOOL = RabbitMQLocator.ZPOOL
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
@@ -87,7 +87,6 @@ class SyncDaemon():
        
         self.sync_result = None
         self.SYNC_CHECK_TIMEOUT = 10
-        self.sync_poller_id = None
  
         rocks.db.helper.DatabaseHelper().closeSession() # to reopen after daemonization
 
@@ -102,7 +101,7 @@ class SyncDaemon():
             cur.execute('CREATE TABLE IF NOT EXISTS sync_queue(zvol TEXT PRIMARY KEY NOT NULL, remotehost TEXT, is_sending BOOLEAN, time INT)')
             con.commit()
 
-        self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message)
+        self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message, lambda a: self.schedule_next_sync())
         self.queue_connector.run()
 
 
@@ -125,15 +124,10 @@ class SyncDaemon():
         except:
             self.logger.exception("Error adding new task to the queue")
 
-        if(not self.sync_poller_id):
-            self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
-
 
     def schedule_next_sync(self):
         def upload_snapshot(zvol, snap_name, remotehost):
             runCommand(['zfs', 'snap', '%s/%s@%s'%(self.ZPOOL, zvol, snap_name)])
-            try: runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s@%s"'%(self.ZPOOL, zvol, snap_name)])
-            except: pass # just in case...
             runCommand(['zfs', 'send', '%s/%s@%s'%(self.ZPOOL, zvol, snap_name)], 
                     ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F %s/%s"'%(remotehost, self.ZPOOL, zvol)])
 
@@ -184,7 +178,7 @@ class SyncDaemon():
                         
 
 
-            self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
+            self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
 
 
 
@@ -200,9 +194,6 @@ class SyncDaemon():
             cur.execute('INSERT INTO sync_queue VALUES(?,?,0,?)', [zvol, props.reply_to, time.time()])
             con.commit()
         
-        if(not self.sync_poller_id):
-            self.sync_poller_id = self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
-    
     def detach_target(self, target):
         with sqlite3.connect(self.SQLITE_DB) as con:
             tgt_num = self.find_iscsi_target_num(target)
@@ -278,3 +269,13 @@ class SyncDaemon():
         is_sync_node = db.getHostAttr(node, 'img_sync')
         db.close()
         return is_sync_node
+
+
+    def list_sync(self, message, properties):
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('SELECT sync_queue.is_sending, sync_queue.zvol, sync_queue.remotehost, sync_queue.time from sync_queue ORDER BY sync_queue.time ASC;')
+            r = [dict((cur.description[i][0], value) for i, value in enumerate(row)) for row in cur.fetchall()]
+            self.queue_connector.publish_message({'action': 'return_sync', 'status': 'success', 'body':r}, exchange='', routing_key=properties.reply_to)
+
+

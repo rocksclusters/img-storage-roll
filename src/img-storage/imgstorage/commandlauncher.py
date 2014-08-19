@@ -93,9 +93,9 @@ class CommandLauncher():
        self.callCommand(message, nas)
        return self.ret_message['body']
 
-    def callListHostStatus(self, nas):
-       message = {'action': 'get_status'}
-       self.callCommand(message, nas)
+    def callListHostSync(self, host):
+       message = {'action': 'list_sync'}
+       self.callCommand(message, host)
        return self.ret_message['body']
 
     def callListHostStoragedev(self, compute):
@@ -104,6 +104,10 @@ class CommandLauncher():
        return self.ret_message['body']
 
 
+    def callListHostStoragevdev(self, compute):
+       message = {'action': 'list_vdev'}
+       self.callCommand(message, compute)
+       return self.ret_message['body']
 
     def callCommand(self, message, nas):
         connection = pika.BlockingConnection(pika.URLParameters(self.RABBITMQ_URL))

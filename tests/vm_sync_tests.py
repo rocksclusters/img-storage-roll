@@ -92,6 +92,12 @@ class TestVmSyncFunctions(unittest.TestCase):
         self.vm_client.sync_zvol(
             {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
+    
+    @mock.patch('imgstorage.imgstoragevm.runCommand', return_value=[
+        'vm-hpcdev-pub03-4-vol-snap: 0 75497472 linear', 
+        'vm-hpcdev-pub03-2-vol-snap: 0 75497472 snapshot-merge 1321232/73400320 2592'])
+    def test_get_vdev_list(self, mockRunCommand):
+        print self.vm_client.get_vdev_list()
 
     def create_iscsiadm_side_effect(self, target, bdev, cur_sync_stats_int):
         def iscsiadm_side_effect(*args, **kwargs):

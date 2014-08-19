@@ -20,6 +20,8 @@ from pysqlite2 import dbapi2 as sqlite3
 from pika.spec import BasicProperties
 from StringIO import StringIO
 
+import datetime
+
 class TestNasFunctions(unittest.TestCase):
 
     def mock_rabbitcli(self, exchange, exchange_type, process_message=None):
@@ -154,32 +156,25 @@ class TestNasFunctions(unittest.TestCase):
         mock_run_command.return_value = zfs_list_response.splitlines()
         self.assertEqual(self.nas_client.find_last_snapshot(zvol), '1407872271816')
 
-    @mock.patch('imgstorage.imgstoragenas.RabbitMQCommonClient')
-    def test_get_status(self, mock_rabbit_nas):
-        self.nas_client = NasDaemon()
-        mock_rabbit_nas.publish_message = MagicMock()
-        self.nas_client.process_message = MagicMock()
-
-        self.nas_client.SQLITE_DB = '/tmp/test_db_%s'%uuid.uuid4()
-        self.nas_client.run()
-
+    def test_list_sync(self):
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
-            cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, remotehost TEXT)')
-            cur.execute('CREATE TABLE IF NOT EXISTS sync_queue(zvol TEXT PRIMARY KEY NOT NULL, remotehost TEXT, is_sending BOOLEAN, time INT)')
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol1', None, None))
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol2', 'iqn.2001-04.com.nas-0-1-vol2', 'nas-0-1'))
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol3_busy', 'iqn.2001-04.com.nas-0-1-vol3_busy', 'nas-0-1'))
-            cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',('vol3_busy', 'reply_to', time.time()))
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol4_busy', 'iqn.2001-04.com.nas-0-1-vol4_busy', 'nas-0-1'))
-            cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',('vol4_busy', 'reply_to', time.time()))
-            cur.execute('INSERT INTO sync_queue VALUES (?,?,1,?)',('vol4_busy', 'reply_to', time.time()))
+            cur.execute('INSERT INTO sync_queue VALUES(?,?,1,?)', ['vol3_busy', 'compute-0-3', 1408470839.3029799])
             con.commit()
 
-        self.nas_client.get_status({'action': 'get_status'},
+        self.nas_client.list_sync({'action': 'list_sync'},
                     BasicProperties(reply_to='reply_to', correlation_id='message_id'))
-        self.assertTrue(False)
+        return_dict = [{'is_sending': 1, 'remotehost': u'compute-0-3', 'zvol': u'vol3_busy', 'time': 1408470839.3029799}]
+        self.nas_client.queue_connector.publish_message.assert_called_with(
+                    {'action': 'return_sync', 'status': 'success', 'body': return_dict}, routing_key='reply_to', exchange='')
+        for d in return_dict:
+                    print((
+                        d['remotehost'],
+                        "upload" if d['is_sending'] else "download",
+                        d['zvol'],
+                        str(datetime.timedelta(seconds=(int(time.time()-d['time']))))
+                    ))
+
 
     def check_zvol_busy(self, zvol):
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
