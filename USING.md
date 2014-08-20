@@ -20,6 +20,12 @@ Also the roll provides rocks commands for managing virtual machines. These inclu
 
 ```rocks list host storagemap {nas}``` - list NAS zvol bindings to iSCSI targets and compute nodes
 
-```rocks list host storageimg {compute}``` - list compute node block devices mapped to NAS zvols
+```rocks list host storagedev {compute}``` - list compute node block devices mapped to NAS zvols
+
+```rocks list host storagevdev {compute}``` - list compute node LVM devices and its sync status if still syncing
+
+```rocks list host syncnas {nas}``` - list nas node sync queue
+
+```rocks list host syncvm {vm}``` - list vm node sync queue
 
 ```rocks add cluster {fe_public_ip} {num_compute_nodes} cluster-naming=true fe-name={fe_name} container-hosts="{compute_host_0} {compute_host_1}"``` - create new virtual cluster
