@@ -71,6 +71,8 @@ import pika
 import socket
 import rocks.db.helper
 
+import uuid
+
 class SyncDaemon():
     def __init__(self):
         self.stdin_path = '/dev/null'
@@ -154,9 +156,9 @@ class SyncDaemon():
 
                     self.logger.debug("Starting new sync %s"%(zvol))
                     if is_sending:
-                        self.sync_result = self.pool.apply_async(upload_snapshot, [zvol, self.cur_time(), remotehost])
+                        self.sync_result = self.pool.apply_async(upload_snapshot, [zvol, uuid.uuid4(), remotehost])
                     else:
-                        self.sync_result = self.pool.apply_async(download_snapshot, [zvol, self.cur_time(), remotehost, self.find_last_snapshot(zvol)])
+                        self.sync_result = self.pool.apply_async(download_snapshot, [zvol, uuid.uuid4(), remotehost, self.find_last_snapshot(zvol)])
 
                 elif(self.sync_result.ready()):
                     self.logger.debug("Sync %s is ready"%zvol)
@@ -252,16 +254,10 @@ class SyncDaemon():
                 return tgt_num
         return None
 
-    def find_last_snapshot(self, zvol):
-        out = runCommand(['zfs', 'list', '-t', 'snapshot'])
-        last_snap = None
-        for line in out:
-            if line.startswith('%s/%s'%(self.ZPOOL, zvol)):
-                last_snap = line.split()[0].split('@')[1]
-        return last_snap
-
-    def cur_time(self):
-        return str(int(round(time.time() * 1000)))
+    def find_last_snapshot(self, zvol, is_system=False):
+        out = runCommand(['zfs', 'list', '-Hpr', '-t', 'snapshot', '-o', 'name', '-s', 'creation', '%s/%s'%(self.ZPOOL, zvol)])
+        if(not out):        raise ActionError("No shapshots found")
+        return out[-1].split('@')[1]
 
     def is_sync_node(self, node):
         db = rocks.db.helper.DatabaseHelper()

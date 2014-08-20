@@ -61,9 +61,9 @@ class TestNasFunctions(unittest.TestCase):
 
 
     @mock.patch('imgstorage.imgstoragesync.runCommand')
-    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.cur_time', return_value = '1407869051186')
+    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.uuid.uuid4', return_value = 'qqq')
     @mock.patch('imgstorage.imgstoragesync.rocks.db.helper.DatabaseHelper.getHostAttr', return_value=True)
-    def test_zvol_mapped_success(self, mockHostSyncAttr, mockCurTime, mockRunCommand):
+    def test_zvol_mapped_success(self, mockHostSyncAttr, mockUuid, mockRunCommand):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
 
@@ -72,8 +72,8 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='compute-0-3', correlation_id='message_id'))
         print mockRunCommand.mock_calls
 
-        mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@1407869051186'%zvol])
-        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@1407869051186'%zvol], ['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3.ibnet "/sbin/zfs receive -F tank/%s"'%zvol])
+        mockRunCommand.assert_any_call(['zfs', 'snap', u'tank/%s@qqq'%zvol])
+        mockRunCommand.assert_any_call(['zfs', 'send', u'tank/%s@qqq'%zvol], ['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3.ibnet "/sbin/zfs receive -F tank/%s"'%zvol])
 
         self.nas_client.queue_connector.publish_message.assert_any_call(
             {'action': 'sync_zvol', 'zvol':zvol, 'target':target}, 'compute-0-3', self.nas_client.NODE_NAME, on_fail=ANY)
@@ -81,10 +81,10 @@ class TestNasFunctions(unittest.TestCase):
     
 
     @mock.patch('imgstorage.imgstoragesync.runCommand')
-    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.cur_time', return_value = '1407869051186')
-    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.find_last_snapshot', return_value='1407871705494')
+    @mock.patch('imgstorage.imgstoragesync.uuid.uuid4', return_value = 'qqq')
+    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.find_last_snapshot', return_value='aaa')
     @mock.patch('imgstorage.imgstoragesync.rocks.db.helper.DatabaseHelper.getHostAttr', return_value=True)
-    def test_zvol_unmapped_success(self, mockHostSyncAttr, mockLastSnapshot, mockCurTime, mockRunCommand):
+    def test_zvol_unmapped_success(self, mockHostSyncAttr, mockLastSnapshot, mockUuid, mockRunCommand):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
 
@@ -117,8 +117,8 @@ class TestNasFunctions(unittest.TestCase):
 
     @mock.patch('imgstorage.imgstoragesync.runCommand')
     @mock.patch('imgstorage.imgstoragesync.SyncDaemon.find_last_snapshot', return_value='1407871705494')
-    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.cur_time', return_value = '1407869051186')
-    def test_make_sync_download(self, mock_cur_time, mock_last_snapshot, mock_run_command):
+    @mock.patch('imgstorage.imgstoragesync.uuid.uuid4', return_value = 'qqq')
+    def test_make_sync_download(self, mock_uuid, mock_last_snapshot, mock_run_command):
 
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
             cur = con.cursor()
@@ -136,8 +136,8 @@ class TestNasFunctions(unittest.TestCase):
 
     @mock.patch('imgstorage.imgstoragesync.runCommand')
     @mock.patch('imgstorage.imgstoragesync.SyncDaemon.find_last_snapshot', return_value='1407871705494')
-    @mock.patch('imgstorage.imgstoragesync.SyncDaemon.cur_time', return_value = '1407869051186')
-    def test_make_sync_upload(self, mock_cur_time, mock_last_snapshot, mock_run_command):
+    @mock.patch('imgstorage.imgstoragesync.uuid.uuid4', return_value = 'qqq')
+    def test_make_sync_upload(self, mock_uuid, mock_last_snapshot, mock_run_command):
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('INSERT INTO sync_queue VALUES(?,?,1,?)', ['vol3_busy', 'compute-0-3', time.time()])
@@ -150,11 +150,13 @@ class TestNasFunctions(unittest.TestCase):
         #mock_run_command.assert_any_call(['zfs', 'send', u'tank/%s@1407869051186'%zvol], ['su', 'zfs', '-c', u'/usr/bin/ssh compute-0-3.ibnet "/sbin/zfs receive -F tank/%s"'%zvol])
         print mock_run_command.mock_calls
 
-    @mock.patch('imgstorage.imgstoragesync.runCommand')
+    @mock.patch('imgstorage.imgstoragesync.runCommand', return_value=
+            ("tank/vm-hpcdev-pub03-1-vol@aaa\n"+
+            "tank/vm-hpcdev-pub03-1-vol@bbb").splitlines())
     def test_find_last_snapshot(self, mock_run_command):
-        zvol = 'vol3'
-        mock_run_command.return_value = zfs_list_response.splitlines()
-        self.assertEqual(self.nas_client.find_last_snapshot(zvol), '1407872271816')
+        zvol = 'vm-hpcdev-pub03-1-vol'
+        self.assertEqual(self.nas_client.find_last_snapshot(zvol), 'bbb')
+
 
     def test_list_sync(self):
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
@@ -332,15 +334,3 @@ Target: %s
         scsi74 Channel 00 Id 0 Lun: 1
             Attached scsi disk %s      State: transport-offline"""
 
-zfs_list_response = """
-NAME                                             USED  AVAIL  REFER  MOUNTPOINT
-tank/vol2@1407871125717                         1.66K      -  26.6K  -
-tank/vol2@1407871144409                             0      -  26.6K  -
-tank/vol3@1407871530335                         1.66K      -  26.6K  -
-tank/vol3@1407871537905                             0      -  26.6K  -
-tank/vol3@1407871835844                             0      -  26.6K  -
-tank/vol3@1407872122976                             0      -   303M  -
-tank/vol3@1407872222305                             0      -   303M  -
-tank/vol3@1407872271816                             0      -   304M  -
-tank/vol4_busy@1407871700570                         1.66K      -  26.6K  -
-tank/vol4_busy@1407871705494                             0      -  26.6K  -"""

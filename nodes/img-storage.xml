@@ -49,6 +49,7 @@ echo "FILES_NOCOMMENT += /opt/rocks/etc/zfs_img.conf" &gt;&gt; /var/411/Files.mk
 # all nas installs the nas daemon
 /opt/rocks/bin/rocks set appliance attr nas img_storage_nas true
 
+/usr/sbin/adduser zfs -m
 </post>
 
 <post>
