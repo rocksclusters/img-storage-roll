@@ -1,0 +1,51 @@
+<!--
+$Id: appendix.sgml,v 1.4 2012/12/06 21:05:25 clem Exp $
+
+Appendix for Copyright and License notices
+
+@Copyright@
+@Copyright@
+
+
+
+-->
+
+<appendix id="rocks-copyright" xreflabel="Appendix A: Rocks Copyright">
+<title>&rocks; Copyright</title>
+<para>
+<screen>
+&rockscopyright;
+</screen>
+</para>
+</appendix>
+
+<appendix>
+<title>Third Party Copyrights and Licenses</title>
+
+&source-roll-copyright-disclaimer;
+
+<!--<section><title></title><para><screen>
+<![CDATA[
+]]>
+</screen></para></section> -->
+
+</appendix>
+
+<appendix>
+<title>Known issues</title>
+<para>
+This is the list of known issue with the Img-storage roll:
+</para>
+
+<orderedlist>
+
+<listitem>
+<para>
+Issue nuber 1
+</para>
+</listitem>
+
+
+</orderedlist>
+
+</appendix>
