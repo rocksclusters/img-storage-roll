@@ -24,11 +24,8 @@ download the appropriate img-storage source file(s) using a machine that does
 have Internet access and copy them into the `src/<package>` directories on your
 Rocks development machine.
 
-This roll requires the full OS roll installed on the machine
-
-## Dependencies
-
-Unknown at this time.
+This roll requires the full OS roll installed on the machine.
+KVM roll and zfs-linux are also required.
 
 
 ## Building
