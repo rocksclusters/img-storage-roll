@@ -9,12 +9,10 @@ $Id: index.sgml,v 1.2 2012/04/20 02:00:21 clem Exp $
 <!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook V3.1//EN" [
 	<!ENTITY % entities SYSTEM "entities.sgml">
 
-	<!ENTITY img-using SYSTEM "img-using/index.sgml">
-	<!ENTITY % img-using-entities SYSTEM "img-using/entities.sgml">
+	<!ENTITY using-img SYSTEM "using-img.sgml">
 
 	<!ENTITY roll-img-storage "<command>Img-storage</command>">
 
-	%img-using-entities;
 	%entities;
 ]>
 
@@ -58,7 +56,7 @@ $Id: index.sgml,v 1.2 2012/04/20 02:00:21 clem Exp $
 &source-preface;
 &source-roll-overview;
 &source-installing;
-&img-using;
+&using-img;
 &source-roll-commands;
 &source-appendix;
 
