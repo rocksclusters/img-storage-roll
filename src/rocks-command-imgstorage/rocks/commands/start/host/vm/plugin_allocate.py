@@ -63,29 +63,29 @@ from imgstorage.commandlauncher import CommandLauncher
 
 class Plugin(rocks.commands.Plugin):
 
-    def provides(self):
-        return 'plugin_allocate'
+	def provides(self):
+		return 'plugin_allocate'
 
-    def run(self, node):
-        # here you can relocate your VM in rocks DB
-        # node is of type rocks.db.mappings.base.Node
-        if not node.vm_defs.physNode or len(node.vm_defs.disks) <= 0:
-            raise rocks.util.CommandError("Unable to allocate storage for " + \
-			node.name)
-        disk = node.vm_defs.disks[0]
-        phys = node.vm_defs.physNode.name
-        size = str(disk.size)
-        volume = node.name + '-vol'
-        if not (disk.img_nas_server and disk.img_nas_server.server_name):
-            raise rocks.util.CommandError("NAS value is not set (use rocks set" \
-                    " host vm nas to set it).\nUnable to start vm.")
-        nas_name = disk.img_nas_server.server_name
-        device = CommandLauncher().callAddHostStoragemap(nas_name, volume, phys, size)
-        disk.vbd_type = "phy"
-        disk.prefix = os.path.dirname(device)
-        disk.name = os.path.basename(device)
-        print nas_name + ":" + volume + " mapped to " + phys + ":" + device
-        return
+	def run(self, node):
+		# here you can relocate your VM in rocks DB
+		# node is of type rocks.db.mappings.base.Node
+		if not node.vm_defs.physNode or len(node.vm_defs.disks) <= 0:
+			raise rocks.util.CommandError("Unable to allocate " + \
+				"storage for " + node.name)
+		disk = node.vm_defs.disks[0]
+		phys = node.vm_defs.physNode.name
+		size = str(disk.size)
+		volume = node.name + '-vol'
+		if not (disk.img_nas_server and disk.img_nas_server.server_name):
+			# the node does not use img-storage system
+			return
+		nas_name = disk.img_nas_server.server_name
+		device = CommandLauncher().callAddHostStoragemap(nas_name, volume, phys, size)
+		disk.vbd_type = "phy"
+		disk.prefix = os.path.dirname(device)
+		disk.name = os.path.basename(device)
+		print nas_name + ":" + volume + " mapped to " + phys + ":" + device
+		return
 
 
 RollName = "img-storage"
