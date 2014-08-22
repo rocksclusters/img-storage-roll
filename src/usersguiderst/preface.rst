@@ -10,3 +10,7 @@ various VM Container.
 Please read the KVM Roll documentation and the ZFS-Linux Roll
 documentaion before proceeding.
 
+Requirements
+------------
+
+This Roll requires the KVM Roll, and the zfs-linux Roll.

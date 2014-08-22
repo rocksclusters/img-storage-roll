@@ -64,10 +64,10 @@ include Rules.mk
 
 
 # sphinx stuff
-SPHINXOPTS    =
+SPHINXOPTS    = -d /tmp
 SPHINXBUILD   = sphinx-build
 PAPER         =
-BUILDDIR      = _build
+BUILDDIR      = $(ROOT)/$(PKGROOT)
 
 # User-friendly check for sphinx-build
 ifeq ($(shell which $(SPHINXBUILD) >/dev/null 2>&1; echo $$?), 1)
@@ -82,22 +82,29 @@ ALLSPHINXOPTS   = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) .
 # the i18n builder cannot share the environment and doctrees with the others
 I18NSPHINXOPTS  = $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) .
 
+build:
 
-build: rocks-copyright.txt
-	mkdir -p $(ROOT)/$(PKGROOT)
-	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(ROOT)/$(PKGROOT)
+install:: rocks-copyright.txt
+	mkdir -p $(BUILDDIR)
+	#test -e rst || ln -s $(DOCROOT)/rst
+	$(DOCROOT)/genrstdocs $(ROLLNAME)
+	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)
 	# pdf stuff
-	$(SPHINXBUILD) -b latex $(ALLSPHINXOPTS) $(ROOT)/$(PKGROOT)/latex
+	mkdir -p latex
+	mkdir -p $(BUILDDIR)/latex
+	$(SPHINXBUILD) -b latex $(ALLSPHINXOPTS) latex
 	@echo "Running LaTeX files through pdflatex..."
-	$(MAKE) -C $(ROOT)/$(PKGROOT)/latex all-pdf > pdflatex.log
+	$(MAKE) -C latex all-pdf > pdflatex.log
+	install latex/$(subst -roll,,$(ROLL)).pdf $(BUILDDIR)/latex
 
-
-install:: build
 
 clean::
 	rm -rf $(BUILDDIR)/*
+	rm -rf latex
 	rm -f pdflatex.log
 	rm -rf _build _static _templates
+	rm -rf commands
+	rm -f roll-commands.rst
 
 
 

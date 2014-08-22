@@ -44,7 +44,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'img-storage'
-copyright = u'2014, clem'
+copyright = u'2014, Rocks Clusters'
 
 rst_epilog = """
 .. |roll-name| replace:: %s
@@ -202,7 +202,7 @@ latex_elements = {
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
   ('index', 'img-storage.tex', u'img-storage Roll Documentation',
-   u'clem', 'manual'),
+   u'Rocks Clusters', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -232,7 +232,7 @@ latex_documents = [
 # (source start file, name, description, authors, manual section).
 man_pages = [
     ('index', 'img-storage', u'img-storage Roll Documentation',
-     [u'clem'], 1)
+     [u'Rocks Clusters'], 1)
 ]
 
 # If true, show URL addresses after external links.

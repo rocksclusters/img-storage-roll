@@ -20,6 +20,7 @@
 	<package>pika</package>
 	<package>rabbitmq-server</package>
 	<package>rocks-command-imgstorage</package>
+	<package>roll-img-storage-usersguide</package>
 
 <post>
 /sbin/chkconfig rabbitmq-server on
