@@ -44,7 +44,7 @@ done
 
 # we need this only the first boot after the installation
 # after that the file will be there
-rm /etc/rc.d/rocksconfig.d/post-02-on-the-fly
+rm /etc/rc.d/rocksconfig.d/post-99-restart-img-storage
 </file>
 
 </post>

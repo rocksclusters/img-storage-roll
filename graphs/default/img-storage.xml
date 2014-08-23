@@ -15,14 +15,15 @@
 	</copyright>
 
 	<changelog>
-	$Log$
 	</changelog>
 
 	<!-- Front end -->
 	<edge from="server">
 		<to>img-storage</to>
 		<to>img-storage-base</to>
+		<to>img-storage-vm</to>
 	</edge>
+
 	<order head="img-storage">
 	  <tail>server</tail>
 	</order>

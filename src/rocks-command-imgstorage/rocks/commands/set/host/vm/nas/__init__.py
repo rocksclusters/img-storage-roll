@@ -102,7 +102,8 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.set.command):
 
 
 		nodes = self.newdb.getNodesfromNames(args, preload=['vm_defs', \
-					'vm_defs.disks'])
+					'vm_defs.disks', \
+					'vm_defs.disks.img_nas_server'])
 		for node in nodes:
 			if not node.vm_defs or not node.vm_defs.disks:
 				self.abort("node %s is not a virtual node" \

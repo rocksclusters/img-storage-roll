@@ -1,14 +1,15 @@
-# $Id: plugin_route.py,v 1.6 2012/11/27 00:48:21 phil Exp $
 # 
+# $Id: Makefile,v 1.17 2012/11/27 00:48:51 phil Exp $
+#
 # @Copyright@
 # 
-#               Rocks(r)
-#                www.rocksclusters.org
-#                version 5.6 (Emerald Boa)
-#                version 6.1 (Emerald Boa)
+# 				Rocks(r)
+# 		         www.rocksclusters.org
+# 		         version 5.6 (Emerald Boa)
+# 		         version 6.1 (Emerald Boa)
 # 
 # Copyright (c) 2000 - 2013 The Regents of the University of California.
-# All rights reserved.  
+# All rights reserved.	
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -25,9 +26,9 @@
 # 3. All advertising and press materials, printed or electronic, mentioning
 # features or use of this software must display the following acknowledgement: 
 # 
-#   "This product includes software developed by the Rocks(r)
-#   Cluster Group at the San Diego Supercomputer Center at the
-#   University of California, San Diego and its contributors."
+# 	"This product includes software developed by the Rocks(r)
+# 	Cluster Group at the San Diego Supercomputer Center at the
+# 	University of California, San Diego and its contributors."
 # 
 # 4. Except as permitted for the purposes of acknowledgment in paragraph 3,
 # neither the name or logo of this software nor the names of its
@@ -54,38 +55,56 @@
 # 
 # @Copyright@
 #
+#
 
-import os.path
-import rocks.commands
-import rocks.db.mappings.img_manager
-from imgstorage.commandlauncher import CommandLauncher
-
-
-class Plugin(rocks.commands.Plugin):
-
-	def provides(self):
-		return 'plugin_allocate'
-
-	def run(self, node):
-		# here you can relocate your VM in rocks DB
-		# node is of type rocks.db.mappings.base.Node
-		if not node.vm_defs.physNode or len(node.vm_defs.disks) <= 0:
-			raise rocks.util.CommandError("Unable to allocate " + \
-				"storage for " + node.name)
-		disk = node.vm_defs.disks[0]
-		phys = node.vm_defs.physNode.name
-		size = str(disk.size)
-		volume = node.name + '-vol'
-		if not (disk.img_nas_server and disk.img_nas_server.server_name):
-			# the node does not use img-storage system
-			return
-		nas_name = disk.img_nas_server.server_name
-		device = CommandLauncher().callAddHostStoragemap(nas_name, volume, phys, size)
-		disk.vbd_type = "phy"
-		disk.prefix = os.path.dirname(device)
-		disk.name = os.path.basename(device)
-		print nas_name + ":" + volume + " mapped to " + phys + ":" + device
-		return
+PKGROOT		= /var/www/html/roll-documentation/$(ROLL)/$(VERSION)
+REDHAT.ROOT	= $(PWD)/../../
+-include $(ROCKSROOT)/etc/Rules.mk
+include Rules.mk
 
 
-RollName = "img-storage"
+# sphinx stuff
+SPHINXOPTS    = -d /tmp
+SPHINXBUILD   = sphinx-build
+PAPER         =
+BUILDDIR      = $(ROOT)/$(PKGROOT)
+
+# User-friendly check for sphinx-build
+ifeq ($(shell which $(SPHINXBUILD) >/dev/null 2>&1; echo $$?), 1)
+$(error The '$(SPHINXBUILD)' command was not found. Make sure you have Sphinx installed, then set the SPHINXBUILD environment variable to point to the full path of the '$(SPHINXBUILD)' executable. Alternatively you can add the directory with the executable to your PATH. If you don't have Sphinx installed, grab it from http://sphinx-doc.org/)
+endif
+
+
+# Internal variables.
+PAPEROPT_a4     = -D latex_paper_size=a4
+PAPEROPT_letter = -D latex_paper_size=letter
+ALLSPHINXOPTS   = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) .
+# the i18n builder cannot share the environment and doctrees with the others
+I18NSPHINXOPTS  = $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) .
+
+build:
+
+install:: rocks-copyright.txt
+	mkdir -p $(BUILDDIR)
+	#test -e rst || ln -s $(DOCROOT)/rst
+	$(DOCROOT)/genrstdocs $(ROLLNAME)
+	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)
+	# pdf stuff
+	mkdir -p latex
+	mkdir -p $(BUILDDIR)/latex
+	$(SPHINXBUILD) -b latex $(ALLSPHINXOPTS) latex
+	@echo "Running LaTeX files through pdflatex..."
+	$(MAKE) -C latex all-pdf > pdflatex.log
+	install latex/$(subst -roll,,$(ROLL)).pdf $(BUILDDIR)/latex
+
+
+clean::
+	rm -rf $(BUILDDIR)/*
+	rm -rf latex
+	rm -f pdflatex.log
+	rm -rf _build _static _templates
+	rm -rf commands
+	rm -f roll-commands.rst
+
+
+

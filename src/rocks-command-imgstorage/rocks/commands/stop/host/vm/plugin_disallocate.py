@@ -68,13 +68,17 @@ class Plugin(rocks.commands.Plugin):
 		# here you can disallocate the resource used by your VM
 		# in rocks DB
 		# node is of type rocks.db.mappings.base.Node
-		volume = node.name + '-vol'
+		if not node.vm_defs.physNode or len(node.vm_defs.disks) <= 0:
+			raise rocks.util.CommandError("Unable to release " + \
+				"storage for " + node.name)
 		disk = node.vm_defs.disks[0]
+		volume = node.name + '-vol'
+		if not (disk.img_nas_server and disk.img_nas_server.server_name):
+			# the node does not use img-storage system
+			return
 		nas_name = disk.img_nas_server.server_name
 		CommandLauncher().callDelHostStoragemap(nas_name, volume)
 		return 
-
-
 
 
 RollName = "img-storage"

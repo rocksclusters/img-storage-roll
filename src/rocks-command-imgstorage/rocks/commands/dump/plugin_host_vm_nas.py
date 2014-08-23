@@ -1,14 +1,14 @@
-# $Id: plugin_route.py,v 1.6 2012/11/27 00:48:21 phil Exp $
+# $Id: plugin_host_vm.py,v 1.3 2012/11/27 00:49:07 phil Exp $
 # 
 # @Copyright@
 # 
-#               Rocks(r)
-#                www.rocksclusters.org
-#                version 5.6 (Emerald Boa)
-#                version 6.1 (Emerald Boa)
+# 				Rocks(r)
+# 		         www.rocksclusters.org
+# 		         version 5.6 (Emerald Boa)
+# 		         version 6.1 (Emerald Boa)
 # 
 # Copyright (c) 2000 - 2013 The Regents of the University of California.
-# All rights reserved.  
+# All rights reserved.	
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -25,9 +25,9 @@
 # 3. All advertising and press materials, printed or electronic, mentioning
 # features or use of this software must display the following acknowledgement: 
 # 
-#   "This product includes software developed by the Rocks(r)
-#   Cluster Group at the San Diego Supercomputer Center at the
-#   University of California, San Diego and its contributors."
+# 	"This product includes software developed by the Rocks(r)
+# 	Cluster Group at the San Diego Supercomputer Center at the
+# 	University of California, San Diego and its contributors."
 # 
 # 4. Except as permitted for the purposes of acknowledgment in paragraph 3,
 # neither the name or logo of this software nor the names of its
@@ -55,37 +55,17 @@
 # @Copyright@
 #
 
-import os.path
 import rocks.commands
-import rocks.db.mappings.img_manager
-from imgstorage.commandlauncher import CommandLauncher
-
 
 class Plugin(rocks.commands.Plugin):
 
 	def provides(self):
-		return 'plugin_allocate'
+		return 'vm-nas'
 
-	def run(self, node):
-		# here you can relocate your VM in rocks DB
-		# node is of type rocks.db.mappings.base.Node
-		if not node.vm_defs.physNode or len(node.vm_defs.disks) <= 0:
-			raise rocks.util.CommandError("Unable to allocate " + \
-				"storage for " + node.name)
-		disk = node.vm_defs.disks[0]
-		phys = node.vm_defs.physNode.name
-		size = str(disk.size)
-		volume = node.name + '-vol'
-		if not (disk.img_nas_server and disk.img_nas_server.server_name):
-			# the node does not use img-storage system
-			return
-		nas_name = disk.img_nas_server.server_name
-		device = CommandLauncher().callAddHostStoragemap(nas_name, volume, phys, size)
-		disk.vbd_type = "phy"
-		disk.prefix = os.path.dirname(device)
-		disk.name = os.path.basename(device)
-		print nas_name + ":" + volume + " mapped to " + phys + ":" + device
-		return
+	def requires(self):
+		return [ 'vm' ]
 
+	def run(self, args):
+		self.owner.addText(self.owner.command('dump.host.vm.nas', []))
 
-RollName = "img-storage"
+RollName = "kvm"
