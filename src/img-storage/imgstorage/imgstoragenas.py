@@ -89,6 +89,7 @@ class NasDaemon():
 
         self.sync_result = None
         self.SYNC_CHECK_TIMEOUT = 10
+        self.SYNC_PULL_TIMEOUT = 60*5
  
         rocks.db.helper.DatabaseHelper().closeSession() # to reopen after daemonization
 
@@ -103,13 +104,17 @@ class NasDaemon():
             cur.execute('CREATE TABLE IF NOT EXISTS sync_queue(zvol TEXT PRIMARY KEY NOT NULL, remotehost TEXT, is_sending BOOLEAN, is_delete_remote BOOLEAN, time INT)')
             con.commit()
 
-        self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message)
+        self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message, lambda a: self.startup())
         self.queue_connector.run()
 
     def failAction(self, routing_key, action, error_message):
         if(routing_key != None and action != None):
             self.queue_connector.publish_message({'action': action, 'status': 'error', 'error':error_message}, exchange='', routing_key=routing_key)
         self.logger.error("Failed %s: %s"%(action, error_message))
+
+    def startup(self):
+        self.schedule_zvols_pull()
+        self.schedule_next_sync()
 
     """
     Received map_zvol command from frontend, passing to compute node
@@ -361,20 +366,50 @@ class NasDaemon():
 
             self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
 
-    def upload_snapshot(zvol, remotehost):
+    def schedule_zvols_pull(self):
+        self.logger.debug("Scheduling new pull jobs")
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            try:
+                cur = con.cursor()
+                cur.execute('SELECT zvol, remotehost FROM zvols WHERE iscsi_target IS NULL and remotehost IS NOT NULL ORDER BY zvol DESC;')
+                rows = cur.fetchall()
+                for row in rows:
+                    zvol, remotehost = row
+                    cur.execute('INSERT or IGNORE INTO sync_queue VALUES(?,?,0,0,?)', [zvol, remotehost, time.time()])
+                    con.commit()
+            except Exception, ex:
+                self.logger.exception(ex)
+
+        self.queue_connector._connection.add_timeout(self.SYNC_PULL_TIMEOUT, self.schedule_zvols_pull)
+
+    def upload_snapshot(self, zvol, remotehost):
         snap_name = uuid.uuid4()
         runCommand(['zfs', 'snap', '%s/%s@%s'%(self.ZPOOL, zvol, snap_name)])
         runCommand(['zfs', 'send', '%s/%s@%s'%(self.ZPOOL, zvol, snap_name)], 
                 ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F %s/%s"'%(remotehost, self.ZPOOL, zvol)])
 
-    def download_snapshot(zvol, remotehost, is_delete_remote=False):
+    def download_snapshot(self, zvol, remotehost, is_delete_remote=False):
         snap_name = uuid.uuid4()
         runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap %s/%s@%s"'%(remotehost, self.ZPOOL, zvol, snap_name)])
         runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i %s/%s@%s %s/%s@%s"'%
                         (remotehost, self.ZPOOL, zvol, self.find_last_snapshot(zvol), self.ZPOOL, zvol, snap_name)], 
                 ['zfs', 'receive', '-F', '%s/%s'%(self.ZPOOL, zvol)])
+
+        def destroy_local_snapshot(snapshot):
+           runCommand(['/sbin/zfs', 'destroy', snapshot]) 
+
+        def destroy_remote_snapshot(snapshot):
+           runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s"'%(remotehost, snapshot)]) 
+
         if(is_delete_remote):
             runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'%(remotehost, self.ZPOOL, zvol)]) 
+        else:
+            out = runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs list -Hpr -t snapshot -o name -s creation  %s/%s"'%
+                   (remotehost, self.ZPOOL, zvol)]) 
+            map(destroy_remote_snapshot, out[:-2])
+        
+        out = runCommand(['/sbin/zfs', 'list', '-Hpr', '-t', 'snapshot', '-o', 'name', '-s', 'creation', '%s/%s'%(self.ZPOOL, zvol)])
+        map(destroy_local_snapshot, out[:-2])
 
 
     def detach_target(self, target, is_remove_host):
@@ -448,12 +483,9 @@ class NasDaemon():
 
 
     def find_last_snapshot(self, zvol):
-        out = runCommand(['zfs', 'list', '-t', 'snapshot'])
-        last_snap = None
-        for line in out:
-            if line.startswith('%s/%s'%(self.ZPOOL, zvol)):
-                last_snap = line.split()[0].split('@')[1]
-        return last_snap
+        out = runCommand(['zfs', 'list', '-Hpr', '-t', 'snapshot', '-o', 'name', '-s', 'creation', '%s/%s'%(self.ZPOOL, zvol)])
+        if(not out):        raise ActionError("No shapshots found")
+        return out[-1].split('@')[1]
 
 
     def list_sync(self, message, properties):
