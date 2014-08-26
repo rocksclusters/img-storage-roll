@@ -289,15 +289,14 @@ class NasDaemon():
                 if(message['status'] == 'error'):
                     raise ActionError('Error detaching iSCSI target from compute node: %s'%message.get('error'))
 
-                is_remove_host = False
                 if(not self.is_sync_node(props.reply_to)):
+                    self.detach_target(target, True)
                     self.release_zvol(zvol)
-                    is_remove_host = True
                 else:
+                    self.detach_target(target, False)
                     cur.execute('INSERT or REPLACE INTO sync_queue VALUES(?,?,0,1,?)', [zvol, props.reply_to, time.time()])
                     con.commit()
                 
-                self.detach_target(target, is_remove_host)
 
                 self.queue_connector.publish_message({'action': 'zvol_unmapped', 'status': 'success'}, exchange='', routing_key=reply_to)
 
@@ -314,23 +313,11 @@ class NasDaemon():
             cur = con.cursor()
             cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?',[zvol])
             [target] = cur.fetchone()    
-            self.detach_target(target, True)
+            self.detach_target(target, False)
             self.release_zvol(zvol)
 
 
     def schedule_next_sync(self):
-        def upload_snapshot(zvol, snap_name, remotehost):
-            runCommand(['zfs', 'snap', '%s/%s@%s'%(self.ZPOOL, zvol, snap_name)])
-            runCommand(['zfs', 'send', '%s/%s@%s'%(self.ZPOOL, zvol, snap_name)], 
-                    ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F %s/%s"'%(remotehost, self.ZPOOL, zvol)])
-
-        def download_snapshot(zvol, snap_name, remotehost, last_snapshot, is_delete_remote=False):
-            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap %s/%s@%s"'%(remotehost, self.ZPOOL, zvol, snap_name)])
-            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i %s/%s@%s %s/%s@%s"'%
-                            (remotehost, self.ZPOOL, zvol, last_snapshot, self.ZPOOL, zvol, snap_name)], 
-                    ['zfs', 'receive', '-F', '%s/%s'%(self.ZPOOL, zvol)])
-            if(is_delete_remote):
-                runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'%(remotehost, self.ZPOOL, zvol)]) 
 
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
@@ -348,9 +335,9 @@ class NasDaemon():
 
                     self.logger.debug("Starting new sync %s"%(zvol))
                     if is_sending:
-                        self.sync_result = self.pool.apply_async(upload_snapshot, [zvol, uuid.uuid4(), remotehost])
+                        self.sync_result = self.pool.apply_async(self.upload_snapshot, [zvol, remotehost])
                     else:
-                        self.sync_result = self.pool.apply_async(download_snapshot, [zvol, uuid.uuid4(), remotehost, self.find_last_snapshot(zvol), is_delete_remote])
+                        self.sync_result = self.pool.apply_async(self.download_snapshot, [zvol, remotehost, is_delete_remote])
 
                 elif(self.sync_result.ready()):
                     self.logger.debug("Sync %s is ready"%zvol)
@@ -374,12 +361,27 @@ class NasDaemon():
 
             self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
 
+    def upload_snapshot(zvol, remotehost):
+        snap_name = uuid.uuid4()
+        runCommand(['zfs', 'snap', '%s/%s@%s'%(self.ZPOOL, zvol, snap_name)])
+        runCommand(['zfs', 'send', '%s/%s@%s'%(self.ZPOOL, zvol, snap_name)], 
+                ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F %s/%s"'%(remotehost, self.ZPOOL, zvol)])
+
+    def download_snapshot(zvol, remotehost, is_delete_remote=False):
+        snap_name = uuid.uuid4()
+        runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap %s/%s@%s"'%(remotehost, self.ZPOOL, zvol, snap_name)])
+        runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i %s/%s@%s %s/%s@%s"'%
+                        (remotehost, self.ZPOOL, zvol, self.find_last_snapshot(zvol), self.ZPOOL, zvol, snap_name)], 
+                ['zfs', 'receive', '-F', '%s/%s'%(self.ZPOOL, zvol)])
+        if(is_delete_remote):
+            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'%(remotehost, self.ZPOOL, zvol)]) 
 
 
     def detach_target(self, target, is_remove_host):
-        tgt_num = self.find_iscsi_target_num(target)
-        if(tgt_num):
-            runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num])# remove iscsi target
+        if(target):
+            tgt_num = self.find_iscsi_target_num(target)
+            if(tgt_num):
+                runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num])# remove iscsi target
 
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
@@ -440,7 +442,7 @@ class NasDaemon():
             is_sync_node = db.getHostAttr(remotehost, 'img_sync')
             db.close()
         except Exception, e:
-            self.logger.exception("Unable to get img_sycn attribute: " + str(e))
+            self.logger.exception("Unable to get img_sync attribute: " + str(e))
             return False
         return is_sync_node
 
