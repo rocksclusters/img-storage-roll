@@ -355,6 +355,10 @@ class NasDaemon():
                                 remotehost, #reply back to compute node
                                 self.NODE_NAME,
                                 on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(remotehost, zvol)))
+                        elif(is_delete_remote):
+                            cur.execute('UPDATE zvols SET remotehost = NULL where zvol = ?',[zvol])
+                            con.commit()
+                            self.release_zvol(zvol)
                     except ActionError, msg:
                         self.logger.exception('Error performing sync for %s: %s'%(zvol, str(msg)))
                     finally:
