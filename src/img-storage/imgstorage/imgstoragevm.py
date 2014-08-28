@@ -189,7 +189,6 @@ class VmDaemon():
                 'size': int(dev_ar[2])*512/(1024**3) 
             }
             if(dev_ar[3] != 'linear'):
-                self.logger.debug(dev_ar)
                 mappings[zvol_name]['synced'] = "%s %s"%(dev_ar[4], dev_ar[5])
 
             for target in bdev_mappings.keys():
