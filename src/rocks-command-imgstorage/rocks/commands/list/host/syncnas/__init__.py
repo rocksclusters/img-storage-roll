@@ -40,7 +40,7 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command)
                 for d in list:
                     self.addOutput(nas, (
                         d['remotehost'],
-                        "upload" if d['is_sending'] else "download",
+                        "NAS⇒ VM" if d['is_sending'] else "NAS⇐ VM",
                         d['zvol'],
                         str(datetime.timedelta(seconds=(int(time.time()-d['time']))))
                     ))
