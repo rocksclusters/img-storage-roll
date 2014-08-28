@@ -71,7 +71,7 @@ class TestSyncFunctions(unittest.TestCase):
         self.nas_client.pool.close()
         self.nas_client.pool.join()
         print mock_download_snapshot.mock_calls
-        self.nas_client.download_snapshot.assert_called_with(zvol, 'compute-0-3.ibnet', 1)
+        self.nas_client.download_snapshot.assert_called_with(zvol, 'compute-0-3.ibnet')
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('SELECT zvol, iscsi_target, remotehost FROM zvols WHERE zvol = ?',[zvol])
@@ -140,7 +140,31 @@ class TestSyncFunctions(unittest.TestCase):
             cur.execute('SELECT zvol, iscsi_target, remotehost FROM zvols WHERE zvol = ?',[zvol])
             self.assertSequenceEqual(cur.fetchone(), [zvol, target, 'compute-0-1'])
 
+    @mock.patch('imgstorage.imgstoragenas.runCommand')
+    def test_zvol_unmapped_finished_when_have_pull_scheduled(self, mock_run_command):
+        zvol = 'vol4_busy'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
+        bdev = 'sdc'
+        mock_run_command.return_value = (iscsiadm_session_response%(target, zvol)).splitlines()
+        with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('INSERT INTO sync_queue VALUES(?,?,0,0,1)',[zvol, 'compute-0-3'])
+            con.commit()
 
+            self.nas_client.zvol_unmapped(
+                {'action': 'zvol_unmapped', 'target':target, 'zvol':zvol, 'status':'success'},
+                BasicProperties(reply_to='reply_to', correlation_id='message_id'))
+            cur.execute('SELECT is_delete_remote FROM sync_queue WHERE zvol = ?',[zvol])
+            self.assertEqual(cur.fetchone()[0], 1)
+
+            self.nas_client.sync_result = MagicMock()
+            self.nas_client.sync_result.ready = MagicMock(return_value=True)
+            self.nas_client.schedule_next_sync()
+
+            self.assertFalse(self.check_zvol_busy(zvol))
+            
+            print mock_run_command.mock_calls
+            mock_run_command.assert_any_call(['su', 'zfs', '-c', '/usr/bin/ssh compute-0-3 "/sbin/zfs destroy tank/%s -r"'%zvol])
 
 
     @mock.patch('imgstorage.imgstoragenas.runCommand', return_value=
