@@ -126,7 +126,7 @@ class TestVmSyncFunctions(unittest.TestCase):
                 if(not dmsetup_return_line):
                     return dmsetup_status_response.splitlines()
                 else:
-                    return [dmsetup_status_response.splitlines()[dmsetup_return_line]]
+                    return [dmsetup_status_response.splitlines()[dmsetup_return_line][len('vm-hpcdev-pub03-1-vol-snap: '):]]
             elif args[0][0] == 'blockdev':                          return '12345'.splitlines()
         return iscsiadm_side_effect
 

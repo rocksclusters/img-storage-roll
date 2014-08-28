@@ -114,6 +114,9 @@ class VmDaemon():
 
             if(self.sync_enabled):
                 temp_size_cur = min(self.temp_size, int(message['size'])-1)
+                if(zvol and len(zvol) > 0): # don't want to destroy the zpool
+                    try: runCommand(['zfs', 'destroy', '-r', '%s/%s'%(self.ZPOOL, zvol)])
+                    except: pass
                 runCommand(['zfs', 'create', '-V', '%sgb'%message['size'], '%s/%s'%(self.ZPOOL, zvol)])
                 runCommand(['zfs', 'create', '-V', '%sgb'%temp_size_cur, '%s/%s-temp-write'%(self.ZPOOL, zvol)])
                 time.sleep(2)
