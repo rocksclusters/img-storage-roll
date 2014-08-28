@@ -90,7 +90,7 @@ class TestVmSyncFunctions(unittest.TestCase):
     @mock.patch('imgstorage.imgstoragevm.runCommand')
     @mock.patch('imgstorage.imgstoragevm.time.time',return_value=111)
     def test_sync_zvol_success(self, mockTime, mockRunCommand):
-        zvol= 'vm-hpcdev-pub03-1-vol-snap'
+        zvol= 'vm-hpcdev-pub03-1-vol'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         bdev = 'sdc'
         mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
@@ -105,11 +105,17 @@ class TestVmSyncFunctions(unittest.TestCase):
     
     @mock.patch('imgstorage.imgstoragevm.runCommand')
     def test_get_dev_list(self, mockRunCommand):
-        zvol= 'vm-hpcdev-pub03-1-vol-snap'
+        zvol= 'vm-hpcdev-pub03-1-vol'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         bdev = 'sdc'
         mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
-        print self.vm_client.get_vdev_list()
+        dev_list = self.vm_client.get_dev_list()
+        self.assertEqual(dev_list, {
+            zvol: {'status': 'snapshot-merge', 'target': target, 'dev': '%s-snap'%zvol, 'synced': '32/73400320 32', 'bdev': bdev, 'size': 36}, 
+            'vm-hpcdev-pub03-4-vol': {'status': 'linear', 'dev': 'vm-hpcdev-pub03-4-vol-snap', 'size': 36}, 
+            'vm-hpcdev-pub03-2-vol': {'status': 'snapshot-merge', 'synced': '1321232/73400320 2592', 'dev': 'vm-hpcdev-pub03-2-vol-snap', 'size': 36}
+        })
+        print self.vm_client.get_dev_list()
 
     def create_iscsiadm_side_effect(self, target, bdev, dmsetup_return_line=None):
         def iscsiadm_side_effect(*args, **kwargs):

@@ -139,7 +139,7 @@ class VmDaemon():
         self.queue_connector.publish_message({'action': 'dev_list', 'status': 'success', 'body':mappings_ar}, exchange='', routing_key=props.reply_to)
 
     def list_vdev(self, message, props):
-        mappings_map = self.get_vdev_list()
+        mappings_map = self.get_dev_list()
         self.logger.debug("Got mappings %s"%mappings_map)
         self.queue_connector.publish_message({'action': 'vdev_list', 'status': 'success', 'body':mappings_map}, exchange='', routing_key=props.reply_to)
 
@@ -167,22 +167,34 @@ class VmDaemon():
                         mappings[cur_target] = blockdev.group(1)
         return mappings
 
-    def get_vdev_list(self):
-        try:
-            out = runCommand(['dmsetup', 'status'])
-        except:
-            return {}
+
+    def get_dev_list(self):
         mappings = {}
-        if(out[0] == "No devices found"): return {}
+
+        bdev_mappings = self.get_blk_dev_list()
+
+        try:    out = runCommand(['dmsetup', 'status'])
+        except: out = []
+        if(out[0] == "No devices found"): out = []
         for line in out:
             dev_ar = line.split()
             dev_name = dev_ar[0][:-1]
-            mappings[dev_name] = {
-               'status': dev_ar[3],
-               'size': int(dev_ar[2])*512/(1024**3) 
+            zvol_name = re.search(r'([\w-]*)-snap', dev_name).group(1)
+            mappings[zvol_name] = {
+                'dev': dev_name,
+                'status': dev_ar[3],
+                'size': int(dev_ar[2])*512/(1024**3) 
             }
             if(dev_ar[3] != 'linear'):
-                mappings[dev_name]['synced'] = "%s %s"%(dev_ar[4], dev_ar[5])
+                self.logger.debug(dev_ar)
+                mappings[zvol_name]['synced'] = "%s %s"%(dev_ar[4], dev_ar[5])
+
+            for target in bdev_mappings.keys():
+
+                if(target.endswith(zvol_name)):
+                    mappings[zvol_name]['target'] = target
+                    mappings[zvol_name]['bdev'] = bdev_mappings[target]
+
         return mappings
 
     def connect_iscsi(self, iscsi_target, node_name):
@@ -266,8 +278,8 @@ class VmDaemon():
 
                     sync_status = runCommand(['dmsetup', 'status', '%s-snap'%zvol])
                     stats = re.findall(r"[\w-]+", sync_status[0])
-                    if not (stats[4] == stats[6]):
-                        self.logger.debug("Waiting for sync '%s' %s %s"%(sync_status[0], stats[4], stats[6]))
+                    if not (stats[3] == stats[5]):
+                        self.logger.debug("Waiting for sync '%s' %s %s"%(sync_status[0], stats[3], stats[5]))
                     else:
                         cur.execute('DELETE FROM sync_queue WHERE zvol = ?', [zvol])
                         con.commit()

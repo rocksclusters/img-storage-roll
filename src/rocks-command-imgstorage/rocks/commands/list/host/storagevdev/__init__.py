@@ -34,8 +34,16 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command)
                 # debugging output
                 map = CommandLauncher().callListHostStoragevdev(compute)
                 for d in map.keys():
-                    self.addOutput(compute, (d, map[d]['status'], map[d]['size'], map[d].get('synced')))
-                headers=['compute','device', 'status', 'size (GB)', 'synced']
+                    self.addOutput(compute, (d, 
+                            map[d].get('dev'),
+                            map[d].get('status'), 
+                            map[d].get('size'), 
+                            map[d].get('synced'),
+                            map[d].get('target'),
+                            map[d].get('bdev')
+                        )
+                    )
+                headers=['compute','zvol','lvm','status','size (GB)','synced','iSCSI target','block dev']
             self.endOutput(headers)
 
 
