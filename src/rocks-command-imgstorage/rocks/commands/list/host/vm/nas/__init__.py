@@ -93,12 +93,14 @@ class Command(rocks.commands.list.host.command):
 
 				if disk.img_nas_server:
 					name = disk.img_nas_server.server_name
+					zpool = disk.img_nas_server.zpool_name
 				else:
 					name = None
+					zpool = None
 
-				self.addOutput(node.name, name)
+				self.addOutput(node.name, [name, zpool])
 
-		self.endOutput(['vm-host','nas'])
+		self.endOutput(['vm-host','nas', 'zpool'])
 
 
 
