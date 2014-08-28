@@ -35,20 +35,20 @@ class TestVmSyncFunctions(unittest.TestCase):
         self.vm_client.SQLITE_DB = '/tmp/test_db_%s'%uuid.uuid4()
         self.vm_client.run()
 
-        with sqlite3.connect(self.vm_client.SQLITE_DB) as con:
-            cur = con.cursor()
-            cur.execute('INSERT INTO sync_queue VALUES (?,?,?,?,?,?,?)',('vol1', 'iqn.2001-04.com.nas-0-1-vol1', 12345, 'reply_to', 'corr_id', 0, 1))
-            con.commit()
-
     def tearDown(self):
         os.remove(self.vm_client.SQLITE_DB)
 
     @mock.patch('imgstorage.imgstoragevm.runCommand')
     def test_run_sync_initial_synced(self, mockRunCommand):
-        zvol = 'vol1'
+        zvol = 'vm-hpcdev-pub03-1-vol'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         bdev = 'sdc'
-        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev, 32)
+        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev, 1)
+        with sqlite3.connect(self.vm_client.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('INSERT INTO sync_queue VALUES (?,?,?,?,?,?,?)',(zvol, 'iqn.2001-04.com.nas-0-1-%s'%zvol, 12345, 'reply_to', 'corr_id', 0, 1))
+            con.commit()
+
 
         self.vm_client.run_sync()
         print mockRunCommand.mock_calls
@@ -61,15 +61,20 @@ class TestVmSyncFunctions(unittest.TestCase):
 
         print  mockRunCommand.call_count
         assert 10 == mockRunCommand.call_count
-        self.vm_client.queue_connector.publish_message.assert_called_with({'action': 'zvol_synced', 'status': 'success', 'zvol': u'vol1'}, u'reply_to', correlation_id=u'corr_id')
+        self.vm_client.queue_connector.publish_message.assert_called_with({'action': 'zvol_synced', 'status': 'success', 'zvol': zvol}, u'reply_to', correlation_id=u'corr_id')
 
 
     @mock.patch('imgstorage.imgstoragevm.runCommand')
     def test_run_sync_initial_not_synced(self, mockRunCommand):
-        zvol = 'vol1'
+        zvol = 'vm-hpcdev-pub03-2-vol'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         bdev = 'sdc'
-        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev, 100000)
+        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev, 2)
+        with sqlite3.connect(self.vm_client.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('INSERT INTO sync_queue VALUES (?,?,?,?,?,?,?)',(zvol, 'iqn.2001-04.com.nas-0-1-%s'%zvol, 12345, 'reply_to', 'corr_id', 0, 1))
+            con.commit()
+
 
         self.vm_client.run_sync()
         print mockRunCommand.mock_calls
@@ -83,28 +88,39 @@ class TestVmSyncFunctions(unittest.TestCase):
 
     """ Testing zvol sync """
     @mock.patch('imgstorage.imgstoragevm.runCommand')
-    def test_sync_zvol_success(self, mockRunCommand):
-        zvol= 'vol2'
+    @mock.patch('imgstorage.imgstoragevm.time.time',return_value=111)
+    def test_sync_zvol_success(self, mockTime, mockRunCommand):
+        zvol= 'vm-hpcdev-pub03-1-vol-snap'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         bdev = 'sdc'
-        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev, 0)
-
+        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
         self.vm_client.sync_zvol(
             {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
             BasicProperties(reply_to='reply_to', message_id='message_id'))
+        with sqlite3.connect(self.vm_client.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('SELECT * FROM sync_queue')
+            self.assertSequenceEqual(cur.fetchone(), [zvol, target, 12345, 'reply_to','message_id',0,111])
+
     
-    @mock.patch('imgstorage.imgstoragevm.runCommand', return_value=[
-        'vm-hpcdev-pub03-4-vol-snap: 0 75497472 linear', 
-        'vm-hpcdev-pub03-2-vol-snap: 0 75497472 snapshot-merge 1321232/73400320 2592'])
-    def test_get_vdev_list(self, mockRunCommand):
+    @mock.patch('imgstorage.imgstoragevm.runCommand')
+    def test_get_dev_list(self, mockRunCommand):
+        zvol= 'vm-hpcdev-pub03-1-vol-snap'
+        target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
+        bdev = 'sdc'
+        mockRunCommand.side_effect = self.create_iscsiadm_side_effect(target, bdev)
         print self.vm_client.get_vdev_list()
 
-    def create_iscsiadm_side_effect(self, target, bdev, cur_sync_stats_int):
+    def create_iscsiadm_side_effect(self, target, bdev, dmsetup_return_line=None):
         def iscsiadm_side_effect(*args, **kwargs):
             if args[0][:3] == ['iscsiadm', '-m', 'session']:        return (iscsiadm_session_response%(target, bdev)).splitlines() # list local devices
             elif args[0][:3] == ['iscsiadm', '-m', 'discovery']:    return (iscsiadm_discovery_response%target).splitlines() # find remote targets
             elif args[0][:3] == ['iscsiadm', '-m', 'node']:         return '\n'.splitlines() # connect to iscsi target
-            elif args[0][:2] == ['dmsetup', 'status']:         return (dmsetup_status_response%cur_sync_stats_int).splitlines()
+            elif args[0][:2] == ['dmsetup', 'status']:
+                if(not dmsetup_return_line):
+                    return dmsetup_status_response.splitlines()
+                else:
+                    return [dmsetup_status_response.splitlines()[dmsetup_return_line]]
             elif args[0][0] == 'blockdev':                          return '12345'.splitlines()
         return iscsiadm_side_effect
 
@@ -117,6 +133,8 @@ class TestVmSyncFunctions(unittest.TestCase):
             num_rows = cur.fetchone()[0]
             return num_rows > 0
 
+    def assertSequenceEqual(self, it1, it2):
+        self.assertEqual(tuple(it1), tuple(it2))
 
 tgtadm_response = """
 Target 1: iqn.2001-04.com.nas-0-1-%s
@@ -266,17 +284,6 @@ Target: %s
         scsi74 Channel 00 Id 0 Lun: 1
             Attached scsi disk %s      State: transport-offline"""
 
-zfs_list_response = """
-NAME                                             USED  AVAIL  REFER  MOUNTPOINT
-tank/vol2@1407871125717                         1.66K      -  26.6K  -
-tank/vol2@1407871144409                             0      -  26.6K  -
-tank/vol3@1407871530335                         1.66K      -  26.6K  -
-tank/vol3@1407871537905                             0      -  26.6K  -
-tank/vol3@1407871835844                             0      -  26.6K  -
-tank/vol3@1407872122976                             0      -   303M  -
-tank/vol3@1407872222305                             0      -   303M  -
-tank/vol3@1407872271816                             0      -   304M  -
-tank/vol4_busy@1407871700570                         1.66K      -  26.6K  -
-tank/vol4_busy@1407871705494                             0      -  26.6K  -"""
-
-dmsetup_status_response="0 75497472 snapshot-merge %s/73400320 32"
+dmsetup_status_response="""vm-hpcdev-pub03-4-vol-snap: 0 75497472 linear
+vm-hpcdev-pub03-1-vol-snap: 0 75497472 snapshot-merge 32/73400320 32
+vm-hpcdev-pub03-2-vol-snap: 0 75497472 snapshot-merge 1321232/73400320 2592"""

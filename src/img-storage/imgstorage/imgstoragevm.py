@@ -265,7 +265,7 @@ class VmDaemon():
                         self.logger.debug('Initial sync finished in %s'%(time.time()-start))
 
                     sync_status = runCommand(['dmsetup', 'status', '%s-snap'%zvol])
-                    stats = re.findall(r"[\w]+", sync_status[0])
+                    stats = re.findall(r"[\w-]+", sync_status[0])
                     if not (stats[4] == stats[6]):
                         self.logger.debug("Waiting for sync '%s' %s %s"%(sync_status[0], stats[4], stats[6]))
                     else:
