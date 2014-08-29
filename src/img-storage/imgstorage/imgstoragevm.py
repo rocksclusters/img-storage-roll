@@ -78,7 +78,7 @@ class VmDaemon():
         self.stderr_path = '/tmp/err.log'
         self.pidfile_path =  '/var/run/img-storage-vm.pid'
         self.pidfile_timeout = 5
-        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'list_dev':self.list_dev, 'list_vdev':self.list_vdev, 'sync_zvol':self.sync_zvol, 'list_sync':self.list_sync }
+        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'list_dev':self.list_dev, 'sync_zvol':self.sync_zvol, 'list_sync':self.list_sync }
         self.logger = logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
         self.sync_enabled = self.is_sync_enabled()
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
@@ -136,17 +136,16 @@ class VmDaemon():
 
 
     def list_dev(self, message, props):
-        mappings_map = self.get_blk_dev_list()
-        self.logger.debug("Got mappings %s"%mappings_map)
-        mappings_ar = []
-        for target in mappings_map.keys():
-            mappings_ar.append({'target':target, 'device':mappings_map[target]})
-        self.queue_connector.publish_message({'action': 'dev_list', 'status': 'success', 'body':mappings_ar}, exchange='', routing_key=props.reply_to)
-
-    def list_vdev(self, message, props):
-        mappings_map = self.get_dev_list()
-        self.logger.debug("Got mappings %s"%mappings_map)
-        self.queue_connector.publish_message({'action': 'vdev_list', 'status': 'success', 'body':mappings_map}, exchange='', routing_key=props.reply_to)
+        if (self.sync_enabled):
+            mappings = self.get_dev_list() 
+        else:
+            mappings_map = self.get_blk_dev_list()
+            mappings = []
+            for target in mappings_map.keys():
+                mappings.append({'target':target, 'device':mappings_map[target]})
+        self.logger.debug("Got mappings %s"%mappings)
+        self.queue_connector.publish_message({'action': 'dev_list', 'status': 'success', 'node_type': 'sync' if self.sync_enabled else 'iscsi', 
+            'body':mappings}, exchange='', routing_key=props.reply_to)
 
 
     def list_sync(self, message, properties):
