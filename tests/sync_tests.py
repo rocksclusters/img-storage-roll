@@ -44,12 +44,12 @@ class TestSyncFunctions(unittest.TestCase):
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
-            cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, remotehost TEXT)')
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol1', None, None))
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol2', None, 'compute-0-1'))
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol3_busy', None, 'compute-0-1'))
+            cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, zpool TEXT NOT NULL, iscsi_target TEXT UNIQUE, remotehost TEXT)')
+            cur.execute('INSERT INTO zvols VALUES (?,?,?,?) ',('vol1', None, None, None))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?,?) ',('vol2', 'my_tank', None, 'compute-0-1'))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?,?) ',('vol3_busy', 'my_tank', None, 'compute-0-1'))
             cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',('vol3_busy', 'reply_to', time.time()))
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol4_busy', 'iqn.2001-04.com.nas-0-1-vol4_busy', 'compute-0-1'))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?,?) ',('vol4_busy', 'my_tank', 'iqn.2001-04.com.nas-0-1-vol4_busy', 'compute-0-1'))
             cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',('vol4_busy', 'reply_to', time.time()))
             con.commit()
 
@@ -71,7 +71,7 @@ class TestSyncFunctions(unittest.TestCase):
         self.nas_client.pool.close()
         self.nas_client.pool.join()
         print mock_download_snapshot.mock_calls
-        self.nas_client.download_snapshot.assert_called_with(zvol, 'compute-0-3.ibnet')
+        self.nas_client.download_snapshot.assert_called_with('my_tank', zvol, 'compute-0-3.ibnet')
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('SELECT zvol, iscsi_target, remotehost FROM zvols WHERE zvol = ?',[zvol])
@@ -109,7 +109,7 @@ class TestSyncFunctions(unittest.TestCase):
         self.nas_client.pool.close()
         self.nas_client.pool.join()
         print mock_upload_snapshot.mock_calls
-        mock_upload_snapshot.assert_called_with(zvol, 'reply_to.ibnet')
+        mock_upload_snapshot.assert_called_with('my_tank', zvol, 'reply_to.ibnet')
         self.assertTrue(self.check_zvol_busy(zvol))
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
             cur = con.cursor()
@@ -148,7 +148,7 @@ class TestSyncFunctions(unittest.TestCase):
         mock_run_command.return_value = (iscsiadm_session_response%(target, zvol)).splitlines()
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('INSERT INTO sync_queue VALUES(?,?,0,0,1)',[zvol, 'compute-0-3'])
+            cur.execute('INSERT INTO sync_queue VALUES(?,?,?,0,0,1)',[zvol, 'my_tank', 'compute-0-3'])
             con.commit()
 
             self.nas_client.zvol_unmapped(
@@ -164,21 +164,21 @@ class TestSyncFunctions(unittest.TestCase):
             self.assertFalse(self.check_zvol_busy(zvol))
             
             print mock_run_command.mock_calls
-            mock_run_command.assert_any_call(['su', 'zfs', '-c', '/usr/bin/ssh compute-0-3 "/sbin/zfs destroy tank/%s -r"'%zvol])
+            mock_run_command.assert_any_call(['su', 'zfs', '-c', '/usr/bin/ssh compute-0-3 "/sbin/zfs destroy my_tank/%s -r"'%zvol])
 
 
     @mock.patch('imgstorage.imgstoragenas.runCommand', return_value=
-            ("tank/vm-hpcdev-pub03-1-vol@aaa\n"+
-            "tank/vm-hpcdev-pub03-1-vol@bbb").splitlines())
+            ("my_tank/vm-hpcdev-pub03-1-vol@aaa\n"+
+            "my_tank/vm-hpcdev-pub03-1-vol@bbb").splitlines())
     def test_find_last_snapshot(self, mock_run_command):
         zvol = 'vm-hpcdev-pub03-1-vol'
-        self.assertEqual(self.nas_client.find_last_snapshot(zvol), 'bbb')
+        self.assertEqual(self.nas_client.find_last_snapshot('my_tank', zvol), 'bbb')
 
 
     def test_list_sync(self):
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('INSERT INTO sync_queue VALUES(?,?,1,1,?)', ['vol3_busy', 'compute-0-3', 1408470839.3029799])
+            cur.execute('INSERT INTO sync_queue VALUES(?,?,?,1,1,?)', ['vol3_busy', 'my_tank', 'compute-0-3', 1408470839.3029799])
             con.commit()
 
         self.nas_client.list_sync({'action': 'list_sync'},

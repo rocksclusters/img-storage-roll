@@ -21,24 +21,24 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.remove.comman
 	The volume name which will be unmapped on the hosting environment
 	</arg>
 
-	<example cmd='remove host storagemap nas-0-0 zpool/vm-sdsc125-2'>
-	It removes the existing mapping on nas-0-0 zpool/vm-sdsc125-2
+	<example cmd='remove host storagemap nas-0-0 vm-sdsc125-2'>
+	It removes the existing mapping on nas-0-0 vm-sdsc125-2
 	compute-0-0-0.
 	</example>
 	"""
 
 
 	def run(self, params, args):
-		(args, nas, zpool, volume) = self.fillPositionalArgs(
-				('nas', 'zpool', 'volume'))
+		(args, nas, volume) = self.fillPositionalArgs(
+				('nas', 'volume'))
 
 		# debugging output
 		if not (nas and volume and zpool):
 			self.abort("3 arguments are required for this command nas zpool volume")
 
 		# debugging output
-		print "unmapping  ", nas, ":", zpool, "/", volume
-		CommandLauncher().callDelHostStoragemap(nas, zpool, volume)
+		print "unmapping  ", nas, ":", volume
+		CommandLauncher().callDelHostStoragemap(nas, volume)
 
 		self.beginOutput()
 		self.addOutput(nas, "Success")

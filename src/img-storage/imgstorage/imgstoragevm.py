@@ -82,7 +82,9 @@ class VmDaemon():
         self.logger = logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
         self.sync_enabled = self.is_sync_enabled()
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
-        self.ZPOOL = RabbitMQLocator.ZPOOL
+        with open("/opt/rocks/etc/zfs_img.conf", "r") as zpool_config_file:
+            self.ZPOOL = zpool_config_file.read().rstrip('\n')
+
 
         self.temp_size = 35
 

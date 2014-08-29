@@ -38,11 +38,11 @@ class TestNasFunctions(unittest.TestCase):
 
         with sqlite3.connect(self.client.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol1', None, None))
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol2', 'iqn.2001-04.com.nas-0-1-vol2', 'compute-0-3'))
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol3_busy', 'iqn.2001-04.com.nas-0-1-vol3_busy', 'compute-0-3'))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?,?) ',('vol1',None, None, None))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?,?) ',('vol2', 'my_tank', 'iqn.2001-04.com.nas-0-1-vol2', 'compute-0-3'))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?,?) ',('vol3_busy', 'my_tank', 'iqn.2001-04.com.nas-0-1-vol3_busy', 'compute-0-3'))
             cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',('vol3_busy', 'reply_to', time.time()))
-            cur.execute('INSERT INTO zvols VALUES (?,?,?) ',('vol4_busy', 'iqn.2001-04.com.nas-0-1-vol4_busy', 'compute-0-3'))
+            cur.execute('INSERT INTO zvols VALUES (?,?,?,?) ',('vol4_busy', 'my_tank', 'iqn.2001-04.com.nas-0-1-vol4_busy', 'compute-0-3'))
             cur.execute('INSERT INTO zvol_calls VALUES (?,?,?)',('vol4_busy', 'reply_to', time.time()))
             con.commit()
 
@@ -63,7 +63,7 @@ class TestNasFunctions(unittest.TestCase):
         mockRunCommand.side_effect = my_side_effect
         self.client.ib_net = 'ibnet'
         self.client.map_zvol(
-            {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10'},
+            {'action': 'map_zvol', 'zpool':'mytank', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'map_zvol', 'zvol': zvol, 'nas': '%s.ibnet'%self.client.NODE_NAME, 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol), 'size':'10'}, 'compute-0-1', self.client.NODE_NAME, on_fail=ANY)
@@ -82,7 +82,7 @@ class TestNasFunctions(unittest.TestCase):
 
         self.client.ib_net = 'ibnet'
         self.client.map_zvol(
-            {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10'},
+            {'action': 'map_zvol', 'zpool':'mytank', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'map_zvol', 'zvol': zvol, 'nas': '%s.ibnet'%self.client.NODE_NAME, 'target': 'iqn.2001-04.com.nas-0-1-%s'%(zvol), 'size':'10'}, 'compute-0-1', self.client.NODE_NAME, on_fail=ANY)
@@ -101,7 +101,7 @@ class TestNasFunctions(unittest.TestCase):
 
         self.client.ib_net = 'ibnet'
         self.client.map_zvol(
-            {'action': 'map_zvol', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10'},
+            {'action': 'map_zvol', 'zpool':'mytank', 'zvol': zvol, 'remotehost': 'compute-0-1', 'size': '10'},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_mapped', 'status': 'error', 'error': 'ZVol %s is busy'%zvol}, routing_key='reply_to', exchange='')
@@ -166,12 +166,12 @@ class TestNasFunctions(unittest.TestCase):
     def test_del_zvol_success(self, mockRunCommand):
         zvol = 'vol1'
         self.client.del_zvol(
-            {'action': 'del_zvol', 'zvol': zvol},
+            {'action': 'del_zvol', 'zpool':'mytank', 'zvol': zvol},
             BasicProperties(reply_to='reply_to'))
 
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_deleted', 'status': 'success'}, routing_key='reply_to', exchange='')
-        mockRunCommand.assert_called_with(['zfs', 'destroy', 'tank/%s'%(zvol), '-r'])
+        mockRunCommand.assert_called_with(['zfs', 'destroy', 'mytank/%s'%(zvol), '-r'])
         self.assertFalse(self.check_zvol_busy(zvol))
 
 
@@ -179,7 +179,7 @@ class TestNasFunctions(unittest.TestCase):
     def test_del_zvol_not_found(self, mockRunCommand):
         zvol = 'wrong_vol'
         self.client.del_zvol(
-            {'action': 'del_zvol', 'zvol': zvol},
+            {'action': 'del_zvol', 'zpool':'mytank', 'zvol': zvol},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_deleted', 'status': 'error', 'error': 'ZVol %s not found in database'%zvol},
@@ -191,7 +191,7 @@ class TestNasFunctions(unittest.TestCase):
     def test_del_zvol_mapped(self, mockRunCommand):
         zvol = 'vol2'
         self.client.del_zvol(
-            {'action': 'del_zvol', 'zvol': zvol},
+            {'action': 'del_zvol', 'zpool':'mytank', 'zvol': zvol},
             BasicProperties(reply_to='reply_to'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_deleted', 'status': 'error', 'error': 'Error deleting zvol %s: is mapped'%zvol},
@@ -299,7 +299,7 @@ Target 1: iqn.2001-04.com.nas-0-1-%s
             Prevent removal: No
             Readonly: No
             Backing store type: rdwr
-            Backing store path: /dev/tank/%s
+            Backing store path: /dev/mytank/%s
             Backing store flags:
     Account information:
     ACL information:
@@ -309,5 +309,5 @@ Target 1: iqn.2001-04.com.nas-0-1-%s
 tgt_setup_lun_response = """
 Using transport: iscsi
 Creating new target (name=iqn.2001-04.com.nas-0-1-%s, tid=1)
-Adding a logical unit (/dev/tank/%s) to target, tid=1
+Adding a logical unit (/dev/mytank/%s) to target, tid=1
 Accepting connections only from 10.1.1.1"""

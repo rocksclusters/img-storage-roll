@@ -77,8 +77,7 @@ class Plugin(rocks.commands.Plugin):
 			# the node does not use img-storage system
 			return
 		nas_name = disk.img_nas_server.server_name
-		zpool_name = disk.img_nas_server.zpool_name
-		CommandLauncher().callDelHostStoragemap(nas_name, zpool_name, volume)
+		CommandLauncher().callDelHostStoragemap(nas_name, volume)
 		return 
 
 

@@ -82,7 +82,6 @@ class NasDaemon():
         self.pidfile_timeout = 5
         self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'zvol_mapped':self.zvol_mapped, 'zvol_unmapped': self.zvol_unmapped, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol, 'zvol_synced':self.zvol_synced, 'list_sync': self.list_sync }
 
-        self.ZPOOL = RabbitMQLocator.ZPOOL
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
         self.NODE_NAME = RabbitMQLocator.NODE_NAME
         self.ib_net = RabbitMQLocator.IB_NET
@@ -100,8 +99,8 @@ class NasDaemon():
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
-            cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, remotehost TEXT)')
-            cur.execute('CREATE TABLE IF NOT EXISTS sync_queue(zvol TEXT PRIMARY KEY NOT NULL, remotehost TEXT, is_sending BOOLEAN, is_delete_remote BOOLEAN, time INT)')
+            cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, zpool TEXT, iscsi_target TEXT UNIQUE, remotehost TEXT)')
+            cur.execute('CREATE TABLE IF NOT EXISTS sync_queue(zvol TEXT PRIMARY KEY NOT NULL, zpool TEXT NOT NULL, remotehost TEXT, is_sending BOOLEAN, is_delete_remote BOOLEAN, time INT)')
             con.commit()
 
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message, lambda a: self.startup())
@@ -121,6 +120,7 @@ class NasDaemon():
     """
     def map_zvol(self, message, props):
         remotehost = message['remotehost']
+        zpool_name = message['zpool']
         zvol_name = message['zvol']
         self.logger.debug("Setting zvol %s"%zvol_name)
 
@@ -131,8 +131,8 @@ class NasDaemon():
 
                 cur.execute('SELECT count(*) FROM zvols WHERE zvol = ?',[zvol_name])
                 if(cur.fetchone()[0] == 0):
-                    runCommand(['zfs', 'create', '-o', 'primarycache=metadata', '-o', 'volblocksize=128K', '-V', '%sgb'%message['size'], '%s/%s'%(self.ZPOOL, zvol_name)])
-                    cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, None, None))
+                    runCommand(['zfs', 'create', '-o', 'primarycache=metadata', '-o', 'volblocksize=128K', '-V', '%sgb'%message['size'], '%s/%s'%(zpool_name, zvol_name)])
+                    cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) ',(zvol_name, None, None, None))
                     con.commit()
                     self.logger.debug('Created new zvol %s'%zvol_name)
 
@@ -159,13 +159,13 @@ class NasDaemon():
 
                 iscsi_target = ''
 
-                out = runCommand(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(self.ZPOOL, zvol_name), ip])
+                out = runCommand(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(zpool_name, zvol_name), ip])
                 for line in out:
                     if "Creating new target" in line:
                         iscsi_target = line['Creating new target (name='.__len__():line.index(',')]
                 self.logger.debug('Mapped %s to iscsi target %s'%(zvol_name, iscsi_target))
 
-                cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?) ',(zvol_name, iscsi_target,remotehost))
+                cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) ',(zvol_name, zpool_name, iscsi_target,remotehost))
                 con.commit()
 
                 def failDeliver(target, zvol, reply_to, remotehost):
@@ -219,6 +219,7 @@ class NasDaemon():
     """
     def del_zvol(self, message, props):
         zvol_name = message['zvol']
+        zpool_name = message['zpool']
         self.logger.debug("Deleting zvol %s"%zvol_name)
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
@@ -229,8 +230,8 @@ class NasDaemon():
                 if row == None: raise ActionError('ZVol %s not found in database'%zvol_name)
                 if row[0] != None: raise ActionError('Error deleting zvol %s: is mapped'%zvol_name)
 
-                self.logger.debug("Invoking zfs destroy %s/%s"%(self.ZPOOL,zvol_name))
-                runCommand(['zfs', 'destroy', '%s/%s'%(self.ZPOOL, zvol_name), '-r'])
+                self.logger.debug("Invoking zfs destroy %s/%s"%(zpool_name,zvol_name))
+                runCommand(['zfs', 'destroy', '%s/%s'%(zpool_name, zvol_name), '-r'])
                 self.logger.debug('zfs destroy success %s'%zvol_name)
 
                 cur.execute('DELETE FROM zvols WHERE zvol = ?',[zvol_name])
@@ -257,14 +258,14 @@ class NasDaemon():
                 if(message['status'] != 'success'): raise ActionError('Error attaching iSCSI target to compute node: %s'%message.get('error'))
                     
                 cur = con.cursor()
-                cur.execute('SELECT reply_to, zvol_calls.zvol FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
-                reply_to, zvol = cur.fetchone()
+                cur.execute('SELECT zvol_calls.reply_to, zvol_calls.zvol, zvols.zpool FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
+                reply_to, zvol, zpool = cur.fetchone()
 
                 if(not self.is_sync_node(props.reply_to)):
                     self.release_zvol(zvol)
                 else:
                     cur.execute('DELETE FROM sync_queue WHERE zvol = ?', [zvol])
-                    cur.execute('INSERT INTO sync_queue SELECT zvol,?,1,1,? FROM zvols WHERE iscsi_target = ? ', [props.reply_to, time.time(), target])
+                    cur.execute('INSERT INTO sync_queue SELECT zvol,?,?,1,1,? FROM zvols WHERE iscsi_target = ? ', [zpool, props.reply_to, time.time(), target])
                     con.commit() 
 
                 self.queue_connector.publish_message({'action': 'zvol_mapped', 'bdev':message['bdev'], 'status': 'success'}, 
@@ -288,8 +289,8 @@ class NasDaemon():
                 cur = con.cursor()
 
                 # get request destination
-                cur.execute('SELECT reply_to FROM zvol_calls WHERE zvol = ?',[zvol])
-                [reply_to] = cur.fetchone()
+                cur.execute('SELECT reply_to, zpool FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.zvol = ?',[zvol])
+                [reply_to, zpool] = cur.fetchone()
 
                 if(message['status'] == 'error'):
                     raise ActionError('Error detaching iSCSI target from compute node: %s'%message.get('error'))
@@ -301,7 +302,7 @@ class NasDaemon():
                     self.detach_target(target, False)
                     cur.execute('UPDATE sync_queue SET is_delete_remote = 1 WHERE zvol = ?', [zvol])
                     if(cur.rowcount == 0):
-                        cur.execute('INSERT INTO sync_queue VALUES(?,?,0,1,?)', [zvol, props.reply_to, time.time()])
+                        cur.execute('INSERT INTO sync_queue VALUES(?,?,?,0,1,?)', [zvol, zpool, props.reply_to, time.time()])
                     con.commit()
 
                 self.queue_connector.publish_message({'action': 'zvol_unmapped', 'status': 'success'}, exchange='', routing_key=reply_to)
@@ -326,11 +327,11 @@ class NasDaemon():
     def schedule_next_sync(self):
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('SELECT remotehost, is_sending, zvol, is_delete_remote FROM sync_queue ORDER BY time ASC LIMIT 1')
+            cur.execute('SELECT remotehost, is_sending, zvol, zpool, is_delete_remote FROM sync_queue ORDER BY time ASC LIMIT 1')
             row = cur.fetchone()
 
             if(row):
-                remotehost, is_sending, zvol, is_delete_remote  = row
+                remotehost, is_sending, zvol, zpool, is_delete_remote  = row
                 self.logger.debug("Have sync job %s"%zvol)
 
                 if(not self.sync_result):
@@ -339,9 +340,9 @@ class NasDaemon():
 
                     self.logger.debug("Starting new sync %s"%(zvol))
                     if is_sending:
-                        self.sync_result = self.pool.apply_async(self.upload_snapshot, [zvol, remotehost])
+                        self.sync_result = self.pool.apply_async(self.upload_snapshot, [zpool, zvol, remotehost])
                     else:
-                        self.sync_result = self.pool.apply_async(self.download_snapshot, [zvol, remotehost])
+                        self.sync_result = self.pool.apply_async(self.download_snapshot, [zpool, zvol, remotehost])
 
                 elif(self.sync_result.ready()):
                     self.logger.debug("Sync %s is ready"%zvol)
@@ -358,13 +359,13 @@ class NasDaemon():
                                 on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(remotehost, zvol)))
                         elif(is_delete_remote):
                             # TODO make sure this doesn't take too long, as it's executing in main thread
-                            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'%(remotehost, self.ZPOOL, zvol)]) 
+                            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'%(remotehost, zpool, zvol)]) 
                             cur.execute('UPDATE zvols SET remotehost = NULL where zvol = ?',[zvol])
                             con.commit()
                             self.release_zvol(zvol)
                         else:
                             out = runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs list -Hpr -t snapshot -o name -s creation  %s/%s"'%
-                               (remotehost, self.ZPOOL, zvol)]) 
+                               (remotehost, zpool, zvol)]) 
 
                             def destroy_remote_snapshot(snapshot):
                                 # TODO make sure this doesn't take too long, as it's executing in main thread
@@ -384,34 +385,34 @@ class NasDaemon():
         with sqlite3.connect(self.SQLITE_DB) as con:
             try:
                 cur = con.cursor()
-                cur.execute('SELECT zvol, remotehost FROM zvols WHERE iscsi_target IS NULL and remotehost IS NOT NULL ORDER BY zvol DESC;')
+                cur.execute('SELECT zvol, zpool, remotehost FROM zvols WHERE iscsi_target IS NULL and remotehost IS NOT NULL ORDER BY zvol DESC;')
                 rows = cur.fetchall()
                 for row in rows:
-                    zvol, remotehost = row
-                    cur.execute('INSERT or IGNORE INTO sync_queue VALUES(?,?,0,0,?)', [zvol, remotehost, time.time()])
+                    zvol, zpool, remotehost = row
+                    cur.execute('INSERT or IGNORE INTO sync_queue VALUES(?,?,?,0,0,?)', [zvol, zpool, remotehost, time.time()])
                     con.commit()
             except Exception, ex:
                 self.logger.exception(ex)
 
         self.queue_connector._connection.add_timeout(self.SYNC_PULL_TIMEOUT, self.schedule_zvols_pull)
 
-    def upload_snapshot(self, zvol, remotehost):
+    def upload_snapshot(self, zpool, zvol, remotehost):
         snap_name = uuid.uuid4()
-        runCommand(['zfs', 'snap', '%s/%s@%s'%(self.ZPOOL, zvol, snap_name)])
-        runCommand(['zfs', 'send', '%s/%s@%s'%(self.ZPOOL, zvol, snap_name)], 
-                ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F %s/%s"'%(remotehost, self.ZPOOL, zvol)])
+        runCommand(['zfs', 'snap', '%s/%s@%s'%(zpool, zvol, snap_name)])
+        runCommand(['zfs', 'send', '%s/%s@%s'%(zpool, zvol, snap_name)], 
+                ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F %s/%s"'%(remotehost, zpool, zvol)])
 
-    def download_snapshot(self, zvol, remotehost):
+    def download_snapshot(self, zpool, zvol, remotehost):
         snap_name = uuid.uuid4()
-        runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap %s/%s@%s"'%(remotehost, self.ZPOOL, zvol, snap_name)])
+        runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap %s/%s@%s"'%(remotehost, zpool, zvol, snap_name)])
         runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i %s/%s@%s %s/%s@%s"'%
-                        (remotehost, self.ZPOOL, zvol, self.find_last_snapshot(zvol), self.ZPOOL, zvol, snap_name)], 
-                ['zfs', 'receive', '-F', '%s/%s'%(self.ZPOOL, zvol)])
+                        (remotehost, zpool, zvol, self.find_last_snapshot(zpool, zvol), zpool, zvol, snap_name)], 
+                ['zfs', 'receive', '-F', '%s/%s'%(zpool, zvol)])
 
         def destroy_local_snapshot(snapshot):
            runCommand(['/sbin/zfs', 'destroy', snapshot]) 
 
-        out = runCommand(['/sbin/zfs', 'list', '-Hpr', '-t', 'snapshot', '-o', 'name', '-s', 'creation', '%s/%s'%(self.ZPOOL, zvol)])
+        out = runCommand(['/sbin/zfs', 'list', '-Hpr', '-t', 'snapshot', '-o', 'name', '-s', 'creation', '%s/%s'%(zpool, zvol)])
         map(destroy_local_snapshot, out[:-2])
 
 
@@ -424,7 +425,7 @@ class NasDaemon():
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             if(is_remove_host):
-                cur.execute('UPDATE zvols SET iscsi_target = NULL, remotehost = NULL where iscsi_target = ?',[target])
+                cur.execute('UPDATE zvols SET iscsi_target = NULL, remotehost = NULL, zpool = NULL where iscsi_target = ?',[target])
             else:
                 cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
             con.commit()
@@ -438,13 +439,15 @@ class NasDaemon():
 
     def process_message(self, properties, message):
         self.logger.debug("Received message %s"%message)
+        if message['action'] not in self.function_dict.keys():
+            self.queue_connector.publish_message({'status': 'error', 'error':'action_unsupported'}, exchange='', routing_key=props.reply_to)
+            return
 
-        if message['action'] in self.function_dict.keys():
-            try:
-                self.function_dict[message['action']](message, properties)
-            except:
-                self.logger.exception("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
-                self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[1].message}, exchange='', routing_key=properties.reply_to)
+        try:
+            self.function_dict[message['action']](message, properties)
+        except:
+            self.logger.exception("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
+            self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[1].message}, exchange='', routing_key=properties.reply_to)
 
     def stop(self):
         self.queue_connector.stop()
@@ -485,8 +488,8 @@ class NasDaemon():
         return is_sync_node
 
 
-    def find_last_snapshot(self, zvol):
-        out = runCommand(['zfs', 'list', '-Hpr', '-t', 'snapshot', '-o', 'name', '-s', 'creation', '%s/%s'%(self.ZPOOL, zvol)])
+    def find_last_snapshot(self, zpool, zvol):
+        out = runCommand(['zfs', 'list', '-Hpr', '-t', 'snapshot', '-o', 'name', '-s', 'creation', '%s/%s'%(zpool, zvol)])
         if(not out):        raise ActionError("No shapshots found")
         return out[-1].split('@')[1]
 
