@@ -49,13 +49,13 @@ Then reinstall all the compute nodes.
 Enable remote vritual disk with Img-Storage
 ===========================================
 
-To enable a virtual machine to use a remote virtual disk, the name of
-the NAS holding the disk image must be set up. The command ``rocks set
-host vm nas`` can be used for this, while the command ``rocks
-list host vm nas`` can be used to see the current value of the NAS name.
-If the NAS name is not specified for a virtual host, it will use the its
-original disks configuration which by default uses local raw files
-(``rocks list host vm showdisks=1``).
+To enable a virtual machine to use a remote virtual disk, the name of the NAS
+and the name of the zpool holding the disk image must be set up.  The command
+``rocks set host vm nas`` can be used for this, while the command ``rocks list
+host vm nas`` can be used to show the current value of the NAS name.  If the
+NAS name with the zpool name is not specified for a virtual host, it will use
+its original disks configuration which by default uses local raw files (``rocks
+list host vm showdisks=1``).
 
 Once the NAS name is configured for a Virtual host, the virtual host
 will use a remote iSCSI disk provided by the given NAS. For example if
@@ -66,7 +66,7 @@ following commands:
 
     # rocks add host vm vm-container-0-14 compute
     added VM compute-0-14-0 on physical node vm-container-0-14
-    # rocks set host vm nas compute-0-14-0 nas=nas-0-0
+    # rocks set host vm nas compute-0-14-0 nas=nas-0-0 zpool=tank
     # rocks start host vm compute-0-14-0
     nas-0-0:compute-0-14-0-vol mapped to vm-container-0-14:/dev/sdc
 
@@ -78,25 +78,36 @@ below:
 ::
 
     # rocks list host storagemap nas-0-0
-    DEVICE                                        HOST                 ZVOL                 
-    --------------------------------------------- -------------------- compute-0-0-0-vol    
-    iqn.2001-04.com.nas-0-0-compute-0-14-0-vol    vm-container-0-14    compute-0-14-0-vol  
+    DEVICE                                        HOST                 ZVOL
+    --------------------------------------------- -------------------- compute-0-0-0-vol
+    iqn.2001-04.com.nas-0-0-compute-0-14-0-vol    vm-container-0-14    compute-0-14-0-vol
     # rocks remove host storagemap nas-0-0 compute-0-14-0-vol
     # rocks list host storagemap nas-0-0
-    DEVICE HOST ZVOL                 
-    ------ ---- compute-0-0-0-vol    
-    ------ ---- compute-0-14-0-vol   
+    DEVICE HOST ZVOL
+    ------ ---- compute-0-0-0-vol
+    ------ ---- compute-0-14-0-vol
 
-The virtual disks are saved on the NAS specified in the ``rocks
-list host vm nas`` under a zpool called ``tank``. Each volume is created
-appending '-vol' to the virtual machine name.
+The virtual disks are saved on the NAS specified in the ``rocks list host vm
+nas`` under the zpool specified in the zpool field.  Each volume name is
+created appending '-vol' to the virtual machine name.
 
 ::
 
+    # rocks list host vm nas
+    VM-HOST         NAS     ZPOOL
+    compute-0-0-0:  nas-0-0 tank
+    compute-0-14-0: nas-0-0 tank
     # ssh nas-0-0
     # zfs list
     NAME                      USED  AVAIL  REFER  MOUNTPOINT
     tank                      231G  1.61T  8.08G  /tank
     tank/compute-0-0-0-vol   37.1G  1.64T  3.60G  -
     tank/compute-0-14-0-vol  37.1G  1.64T  3.84G  -
+
+Instead of specifing the zpool each time, it is possible to set a host attribute
+called ``img_zpools`` which list the zpools (separated by a colon) that should
+be assigned to each disks. If multiple zpools are specified (e.g.: ``rocks set
+host attr nas-0-0 img_zpools value="tank1,tank2"``), they will be used randomly
+each time the command ``rocks set host vm nas`` is invoked without the zpool
+paramter, so that the final distribution of virtual disk should be ballanced.
 

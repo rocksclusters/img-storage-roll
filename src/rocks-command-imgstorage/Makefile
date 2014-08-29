@@ -75,7 +75,7 @@ build:: rocks-copyright.txt
 	
 install:: build
 	find rocks | sed -e 's/\//./g' -e '/\.py/d' > packages
-	$(PY.PATH) setup.py install --root=$(ROOT)
+	$(PY.PATH) setup.py install -f --root=$(ROOT)
 
 
 clean::

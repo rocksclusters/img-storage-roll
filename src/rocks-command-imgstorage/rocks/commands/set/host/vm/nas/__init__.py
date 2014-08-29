@@ -57,6 +57,7 @@
 #
 
 import os.path
+import random
 import rocks.commands
 import rocks.db.mappings.img_manager
 from rocks.db.mappings.img_manager import ImgNasServer
@@ -72,6 +73,13 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.set.command):
 
 	<param type='string' name='nas'>
 	The hostname of the nas that will host the disk image of this machine
+	If nas='none', it resets both the NAS name and the zpool name, this
+	means that this virtual disk will use the value specified in the
+	rocks list host vm showdisks=1 table
+	</param>
+
+	<param type='string' name='zpool'>
+	The zpool name on which this disk image is placed
 	</param>
 
 	<param type='string' name='index'>
@@ -85,37 +93,52 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.set.command):
 
 	def run(self, params, args):
 
-		(nas, index) = self.fillParams([ ('nas', ""), ('index', '0')])
+		(nas, index, zpool) = self.fillParams([ ('nas', ""),
+					('index', '0'), ('zpool', '')])
 
 		try:
 			index = int(index)
 		except:
 			self.abort("index must be an integer")
 
-
 		if nas.lower() == 'none':
 			nas = ""
+			zpool = ""
 		else:
 			if nas not in self.newdb.getListHostnames():
 				self.abort('nas %s must be a valid rocks host' \
 					% nas)
+			if not zpool:
+				# comma is a non valid character for a zpool name
+				zpool = self.newdb.getHostAttr(nas,'img_zpools')
+				if not zpool:
+					self.abort('you need to specify a zpool '
+						'parameter or set the '
+						'img_zpools attribute')
+				zpool = zpool.split(',')
+				zpool = random.choice(zpool)
+
 
 
 		nodes = self.newdb.getNodesfromNames(args, preload=['vm_defs', \
 					'vm_defs.disks', \
 					'vm_defs.disks.img_nas_server'])
 		for node in nodes:
-			if not node.vm_defs or not node.vm_defs.disks:
+			if not node.vm_defs or not node.vm_defs.disks \
+				or not len(node.vm_defs.disks) >= index:
 				self.abort("node %s is not a virtual node" \
 						% node.name)
 
 			#ok we are good to go
-			if node.vm_defs.disks[index].img_nas_server:
-				node.vm_defs.disks[index].img_nas_server.server_name = nas
+			disk = node.vm_defs.disks[index]
+			if disk.img_nas_server:
+				disk.img_nas_server.server_name = nas
+				disk.img_nas_server.zpool_name = zpool
 			else:
 				# we need to create it
-				nas_server = ImgNasServer(server_name=nas, 
-						disk=node.vm_defs.disks[index])
+				nas_server = ImgNasServer(server_name = nas,
+						zpool_name = zpool,
+						disk = disk)
 				self.newdb.getSession().add(nas_server)
 
 

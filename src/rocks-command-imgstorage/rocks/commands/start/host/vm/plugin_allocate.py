@@ -80,7 +80,9 @@ class Plugin(rocks.commands.Plugin):
 			# the node does not use img-storage system
 			return
 		nas_name = disk.img_nas_server.server_name
-		device = CommandLauncher().callAddHostStoragemap(nas_name, volume, phys, size)
+		zpool_name = disk.img_nas_server.zpool_name
+		device = CommandLauncher().callAddHostStoragemap(nas_name, zpool_name,
+				volume, phys, size)
 		disk.vbd_type = "phy"
 		disk.prefix = os.path.dirname(device)
 		disk.name = os.path.basename(device)

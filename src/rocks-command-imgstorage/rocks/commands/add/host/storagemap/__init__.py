@@ -17,6 +17,11 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.add.command):
 	The NAS name which will host the storage image
 	</arg>
 
+	<arg type='string' name='zpool' optional='0'>
+	The zpool name. The final full zvol path name will be formed as
+	zpool + "/" + volume
+	</arg>
+
 	<arg type='string' name='volume' optional='0'>
 	The volume name which will be mapped on the hosting environment
 	</arg>
@@ -30,22 +35,22 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.add.command):
 	If the disk is already present on the NAS the size will be ignored.
 	</arg>
 
-	<example cmd='add host storagemap nas-0-0 zpool/vm-sdsc125-2 compute-0-0 35'>
-	If it does not exist create zpool/vm-sdsc125-2 on nas and map it to 
+	<example cmd='add host storagemap nas-0-0 tank vm-sdsc125-2 compute-0-0 35'>
+	If it does not exist create tank/vm-sdsc125-2 on nas and map it to 
 	compute-0-0-0.
 	</example>
 	"""
 
 	def run(self, params, args):
-		(args, nas, volume, hosting, size) = self.fillPositionalArgs(
-				('nas', 'volume', 'hosting', 'size'))
+		(args, nas, zpool, volume, hosting, size) = self.fillPositionalArgs(
+				('nas', 'zpool', 'volume', 'hosting', 'size'))
 
-		if not nas or not volume or not hosting or not size:
-			self.abort("you must pass 4 arguments nas_name volume hosting size")
+		if not nas or not zpool or not volume or not hosting or not size:
+			self.abort("you must pass 5 arguments nas_name zpool volume hosting size")
 
 		# debugging output
-		print "mapping ", nas, ":", volume, " on ", hosting
-		device = CommandLauncher().callAddHostStoragemap(nas, volume, hosting, size)
+		print "mapping ", nas, ":", zpool, "/", volume, " on ", hosting
+		device = CommandLauncher().callAddHostStoragemap(nas, zpool, volume, hosting, size)
 		self.beginOutput()
 		self.addOutput(nas, device)
 		self.endOutput(padChar='')
