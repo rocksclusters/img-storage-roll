@@ -29,16 +29,16 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.remove.comman
 
 
 	def run(self, params, args):
-		(args, nas, volume) = self.fillPositionalArgs(
-				('nas', 'volume'))
+		(args, nas, zpool, volume) = self.fillPositionalArgs(
+				('nas', 'zpool', 'volume'))
 
 		# debugging output
-		if not (nas and volume):
-			self.abort("2 argument are required for this command nas volume")
+		if not (nas and volume and zpool):
+			self.abort("3 arguments are required for this command nas zpool volume")
 
 		# debugging output
-		print "unmapping  ", nas, ":", volume
-		CommandLauncher().callDelHostStoragemap(nas, volume)
+		print "unmapping  ", nas, ":", zpool, "/", volume
+		CommandLauncher().callDelHostStoragemap(nas, zpool, volume)
 
 		self.beginOutput()
 		self.addOutput(nas, "Success")
