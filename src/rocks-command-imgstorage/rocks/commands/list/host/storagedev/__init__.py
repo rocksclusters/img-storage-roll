@@ -13,6 +13,8 @@ import logging
 logging.basicConfig()
 
 from imgstorage.commandlauncher import CommandLauncher
+import time
+import datetime
 
 
 class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command):
@@ -49,12 +51,14 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command)
                         map[d].get('dev'),
                         map[d].get('status'), 
                         map[d].get('size'), 
+                        #map[d].get('target'),
+                        map[d].get('bdev'),
+                        map[d].get('started'),
                         map[d].get('synced'),
-                        map[d].get('target'),
-                        map[d].get('bdev')
+                        str(datetime.timedelta(seconds=(int(time.time()-map[d].get('time'))))) if map[d].get('time') else None
                     )
                 )
-            headers=['compute','zvol','lvm','status','size (GB)','synced','iSCSI target','block dev']
+            headers=['compute','zvol','lvm','status','size (GB)','block dev','is started','synced','time']
             self.endOutput(headers)
 
 

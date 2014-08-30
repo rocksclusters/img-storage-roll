@@ -78,7 +78,7 @@ class VmDaemon():
         self.stderr_path = '/tmp/err.log'
         self.pidfile_path =  '/var/run/img-storage-vm.pid'
         self.pidfile_timeout = 5
-        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'list_dev':self.list_dev, 'sync_zvol':self.sync_zvol, 'list_sync':self.list_sync }
+        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'list_dev':self.list_dev, 'sync_zvol':self.sync_zvol }
         self.logger = logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
         self.sync_enabled = self.is_sync_enabled()
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
@@ -148,14 +148,6 @@ class VmDaemon():
             'body':mappings}, exchange='', routing_key=props.reply_to)
 
 
-    def list_sync(self, message, properties):
-        with sqlite3.connect(self.SQLITE_DB) as con:
-            cur = con.cursor()
-            cur.execute('SELECT zvol, iscsi_target, started, time from sync_queue ORDER BY sync_queue.time ASC;')
-            r = [dict((cur.description[i][0], value) for i, value in enumerate(row)) for row in cur.fetchall()]
-            self.queue_connector.publish_message({'action': 'return_sync', 'status': 'success', 'body':r}, exchange='', routing_key=properties.reply_to)
-            self.logger.debug(r)
-
     def get_blk_dev_list(self):
         try:
             out = runCommand(['iscsiadm', '-m', 'session', '-P3'])
@@ -174,7 +166,6 @@ class VmDaemon():
 
     def get_dev_list(self):
         mappings = {}
-
         bdev_mappings = self.get_blk_dev_list()
 
         try:    out = runCommand(['dmsetup', 'status'])
@@ -193,10 +184,17 @@ class VmDaemon():
                 mappings[zvol_name]['synced'] = "%s %s"%(dev_ar[4], dev_ar[5])
 
             for target in bdev_mappings.keys():
-
                 if(target.endswith(zvol_name)):
                     mappings[zvol_name]['target'] = target
                     mappings[zvol_name]['bdev'] = bdev_mappings[target]
+     
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('SELECT zvol, started, time from sync_queue;')
+            for row in cur.fetchall():
+                zvol, started, time = row
+                mappings[zvol]['started'] = started
+                mappings[zvol]['time'] = time
 
         return mappings
 

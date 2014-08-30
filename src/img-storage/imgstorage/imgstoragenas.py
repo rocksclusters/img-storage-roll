@@ -80,7 +80,7 @@ class NasDaemon():
         self.stderr_path = '/tmp/err.log'
         self.pidfile_path =  '/var/run/img-storage-nas.pid'
         self.pidfile_timeout = 5
-        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'zvol_mapped':self.zvol_mapped, 'zvol_unmapped': self.zvol_unmapped, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol, 'zvol_synced':self.zvol_synced, 'list_sync': self.list_sync }
+        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'zvol_mapped':self.zvol_mapped, 'zvol_unmapped': self.zvol_unmapped, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol, 'zvol_synced':self.zvol_synced }
 
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
         self.NODE_NAME = RabbitMQLocator.NODE_NAME
@@ -433,9 +433,10 @@ class NasDaemon():
     def list_zvols(self, message, properties):
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('SELECT * from zvols')
+            cur.execute('SELECT zvols.zvol, zvols.zpool, zvols.iscsi_target, zvols.remotehost, sync_queue.is_sending, sync_queue.is_delete_remote, sync_queue.time from zvols LEFT JOIN sync_queue ON zvols.zvol = sync_queue.zvol;')
             r = [dict((cur.description[i][0], value) for i, value in enumerate(row)) for row in cur.fetchall()]
             self.queue_connector.publish_message({'action': 'zvol_list', 'status': 'success', 'body':r}, exchange='', routing_key=properties.reply_to)
+
 
     def process_message(self, properties, message):
         self.logger.debug("Received message %s"%message)
@@ -492,13 +493,3 @@ class NasDaemon():
         out = runCommand(['zfs', 'list', '-Hpr', '-t', 'snapshot', '-o', 'name', '-s', 'creation', '%s/%s'%(zpool, zvol)])
         if(not out):        raise ActionError("No shapshots found")
         return out[-1].split('@')[1]
-
-
-    def list_sync(self, message, properties):
-        with sqlite3.connect(self.SQLITE_DB) as con:
-            cur = con.cursor()
-            cur.execute('SELECT sync_queue.is_sending, sync_queue.zvol, sync_queue.remotehost, sync_queue.time from sync_queue ORDER BY sync_queue.time ASC;')
-            r = [dict((cur.description[i][0], value) for i, value in enumerate(row)) for row in cur.fetchall()]
-            self.queue_connector.publish_message({'action': 'return_sync', 'status': 'success', 'body':r}, exchange='', routing_key=properties.reply_to)
-
-
