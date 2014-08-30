@@ -94,7 +94,7 @@ class Command(rocks.commands.dump.host.command):
 
 				img_nas_server = node.vm_defs.disks[0].img_nas_server
 
-				str = "set host vm %s " % self.dumpHostname(node.name)
+				str = "set host vm nas %s " % self.dumpHostname(node.name)
 				str += "nas=%s " % img_nas_server.server_name
 				str += "zpool=%s" % img_nas_server.zpool_name
 				self.dump(str)
