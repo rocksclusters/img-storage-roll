@@ -19,8 +19,7 @@ import datetime
 
 class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command):
     """
-    List the current active mapping on a NAS (or virtual machine images 
-    repository).
+    List the status on a NAS (or virtual machine images repository).
     
     <arg type='string' name='nas' optional='0'>
     The NAS name which we want to interrogate

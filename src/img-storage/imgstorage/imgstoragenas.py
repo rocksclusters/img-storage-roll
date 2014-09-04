@@ -360,7 +360,7 @@ class NasDaemon():
                         elif(is_delete_remote):
                             # TODO make sure this doesn't take too long, as it's executing in main thread
                             runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'%(remotehost, zpool, zvol)]) 
-                            cur.execute('UPDATE zvols SET remotehost = NULL where zvol = ?',[zvol])
+                            cur.execute('UPDATE zvols SET remotehost = NULL, zpool = NULL where zvol = ?',[zvol])
                             con.commit()
                             self.release_zvol(zvol)
                         else:

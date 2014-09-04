@@ -19,7 +19,7 @@ import datetime
 
 class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command):
     """
-    List the current mapped blockdevs to iscsi targets on compute
+    Lists the VM container node status
     
     <arg type='string' name='compute' optional='0'>
     The COMPUTE name which we want to interrogate

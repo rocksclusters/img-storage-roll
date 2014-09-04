@@ -19,24 +19,46 @@ restared by the service command. The tree main services are:
 
 2. *img-storage-vm* this is the python daemon which is in charge of
    managing the iSCSI mapping on the hosting machine (the machine that
-   will run the virtual machine). img-storage-vm is installed by default
+   will run the virtual machine), creating the local ZFS volumes, and
+   converting these to local lvms. img-storage-vm is installed by default
    on all VM Container appliances but it can be installed on other nodes
    simply by turning to true the attribute ``img_storage_vm``. You will
    also need KVM component on the node to properly run virtual machine,
-   so also the attribute ``
-   kvm`` should be set to true.
+   so also the attribute ``kvm`` should be set to true. To enable the
+   volumes synchronization, the node should have attributes ``zfs`` and 
+   ``img_sync`` set to true.
 
-3. *img-storage-nas* this is the python daemon which is in manages the
+3. *img-storage-nas* this is the python daemon which manages the
    virtual disk repository. It uses ZFS as the underlying technology for
    storage. This daemon is also responsible to set up iSCSI targets for
-   the img-storage-vm. img-storage-vm is installed by default on all
-   NASes appliance but it can be changed simply using the attribute
-   ``img_storage_vm`` (the attribute ``zfs`` should also be true in
+   the img-storage-vm. img-storage-nas is installed by default on all
+   NAS appliances, but it can be changed simply using the attribute
+   ``img_storage_nas`` (the attribute ``zfs`` should also be true in
    order to install zfs). img-storage-nas allocates virtual disks on a
-   zpool called tank, which should be created manually by the
+   zpool(s) set by frontend configuration, which should be created manually by the
    administrator before any virtual machine can be used.
 
-For example to run virtual machine on a standard compute node it is
+   The typical VM start workflow has several steps:
+
+1. The zvol is created on NAS (if didn't exist before)
+
+2. iSCSI target is created, allowing only the compute node to connect to it
+
+3. Compute node creates local zvol for temporary write
+
+4. Compute node attaches iSCSI to local block device
+
+5. Compute node creates lvm that reads data from iSCSI and writes to temporary drive and responds success to NAS
+
+6. NAS responds success to frontend which boots the VM
+
+7. NAS starts asynchronous task whoch copies current ZVOL to compute node
+
+8. When finished, sends signal to compute node which starts merging the local zvol with temporary write-only zvol
+
+9. When done, switches the VM to merged local zvol
+
+For example, to run virtual machine on a standard compute node it is
 necessary to set:
 
 ::
@@ -46,7 +68,7 @@ necessary to set:
 
 Then reinstall all the compute nodes.
 
-Enable remote vritual disk with Img-Storage
+Enable remote virtual disk with Img-Storage
 ===========================================
 
 To enable a virtual machine to use a remote virtual disk, the name of the NAS
@@ -68,24 +90,61 @@ following commands:
     added VM compute-0-14-0 on physical node vm-container-0-14
     # rocks set host vm nas compute-0-14-0 nas=nas-0-0 zpool=tank
     # rocks start host vm compute-0-14-0
-    nas-0-0:compute-0-14-0-vol mapped to vm-container-0-14:/dev/sdc
+    nas-0-0:compute-0-14-0-vol mapped to compute-0-14:/dev/mapper/compute-0-14-0-vol-snap
 
-When the host is stopped (with ``rocks stop host vm``) the iSCSI mapping
-will be removed automatically from the physical container. There are
-also 'manual' commands to list, create or remove iSCSI mapping, as shown
+When the host is stopped (with ``rocks stop host vm``) the zvol will be
+synced back to NAS automatically from the physical container. There are
+also 'manual' commands to list, create or remove zvol synchronization, as shown
 below:
 
 ::
 
-    # rocks list host storagemap nas-0-0
-    DEVICE                                        HOST                 ZVOL
-    --------------------------------------------- -------------------- compute-0-0-0-vol
-    iqn.2001-04.com.nas-0-0-compute-0-14-0-vol    vm-container-0-14    compute-0-14-0-vol
-    # rocks remove host storagemap nas-0-0 compute-0-14-0-vol
-    # rocks list host storagemap nas-0-0
-    DEVICE HOST ZVOL
-    ------ ---- compute-0-0-0-vol
-    ------ ---- compute-0-14-0-vol
+    [root@hpcdev-pub02 usersguiderst]# rocks list host storagemap nas-0-0
+    ZVOL                     HOST            ZPOOL   TARGET                                           STATE    TIME
+    vol1                     --------------- ------- iqn.2001-04.com.nas-0-0-vol1                     unmapped ----
+    hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped   ----
+    vm-hpcdev-pub03-4-vol    --------------- tank    ------------------------------------------------ unmapped ----
+    vm-hpcdev-pub03-3-vol    --------------- tank    ------------------------------------------------ unmapped ----
+    vm-hpcdev-pub03-2-vol    --------------- tank    ------------------------------------------------ unmapped ----
+    vm-hpcdev-pub03-0-vol    compute-0-1     tank    ------------------------------------------------ mapped   ----
+    vm-hpcdev-pub03-1-vol    compute-0-3     tank    iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-1-vol    mapped   ----
+    vm-hpcdev-pub03-5-vol    compute-0-3     tank    ------------------------------------------------ mapped   ----
+    [root@hpcdev-pub02 usersguiderst]# rocks list host storagedev compute-0-3
+    ZVOL                     LVM                           STATUS            SIZE (GB) BLOCK DEV IS STARTED SYNCED                    TIME   
+    vm-hpcdev-pub03-1-vol    vm-hpcdev-pub03-1-vol-snap    snapshot-merge    36        sdc       1          9099712/73400320 17760    0:32:05
+    vm-hpcdev-pub03-5-vol    vm-hpcdev-pub03-5-vol-snap    linear            36        --------- ---------- ------------------------- -------
+
+
+The vm-hpcdev-pub03-1-vol is currently merging, that's why we have the
+iSCSI target still established. Once it's done, the iSCSI target will be
+unmapped. The 9099712/73400320 17760 numbers whow the number of blocks
+left for merging: the task is done when first number, which constantly
+decreases, is equal to the third one.
+
+Let's start another VM:
+
+::
+
+    [root@hpcdev-pub02 usersguiderst]# rocks start host vm vm-hpcdev-pub03-3
+    nas-0-0:vm-hpcdev-pub03-3-vol mapped to compute-0-3:/dev/mapper/vm-hpcdev-pub03-3-vol-snap
+    [root@hpcdev-pub02 usersguiderst]# rocks list host storagemap nas-0-0
+    ZVOL                     HOST            ZPOOL   TARGET                                           STATE     TIME   
+    vol1                     --------------- ------- iqn.2001-04.com.nas-0-0-vol1                     unmapped  -------
+    hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped    -------
+    vm-hpcdev-pub03-4-vol    --------------- tank    ------------------------------------------------ unmapped  -------
+    vm-hpcdev-pub03-2-vol    --------------- tank    ------------------------------------------------ unmapped  -------
+    vm-hpcdev-pub03-0-vol    compute-0-1     tank    ------------------------------------------------ mapped    -------
+    vm-hpcdev-pub03-1-vol    compute-0-3     tank    iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-1-vol    mapped    -------
+    vm-hpcdev-pub03-5-vol    compute-0-3     tank    ------------------------------------------------ mapped    -------
+    vm-hpcdev-pub03-3-vol    compute-0-3     tank    iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-3-vol    NAS⇒ VM 0:00:04
+    [root@hpcdev-pub02 usersguiderst]# rocks list host storagedev compute-0-3
+    ZVOL                     LVM                           STATUS            SIZE (GB) BLOCK DEV IS STARTED SYNCED                    TIME   
+    vm-hpcdev-pub03-3-vol    vm-hpcdev-pub03-3-vol-snap    snapshot          35        sdd       ---------- 32/73400320 32            -------
+    vm-hpcdev-pub03-1-vol    vm-hpcdev-pub03-1-vol-snap    snapshot-merge    36        sdc       1          8950592/73400320 17472    0:36:36
+    vm-hpcdev-pub03-5-vol    vm-hpcdev-pub03-5-vol-snap    linear            36        --------- ---------- ------------------------- -------
+
+
+The process of VM copy to compute node started for zvol vm-hpcdev-pub03-3-vol
 
 The virtual disks are saved on the NAS specified in the ``rocks list host vm
 nas`` under the zpool specified in the zpool field.  Each volume name is

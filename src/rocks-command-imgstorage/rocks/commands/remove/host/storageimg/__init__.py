@@ -16,25 +16,30 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.remove.comman
 	The NAS name which hosts the storage image
 	</arg>
 
+	<arg type='string' name='zpool' optional='0'>
+	The zpool name. The final full zvol path name will be formed as
+	zpool + "/" + volume
+	</arg>
+
 	<arg type='string' name='volume' optional='0'>
 	The volume name which will be deleted
 	</arg>
 
-	<example cmd='remove host storageimg nas-0-0 zpool/vm-sdsc125-2'>
+	<example cmd='remove host storageimg nas-0-0 zpool vm-sdsc125-2'>
 	It remove the volume zpool/vm-sdsc125-2 from nas-0-0
 	</example>
 	"""
 
 	def run(self, params, args):
-		(args, nas, volume) = self.fillPositionalArgs(
-				('nas', 'volume'))
+		(args, nas, zpool, volume) = self.fillPositionalArgs(
+				('nas', 'zpool', 'volume'))
 
 		# debugging output
-		if not (nas and volume):
-			self.abort("2 argument are required for this command nas volume")
+		if not (nas and zpool and volume):
+			self.abort("3 arguments are required for this command nas zpool volume")
 
-		print "removing  ", nas, ":", volume
-		CommandLauncher().callDelHostStorageimg(nas, volume)
+		print "removing  ", nas, ":", zpool, "/", volume
+		CommandLauncher().callDelHostStorageimg(nas, zpool, volume)
 
 		self.beginOutput()
 		self.addOutput(nas, "Success")

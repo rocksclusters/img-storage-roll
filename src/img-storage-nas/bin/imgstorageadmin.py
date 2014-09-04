@@ -99,7 +99,7 @@ def main(argv):
                     linenum+=1
                 ans = raw_input("Which zvol? (name) ")
                 if(ans):
-                    cur.execute('UPDATE zvols SET iscsi_target = NULL, remotehost = NULL WHERE zvol = ?',[rows[int(ans)][0]])
+                    cur.execute('UPDATE zvols SET iscsi_target = NULL, remotehost = NULL, zpool = NULL WHERE zvol = ?',[rows[int(ans)][0]])
                     con.commit()
                     print "Done"
             except ActionError, e: logger.exception(e)

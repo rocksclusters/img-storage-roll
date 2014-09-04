@@ -93,11 +93,6 @@ class CommandLauncher():
        self.callCommand(message, nas)
        return self.ret_message['body']
 
-    def callListHostSync(self, host):
-       message = {'action': 'list_sync'}
-       self.callCommand(message, host)
-       return self.ret_message['body']
-
     def callListHostStoragedev(self, compute):
        message = {'action': 'list_dev'}
        self.callCommand(message, compute)
