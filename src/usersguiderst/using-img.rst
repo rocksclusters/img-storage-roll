@@ -48,8 +48,20 @@ necessary to set:
 
 Then reinstall all the compute nodes.
 
-VM boot workflow
-----------------
+Image access modes
+------------------
+
+There are two modes supported: direct iSCSI and local synchronized disk. The mode is set 
+by ```img_sync``` node attribute set to eigher True or False.
+
+In direct iSCSI mode the VM performs all I/O operations to the remote zvol. The zvol is 
+mapped to iSCSI target on NAS, which is then visible as local block device on compute node.
+
+In sync mode it starts similar to direct iSCSI, but then synchronization is performed, and in the end the VM
+is using a local drive which is the copy of remove zvol on NAS. THe drive is synced back to NAS when VM is terminated.
+
+VM boot workflow with image sync
+--------------------------------
 
 The typical VM start workflow has several steps:
 
@@ -221,3 +233,88 @@ There are also 'manual' commands to list, create or remove zvol synchronization,
     ZVOL                     HOST            ZPOOL   TARGET                                           STATE    TIME
     hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped   ----
 
+Recovering from errors
+======================
+
+There is administrator script being installed with the package on NAS and VM Container nodes called imgstorageadmin.
+It allows cleaning the state of VM when something went wrong and return it to usable condition.
+
+The script asks questions in order to fully recover the VM in sync mode. User can reply y(default) to run the action or type n to skip.
+
+Example:
+
+On VM container:
+
+::
+
+    # imgstorageadmin
+    Unmap iSCSI target? [y]|n: y
+    From which NAS? (Don't forget .ibnet if used) nas-0-0.ibnet
+    0 10.2.20.250:3260,1 iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-2-vol
+    1 10.2.20.250:3260,1 iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-4-vol
+    2 10.2.20.250:3260,1 iqn.2001-04.com.nas-0-0-vol1
+    Which target would you like to delete? (number)2
+    ====================================
+    Destroy lvm? [y]|n: y 
+    0 vol1-snap: 0 18874368 snapshot 32/18874368 32
+    1 vm-hpcdev-pub03-4-vol-snap: 0 73400320 snapshot 13457872/73400320 26256
+    2 vm-hpcdev-pub03-2-vol-snap: 0 75497472 snapshot-merge 1086176/73400320 2144
+    Which lvm would you like to destroy? (number)0
+    ====================================
+    Remove zvol? [y]|n: y
+    0 tank
+    1 tank/vm-hpcdev-pub03-2-vol
+    2 tank/vm-hpcdev-pub03-2-vol-temp-write
+    3 tank/vm-hpcdev-pub03-4-vol
+    4 tank/vm-hpcdev-pub03-4-vol-temp-write
+    5 tank/vol1
+    6 tank/vol1-temp-write
+    Which zvol would you like to delete? (number)5
+    ====================================
+
+Then delete second zvol manually ('zfs destroy tank/vol1-temp-write -r') or rerun the script
+
+On NAS:
+
+::
+
+    # imgstorageadmin 
+    Unmap iSCSI target? [y]|n: y
+    Target 1: iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol
+    Target 2: iqn.2001-04.com.nas-0-0-vol1
+    Target 3: iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-2-vol
+    Target 4: iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-4-vol
+    Which target number would you like to delete? (number) 2
+    Remove zvol mapping to VM in DB? [y]|n: y
+    0 hpcdev-pub03-vol tank iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol hpcdev-pub02
+    1 vm-hpcdev-pub03-0-vol   
+    2 vm-hpcdev-pub03-2-vol tank iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-2-vol compute-0-1
+    3 vm-hpcdev-pub03-5-vol tank  
+    4 vm-hpcdev-pub03-4-vol tank iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-4-vol compute-0-1
+    5 vm-hpcdev-pub03-1-vol tank  
+    6 vm-hpcdev-pub03-3-vol tank  
+    7 vol1 tank iqn.2001-04.com.nas-0-0-vol1 compute-0-1
+    Which zvol? (number) 7
+    Done
+    Unbusy the zvol? [y]|n: y
+    0 vm-hpcdev-pub03-4-vol amq.gen-Esp2W6XQojClmQ7APoHAvQ 1409862185.2
+    1 vol1 amq.gen-bT045S_sjCeNcni0V-pkkQ 1409872201.94
+    Which zvol? (number) 1
+
+The vol1 is now in clean unmapped state and is ready for mapping:
+
+::
+
+    [root@hpcdev-pub02 ~]# rocks list host storagemap nas-0-0
+    ZVOL                     HOST            ZPOOL   TARGET                                           STATE    TIME
+    hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped   ----
+    vm-hpcdev-pub03-0-vol    --------------- ------- ------------------------------------------------ unmapped ----
+    vm-hpcdev-pub03-2-vol    compute-0-1     tank    iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-2-vol    mapped   ----
+    vm-hpcdev-pub03-5-vol    --------------- tank    ------------------------------------------------ unmapped ----
+    vm-hpcdev-pub03-4-vol    compute-0-1     tank    iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-4-vol    mapped   ----
+    vm-hpcdev-pub03-1-vol    --------------- tank    ------------------------------------------------ unmapped ----
+    vm-hpcdev-pub03-3-vol    --------------- tank    ------------------------------------------------ unmapped ----
+    vol1                     --------------- ------- ------------------------------------------------ unmapped ----
+
+.. WARNING::
+    The scripts don't recover the data from VM container, and it will be destroyed. You should manually sync back the snapshots to NAS if needed.
