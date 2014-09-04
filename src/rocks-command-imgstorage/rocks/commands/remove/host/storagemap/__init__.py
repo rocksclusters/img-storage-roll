@@ -33,8 +33,8 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.remove.comman
 				('nas', 'volume'))
 
 		# debugging output
-		if not (nas and volume and zpool):
-			self.abort("3 arguments are required for this command nas zpool volume")
+		if not (nas and volume):
+			self.abort("2 arguments are required for this command nas volume")
 
 		# debugging output
 		print "unmapping  ", nas, ":", volume

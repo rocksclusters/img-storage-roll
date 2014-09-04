@@ -38,7 +38,20 @@ restared by the service command. The tree main services are:
    zpool(s) set by frontend configuration, which should be created manually by the
    administrator before any virtual machine can be used.
 
-   The typical VM start workflow has several steps:
+For example, to run virtual machine on a standard compute node it is
+necessary to set:
+
+::
+
+    /opt/rocks/bin/rocks add appliance attr compute img_storage_vm true
+    /opt/rocks/bin/rocks add appliance attr compute kvm true
+
+Then reinstall all the compute nodes.
+
+VM boot workflow
+----------------
+
+The typical VM start workflow has several steps:
 
 1. The zvol is created on NAS (if didn't exist before)
 
@@ -58,15 +71,6 @@ restared by the service command. The tree main services are:
 
 9. When done, switches the VM to merged local zvol
 
-For example, to run virtual machine on a standard compute node it is
-necessary to set:
-
-::
-
-    /opt/rocks/bin/rocks add appliance attr compute img_storage_vm true
-    /opt/rocks/bin/rocks add appliance attr compute kvm true
-
-Then reinstall all the compute nodes.
 
 Enable remote virtual disk with Img-Storage
 ===========================================
@@ -92,60 +96,6 @@ following commands:
     # rocks start host vm compute-0-14-0
     nas-0-0:compute-0-14-0-vol mapped to compute-0-14:/dev/mapper/compute-0-14-0-vol-snap
 
-When the host is stopped (with ``rocks stop host vm``) the zvol will be
-synced back to NAS automatically from the physical container. There are
-also 'manual' commands to list, create or remove zvol synchronization, as shown
-below:
-
-::
-
-    [root@hpcdev-pub02 usersguiderst]# rocks list host storagemap nas-0-0
-    ZVOL                     HOST            ZPOOL   TARGET                                           STATE    TIME
-    vol1                     --------------- ------- iqn.2001-04.com.nas-0-0-vol1                     unmapped ----
-    hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped   ----
-    vm-hpcdev-pub03-4-vol    --------------- tank    ------------------------------------------------ unmapped ----
-    vm-hpcdev-pub03-3-vol    --------------- tank    ------------------------------------------------ unmapped ----
-    vm-hpcdev-pub03-2-vol    --------------- tank    ------------------------------------------------ unmapped ----
-    vm-hpcdev-pub03-0-vol    compute-0-1     tank    ------------------------------------------------ mapped   ----
-    vm-hpcdev-pub03-1-vol    compute-0-3     tank    iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-1-vol    mapped   ----
-    vm-hpcdev-pub03-5-vol    compute-0-3     tank    ------------------------------------------------ mapped   ----
-    [root@hpcdev-pub02 usersguiderst]# rocks list host storagedev compute-0-3
-    ZVOL                     LVM                           STATUS            SIZE (GB) BLOCK DEV IS STARTED SYNCED                    TIME   
-    vm-hpcdev-pub03-1-vol    vm-hpcdev-pub03-1-vol-snap    snapshot-merge    36        sdc       1          9099712/73400320 17760    0:32:05
-    vm-hpcdev-pub03-5-vol    vm-hpcdev-pub03-5-vol-snap    linear            36        --------- ---------- ------------------------- -------
-
-
-The vm-hpcdev-pub03-1-vol is currently merging, that's why we have the
-iSCSI target still established. Once it's done, the iSCSI target will be
-unmapped. The 9099712/73400320 17760 numbers whow the number of blocks
-left for merging: the task is done when first number, which constantly
-decreases, is equal to the third one.
-
-Let's start another VM:
-
-::
-
-    [root@hpcdev-pub02 usersguiderst]# rocks start host vm vm-hpcdev-pub03-3
-    nas-0-0:vm-hpcdev-pub03-3-vol mapped to compute-0-3:/dev/mapper/vm-hpcdev-pub03-3-vol-snap
-    [root@hpcdev-pub02 usersguiderst]# rocks list host storagemap nas-0-0
-    ZVOL                     HOST            ZPOOL   TARGET                                           STATE     TIME   
-    vol1                     --------------- ------- iqn.2001-04.com.nas-0-0-vol1                     unmapped  -------
-    hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped    -------
-    vm-hpcdev-pub03-4-vol    --------------- tank    ------------------------------------------------ unmapped  -------
-    vm-hpcdev-pub03-2-vol    --------------- tank    ------------------------------------------------ unmapped  -------
-    vm-hpcdev-pub03-0-vol    compute-0-1     tank    ------------------------------------------------ mapped    -------
-    vm-hpcdev-pub03-1-vol    compute-0-3     tank    iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-1-vol    mapped    -------
-    vm-hpcdev-pub03-5-vol    compute-0-3     tank    ------------------------------------------------ mapped    -------
-    vm-hpcdev-pub03-3-vol    compute-0-3     tank    iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-3-vol    NAS⇒ VM 0:00:04
-    [root@hpcdev-pub02 usersguiderst]# rocks list host storagedev compute-0-3
-    ZVOL                     LVM                           STATUS            SIZE (GB) BLOCK DEV IS STARTED SYNCED                    TIME   
-    vm-hpcdev-pub03-3-vol    vm-hpcdev-pub03-3-vol-snap    snapshot          35        sdd       ---------- 32/73400320 32            -------
-    vm-hpcdev-pub03-1-vol    vm-hpcdev-pub03-1-vol-snap    snapshot-merge    36        sdc       1          8950592/73400320 17472    0:36:36
-    vm-hpcdev-pub03-5-vol    vm-hpcdev-pub03-5-vol-snap    linear            36        --------- ---------- ------------------------- -------
-
-
-The process of VM copy to compute node started for zvol vm-hpcdev-pub03-3-vol
-
 The virtual disks are saved on the NAS specified in the ``rocks list host vm
 nas`` under the zpool specified in the zpool field.  Each volume name is
 created appending '-vol' to the virtual machine name.
@@ -169,4 +119,105 @@ be assigned to each disks. If multiple zpools are specified (e.g.: ``rocks set
 host attr nas-0-0 img_zpools value="tank1,tank2"``), they will be used randomly
 each time the command ``rocks set host vm nas`` is invoked without the zpool
 paramter, so that the final distribution of virtual disk should be ballanced.
+
+When the host is started and stopped (with ``rocks start/stop host vm``) the zvol will be
+synced automatically between the NAS and the physical container.
+
+::
+
+    # rocks list host storagemap nas-0-0
+    ZVOL                     HOST            ZPOOL   TARGET                                           STATE    TIME
+    hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped   ----
+    vm-hpcdev-pub03-4-vol    --------------- tank    ------------------------------------------------ unmapped ----
+    vm-hpcdev-pub03-3-vol    --------------- tank    ------------------------------------------------ unmapped ----
+    vm-hpcdev-pub03-2-vol    --------------- tank    ------------------------------------------------ unmapped ----
+    vm-hpcdev-pub03-0-vol    compute-0-1     tank    ------------------------------------------------ mapped   ----
+    vm-hpcdev-pub03-1-vol    compute-0-3     tank    iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-1-vol    mapped   ----
+    vm-hpcdev-pub03-5-vol    compute-0-3     tank    ------------------------------------------------ mapped   ----
+    # rocks list host storagedev compute-0-3
+    ZVOL                     LVM                           STATUS            SIZE (GB) BLOCK DEV IS STARTED SYNCED                    TIME   
+    vm-hpcdev-pub03-1-vol    vm-hpcdev-pub03-1-vol-snap    snapshot-merge    36        sdc       1          9099712/73400320 17760    0:32:05
+    vm-hpcdev-pub03-5-vol    vm-hpcdev-pub03-5-vol-snap    linear            36        --------- ---------- ------------------------- -------
+
+
+The vm-hpcdev-pub03-1-vol is currently merging, that's why we have the
+iSCSI target still established. Once it's done, the iSCSI target will be
+unmapped. The 9099712/73400320 17760 numbers whow the number of blocks
+left for merging: the task is done when first number, which constantly
+decreases, is equal to the third one.
+
+Let's start another VM:
+
+::
+
+    # rocks start host vm vm-hpcdev-pub03-3
+    nas-0-0:vm-hpcdev-pub03-3-vol mapped to compute-0-3:/dev/mapper/vm-hpcdev-pub03-3-vol-snap
+    # rocks list host storagemap nas-0-0
+    ZVOL                     HOST            ZPOOL   TARGET                                           STATE     TIME   
+    vol1                     --------------- ------- iqn.2001-04.com.nas-0-0-vol1                     unmapped  -------
+    hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped    -------
+    vm-hpcdev-pub03-4-vol    --------------- tank    ------------------------------------------------ unmapped  -------
+    vm-hpcdev-pub03-2-vol    --------------- tank    ------------------------------------------------ unmapped  -------
+    vm-hpcdev-pub03-0-vol    compute-0-1     tank    ------------------------------------------------ mapped    -------
+    vm-hpcdev-pub03-1-vol    compute-0-3     tank    iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-1-vol    mapped    -------
+    vm-hpcdev-pub03-5-vol    compute-0-3     tank    ------------------------------------------------ mapped    -------
+    vm-hpcdev-pub03-3-vol    compute-0-3     tank    iqn.2001-04.com.nas-0-0-vm-hpcdev-pub03-3-vol    NAS->VM 0:00:04
+    # rocks list host storagedev compute-0-3
+    ZVOL                     LVM                           STATUS            SIZE (GB) BLOCK DEV IS STARTED SYNCED                    TIME   
+    vm-hpcdev-pub03-3-vol    vm-hpcdev-pub03-3-vol-snap    snapshot          35        sdd       ---------- 32/73400320 32            -------
+    vm-hpcdev-pub03-1-vol    vm-hpcdev-pub03-1-vol-snap    snapshot-merge    36        sdc       1          8950592/73400320 17472    0:36:36
+    vm-hpcdev-pub03-5-vol    vm-hpcdev-pub03-5-vol-snap    linear            36        --------- ---------- ------------------------- -------
+
+
+The process of VM copy to compute node started for zvol vm-hpcdev-pub03-3-vol
+
+There are also 'manual' commands to list, create or remove zvol synchronization, as shown below:
+
+::
+
+    # rocks list host storagemap nas-0-0
+    ZVOL                     HOST            ZPOOL   TARGET                                           STATE    TIME
+    hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped   ----
+
+
+
+    # rocks add host storagemap nas-0-0 tank vol1 compute-0-3 10
+    mapping  nas-0-0 : tank / vol1  on  compute-0-3
+    /dev/mapper/vol1-snap
+
+    # rocks list host storagemap nas-0-0
+    ZVOL                     HOST            ZPOOL   TARGET                                           STATE     TIME   
+    hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped    -------
+    vol1                     compute-0-3     tank    iqn.2001-04.com.nas-0-0-vol1                     NAS->VM 0:00:06
+
+    # rocks list host storagemap nas-0-0
+    ZVOL                     HOST            ZPOOL   TARGET                                           STATE    TIME
+    hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped   ----
+    vol1                     compute-0-3     tank    ------------------------------------------------ mapped   ----
+
+
+
+    # rocks remove host storagemap nas-0-0 vol1
+    unmapping   nas-0-0 : vol1
+    Success
+
+    # rocks list host storagemap nas-0-0
+    ZVOL                     HOST            ZPOOL   TARGET                                           STATE     TIME   
+    hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped    -------
+    vol1                     compute-0-3     tank    ------------------------------------------------ NAS<-VM 0:00:07
+
+    # rocks list host storagemap nas-0-0
+    ZVOL                     HOST            ZPOOL   TARGET                                           STATE    TIME
+    hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped   ----
+    vol1                     --------------- tank    ------------------------------------------------ unmapped ----
+
+
+
+    # rocks remove host storageimg nas-0-0 tank vol1
+    removing   nas-0-0 : tank / vol1
+    Success
+
+    # rocks list host storagemap nas-0-0
+    ZVOL                     HOST            ZPOOL   TARGET                                           STATE    TIME
+    hpcdev-pub03-vol         hpcdev-pub02    tank    iqn.2001-04.com.nas-0-0-hpcdev-pub03-vol         mapped   ----
 
