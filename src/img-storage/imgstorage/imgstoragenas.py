@@ -359,13 +359,13 @@ class NasDaemon():
                                 on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(remotehost, zvol)))
                         elif(is_delete_remote):
                             # TODO make sure this doesn't take too long, as it's executing in main thread
-                            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'%(remotehost, zpool, zvol)]) 
+                            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'%(remotehost, self.get_node_zpool(remotehost), zvol)]) 
                             cur.execute('UPDATE zvols SET remotehost = NULL, zpool = NULL where zvol = ?',[zvol])
                             con.commit()
                             self.release_zvol(zvol)
                         else:
                             out = runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs list -Hpr -t snapshot -o name -s creation  %s/%s"'%
-                               (remotehost, zpool, zvol)]) 
+                               (remotehost, self.get_node_zpool(remotehost), zvol)]) 
 
                             def destroy_remote_snapshot(snapshot):
                                 # TODO make sure this doesn't take too long, as it's executing in main thread
@@ -400,13 +400,14 @@ class NasDaemon():
         snap_name = uuid.uuid4()
         runCommand(['zfs', 'snap', '%s/%s@%s'%(zpool, zvol, snap_name)])
         runCommand(['zfs', 'send', '%s/%s@%s'%(zpool, zvol, snap_name)], 
-                ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F %s/%s"'%(remotehost, zpool, zvol)])
+                ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F %s/%s"'%(remotehost, self.get_node_zpool(remotehost), zvol)])
 
     def download_snapshot(self, zpool, zvol, remotehost):
         snap_name = uuid.uuid4()
-        runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap %s/%s@%s"'%(remotehost, zpool, zvol, snap_name)])
+        remote_zpool = self.get_node_zpool(remotehost)
+        runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap %s/%s@%s"'%(remotehost, remote_zpool, zvol, snap_name)])
         runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i %s/%s@%s %s/%s@%s"'%
-                        (remotehost, zpool, zvol, self.find_last_snapshot(zpool, zvol), zpool, zvol, snap_name)], 
+                        (remotehost, remote_zpool, zvol, self.find_last_snapshot(zpool, zvol), remote_zpool, zvol, snap_name)], 
                 ['zfs', 'receive', '-F', '%s/%s'%(zpool, zvol)])
 
         def destroy_local_snapshot(snapshot):
@@ -482,11 +483,26 @@ class NasDaemon():
             db = rocks.db.helper.DatabaseHelper()
             db.connect()
             is_sync_node = db.getHostAttr(remotehost, 'img_sync')
-            db.close()
+            return is_sync_node
         except Exception, e:
             self.logger.exception("Unable to get img_sync attribute: " + str(e))
             return False
-        return is_sync_node
+        finally:
+            db.close()
+
+    def get_node_zpool(self, remotehost_):
+        try:
+            db = rocks.db.helper.DatabaseHelper()
+            db.connect()
+            remotehost = str(db.getHostname(remotehost_))
+            vm_container_zpool = db.getHostAttr(remotehost, 'vm_container_zpool')
+            return vm_container_zpool
+        except Exception, e:
+            self.logger.exception("Unable to get vm_container_zpool attribute for host %s: "%remotehost + str(e))
+            raise ActionError("Unable to get vm_container_zpool attribute: " + str(e))
+        finally:
+            db.close()
+
 
 
     def find_last_snapshot(self, zpool, zvol):

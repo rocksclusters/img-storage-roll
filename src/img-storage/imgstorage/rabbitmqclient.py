@@ -68,8 +68,8 @@ class RabbitMQLocator(object):
     db.connect()
     NODE_NAME = db.getHostname()
     IB_NET = db.getHostAttr(db.getHostname(), 'IB_net')
+    VM_CONTAINER_ZPOOL = db.getHostAttr(db.getHostname(), 'vm_container_zpool')
     db.close()
-    RABBITMQ_URL = None
     with open ("/opt/rocks/etc/rabbitmq.conf", "r") as rabbit_pw_file:
         RABBITMQ_URL = rabbit_pw_file.read().rstrip('\n')
 
