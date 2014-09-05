@@ -48,6 +48,11 @@ necessary to set:
 
 Then reinstall all the compute nodes.
 
+Using InfiniBand interface
+--------------------------
+
+If infiniband network is present on the nodes, it can be used for data transfers. To use it, set the attribute ``IB_net`` to the name of the InfiniBand network for all the nodes.
+
 Image access modes
 ------------------
 
@@ -59,6 +64,8 @@ mapped to iSCSI target on NAS, which is then visible as local block device on co
 
 In sync mode it starts similar to direct iSCSI, but then synchronization is performed, and in the end the VM
 is using a local drive which is the copy of remove zvol on NAS. THe drive is synced back to NAS when VM is terminated.
+
+The sync mode requires zfs to be set up on VM Container nodes. The attribute ``vm_container_zpool`` sets the name of zpool to use and can be set both globally for all the nodes or per-node if config is different from the rest of the nodes.
 
 VM boot workflow with image sync
 --------------------------------
@@ -236,6 +243,9 @@ There are also 'manual' commands to list, create or remove zvol synchronization,
 Recovering from errors
 ======================
 
+.. WARNING::
+    The scripts will not recover the data from VM container, it will be destroyed. You should manually sync back the snapshots to NAS if needed.
+
 There is administrator script being installed with the package on NAS and VM Container nodes called imgstorageadmin.
 It allows cleaning the state of VM when something went wrong and return it to usable condition.
 
@@ -316,5 +326,3 @@ The vol1 is now in clean unmapped state and is ready for mapping:
     vm-hpcdev-pub03-3-vol    --------------- tank    ------------------------------------------------ unmapped ----
     vol1                     --------------- ------- ------------------------------------------------ unmapped ----
 
-.. WARNING::
-    The scripts don't recover the data from VM container, and it will be destroyed. You should manually sync back the snapshots to NAS if needed.
