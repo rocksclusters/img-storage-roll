@@ -32,6 +32,7 @@ class TestVmSyncFunctions(unittest.TestCase):
         mock_rabbit_vm.publish_message = MagicMock()
         self.vm_client.process_message = MagicMock()
         
+        self.vm_client.ZPOOL = 'tank'
         self.vm_client.SQLITE_DB = '/tmp/test_db_%s'%uuid.uuid4()
         self.vm_client.run()
 

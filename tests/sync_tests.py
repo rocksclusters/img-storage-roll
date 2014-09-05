@@ -37,6 +37,7 @@ class TestSyncFunctions(unittest.TestCase):
         self.nas_client.process_message = MagicMock()
 
         self.nas_client.is_sync_node = MagicMock(return_value = True)
+        self.nas_client.get_node_zpool = MagicMock(return_value = 'my_tank')
 
         self.nas_client.SQLITE_DB = '/tmp/test_db_%s'%uuid.uuid4()
         self.nas_client.run()
@@ -173,26 +174,6 @@ class TestSyncFunctions(unittest.TestCase):
     def test_find_last_snapshot(self, mock_run_command):
         zvol = 'vm-hpcdev-pub03-1-vol'
         self.assertEqual(self.nas_client.find_last_snapshot('my_tank', zvol), 'bbb')
-
-
-    def test_list_sync(self):
-        with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
-            cur = con.cursor()
-            cur.execute('INSERT INTO sync_queue VALUES(?,?,?,1,1,?)', ['vol3_busy', 'my_tank', 'compute-0-3', 1408470839.3029799])
-            con.commit()
-
-        self.nas_client.list_sync({'action': 'list_sync'},
-                    BasicProperties(reply_to='reply_to', correlation_id='message_id'))
-        return_dict = [{'is_sending': 1, 'remotehost': u'compute-0-3', 'zvol': u'vol3_busy', 'time': 1408470839.3029799}]
-        self.nas_client.queue_connector.publish_message.assert_called_with(
-                    {'action': 'return_sync', 'status': 'success', 'body': return_dict}, routing_key='reply_to', exchange='')
-        for d in return_dict:
-                    print((
-                        d['remotehost'],
-                        "upload" if d['is_sending'] else "download",
-                        d['zvol'],
-                        str(datetime.timedelta(seconds=(int(time.time()-d['time']))))
-                    ))
 
 
     def check_zvol_busy(self, zvol):
