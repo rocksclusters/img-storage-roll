@@ -32,6 +32,13 @@
 	  <to>img-storage-vm</to>
 	</edge>
 
+	<!-- special partitioning only on node which run the img_storage_vm 
+	     have enable the special img_sync for image replication and 
+	     have a vm_container_zpool specified-->
+	<edge from="client" cond="img_storage_part_zfs_mirror and img_storage_vm and img_sync and vm_container_zpool">
+	  <to>img-storage-vm-create-zfs</to>
+	</edge>
+
 	<edge from="client" cond="img_storage_nas">
 	  <to>img-storage-nas</to>
 	</edge>
