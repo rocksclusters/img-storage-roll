@@ -49,6 +49,7 @@ echo "FILES_NOCOMMENT += /opt/rocks/etc/rabbitmq.conf" &gt;&gt; /var/411/Files.m
 /opt/rocks/bin/rocks set appliance attr compute vm_container_zpool tank
 
 /usr/sbin/adduser zfs -m
+/opt/rocks/bin/rocks sync users
 </post>
 
 <post>
