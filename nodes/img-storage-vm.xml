@@ -55,10 +55,8 @@ ACTION=="add", KERNEL=="zfs", MODE="0660", GROUP="zfs"
 #
 # while for the zfs user to appear
 
-id -u zfs
-while [ $?  ] ; do
-    sleep 5;
-    id -u zfs
+while [ ! `id -u zfs` ];do
+	sleep 5
 done
 
 /sbin/udevadm trigger --action=add
@@ -67,8 +65,6 @@ done
 # after that the file will be there
 rm /etc/rc.d/rocksconfig.d/post-98-restart-udev-zfs-perm
 </file>
-
-
 
 </post>
 
