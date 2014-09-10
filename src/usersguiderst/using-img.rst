@@ -51,21 +51,28 @@ Then reinstall all the compute nodes.
 Using InfiniBand interface
 --------------------------
 
-If infiniband network is present on the nodes, it can be used for data transfers. To use it, set the attribute ``IB_net`` to the name of the InfiniBand network for all the nodes.
+If an infiniband network is present on the nodes, it can be used for data
+transfers. To use it, set the attribute ``IB_net`` to the name of the
+InfiniBand network for all the nodes.
 
 Image access modes
 ------------------
 
-There are two modes supported: direct iSCSI and local synchronized disk. The mode is set 
-by ```img_sync``` node attribute set to eigher True or False.
+There are two modes supported: direct iSCSI and local synchronized disk. The
+mode is set by ``img_sync`` node attribute set to either True or False.
 
-In direct iSCSI mode the VM performs all I/O operations to the remote zvol. The zvol is 
-mapped to iSCSI target on NAS, which is then visible as local block device on compute node.
+In direct iSCSI mode the VM performs all I/O operations to the remote zvol. The
+zvol is mapped to iSCSI target on NAS, which is then visible as local block
+device on compute node.
 
-In sync mode it starts similar to direct iSCSI, but then synchronization is performed, and in the end the VM
-is using a local drive which is the copy of remove zvol on NAS. THe drive is synced back to NAS when VM is terminated.
+In sync mode it starts similar to direct iSCSI, but then synchronization is
+performed, and in the end the VM is using a local drive which is the copy of
+remove zvol on NAS. The drive is synced back to NAS when VM is terminated.
 
-The sync mode requires zfs to be set up on VM Container nodes. The attribute ``vm_container_zpool`` sets the name of zpool to use and can be set both globally for all the nodes or per-node if config is different from the rest of the nodes.
+The sync mode requires zfs to be set up on VM Container nodes. The attribute
+``vm_container_zpool`` sets the name of zpool to use and can be set both
+globally for all the nodes or per-node if config is different from the rest of
+the nodes.
 
 VM boot workflow with image sync
 --------------------------------
