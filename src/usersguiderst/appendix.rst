@@ -2,6 +2,39 @@
 Appendix
 ========
 
+Attributes table
+================
+
++-----------------------+------------------------------------------------------+
+|Attribute Name         |Description of its function                           |
++=======================+======================================================+
+|``img_storage_vm``     |It enables installation of the client side disk       |
+|                       |management system (by default all vm-container        |
+|                       |appliance)                                            |
++-----------------------+------------------------------------------------------+
+|``img_storage_nas``    |It enables installation of the server side disk       |
+|                       |management system (by default all NAS appliance)      |
++-----------------------+------------------------------------------------------+
+|``IB_net``             |It can be used to specify the network interface used  |
+|                       |to send the IO data                                   |
++-----------------------+------------------------------------------------------+
+|``img_zpools``         |It can be used to specify a default zpool to allocate |
+|                       |VM disk images on the NAS. It will be used by the     |
+|                       |``rocks set host vm nas`` to set the zpool parameter  |
++-----------------------+------------------------------------------------------+
+|``img_sync``           |If equal to true it will enable local synchronized    |
+|                       |disk on the given vm container (default unset)        |
++-----------------------+------------------------------------------------------+
+|``vm_container_zpool`` |If img_sync is enable this attribute specifies the    |
+|                       |zpool name that will be used to store temporarly VM   |
+|                       |disk images on the vm-container                       |
++-----------------------+------------------------------------------------------+
+|``img_part_zfs_mirror``|If equal to true it enables standard partitioning on  |
+|                       |nodes where img_storage_vm is enabled.                |
++-----------------------+------------------------------------------------------+
+
+
+
 ROCKS Copyright
 ===============
 
