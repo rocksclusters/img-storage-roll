@@ -17,6 +17,8 @@
 	$Log$
 	</changelog>
 
+	<package>foundation-sqlite</package>
+	<package>foundation-pysqlite</package>
 	<package>foundation-python-daemon</package>
 	<package>foundation-python-lockfile</package>
 	<package>img-storage-vm</package>
@@ -59,7 +61,15 @@ while [ ! `id -u zfs` ];do
 	sleep 5
 done
 
-/sbin/udevadm trigger --action=add
+# so udevd sees that there is not zfs group at boot time
+# then it caches that value for the 91-zfs-permissions.rules
+#
+# to stop this behaviour we need to touch the file
+# so udev will reparse the rules and properly load the group
+#
+# 1 day of debugging to figure this out!
+touch /etc/udev/rules.d/91-zfs-permissions.rules
+/sbin/udevadm trigger
 
 # we need this only the first boot after the installation
 # after that the file will be there
