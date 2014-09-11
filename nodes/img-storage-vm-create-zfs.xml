@@ -23,7 +23,6 @@ echo -e 'n\np\n2\n\n\nw\n' | /sbin/fdisk /dev/sdb
 <file name="/etc/rc.d/rocksconfig.d/post-99-create-zfs" perms="755">
 #!/bin/bash
 #
-# LC
 
 /sbin/modprobe zfs
 if test -e /dev/sdb ; then
@@ -45,8 +44,8 @@ part raid.sda1 --asprimary --fstype="raid" --ondisk=sda --size=20000
 part raid.sdb1 --asprimary --fstype="raid" --ondisk=sdb --size=20000
 raid / --level=1 --device=md0 --fstype=ext4 raid.sda1 raid.sdb1" > /tmp/user_partition_info
 else 
-	echo "clearpart --all --initlabel --drives=sda,sdb
-part / --asprimary --fstype="raid" --ondisk=sda --size=20000" > /tmp/user_partition_info
+	echo "clearpart --all --initlabel --drives=sda
+part / --asprimary --fstype=ext4 --ondisk=sda --size=20000" > /tmp/user_partition_info
 fi
 </pre>
 
