@@ -76,6 +76,7 @@ class RabbitMQLocator(object):
 class RabbitMQCommonClient:
 
     LOGGER = logging.getLogger(__name__)
+    REQUEUE_TIMEOUT = 10
 
     def __init__(self, exchange, exchange_type, process_message=None, on_open=None):
         """Create a new instance of the consumer class, passing in the AMQP
@@ -272,16 +273,6 @@ class RabbitMQCommonClient:
         if self._channel:
             self._channel.close()
 
-    def acknowledge_message(self, delivery_tag):
-        """Acknowledge the message delivery from RabbitMQ by sending a
-        Basic.Ack RPC method for the delivery tag.
-
-        :param int delivery_tag: The delivery tag from the Basic.Deliver frame
-
-        """
-        self.LOGGER.info('Acknowledging message %s', delivery_tag)
-        self._channel.basic_ack(delivery_tag)
-
     def on_return_callback(self, method_frame):
         """Method is called when message can't be delivered
         """
@@ -327,12 +318,18 @@ class RabbitMQCommonClient:
         """
         self.LOGGER.info('Received message # %s from %s: %s',
                     basic_deliver.delivery_tag, properties.app_id, body)
-        self.acknowledge_message(basic_deliver.delivery_tag)
         if(properties.correlation_id and properties.correlation_id in self.sent_msg.keys()):
             del self.sent_msg[properties.correlation_id]
 
+        ret = None
         if self.process_message:
-            self.process_message(properties, json.loads(body))
+            ret = self.process_message(properties, json.loads(body))
+
+        if(ret == False):
+            self._connection.add_timeout(REQUEUE_TIMEOUT, lambda: self._channel.basic_nack(basic_deliver.delivery_tag))
+            self.LOGGER.debug('Nacked message %s'%basic_deliver.delivery_tag)
+        else:
+            self._channel.basic_ack(basic_deliver.delivery_tag)
 
     def on_cancelok(self, unused_frame):
         """This method is invoked by pika when RabbitMQ acknowledges the

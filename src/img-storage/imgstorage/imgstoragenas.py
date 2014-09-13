@@ -128,6 +128,12 @@ class NasDaemon():
             cur = con.cursor()
             try :
                 self.lock_zvol(zvol_name, props.reply_to)
+                
+                if self.is_remotehost_busy(remotehost):
+                    self.logger.debug("Remotehost %s is busy, rescheduling the message"%remotehost)
+                    self.release_zvol(zvol_name)
+                    return False #requeue the message
+
 
                 cur.execute('SELECT count(*) FROM zvols WHERE zvol = ?',[zvol_name])
                 if(cur.fetchone()[0] == 0):
@@ -165,7 +171,7 @@ class NasDaemon():
                         iscsi_target = line['Creating new target (name='.__len__():line.index(',')]
                 self.logger.debug('Mapped %s to iscsi target %s'%(zvol_name, iscsi_target))
 
-                cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) ',(zvol_name, zpool_name, iscsi_target,remotehost))
+                cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) ',(zvol_name, zpool_name, iscsi_target, remotehost))
                 con.commit()
 
                 def failDeliver(target, zvol, reply_to, remotehost):
@@ -381,7 +387,7 @@ class NasDaemon():
             self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
 
     def schedule_zvols_pull(self):
-        self.logger.debug("Scheduling new pull jobs")
+        #self.logger.debug("Scheduling new pull jobs")
         with sqlite3.connect(self.SQLITE_DB) as con:
             try:
                 cur = con.cursor()
@@ -440,13 +446,13 @@ class NasDaemon():
 
 
     def process_message(self, properties, message):
-        self.logger.debug("Received message %s"%message)
+        #self.logger.debug("Received message %s"%message)
         if message['action'] not in self.function_dict.keys():
             self.queue_connector.publish_message({'status': 'error', 'error':'action_unsupported'}, exchange='', routing_key=props.reply_to)
             return
 
         try:
-            self.function_dict[message['action']](message, properties)
+            return self.function_dict[message['action']](message, properties)
         except:
             self.logger.exception("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
             self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[1].message}, exchange='', routing_key=properties.reply_to)
@@ -489,6 +495,12 @@ class NasDaemon():
             return False
         finally:
             db.close()
+
+    def is_remotehost_busy(self, remotehost):
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('SELECT zvols.remotehost FROM zvols JOIN zvol_calls ON zvols.zvol = zvol_calls.zvol WHERE remotehost =?', remotehost)
+            return cur.fetchone() is not None
 
     def get_node_zpool(self, remotehost_):
         try:
