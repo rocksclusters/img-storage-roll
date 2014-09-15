@@ -326,7 +326,7 @@ class RabbitMQCommonClient:
             ret = self.process_message(properties, json.loads(body))
 
         if(ret == False):
-            self._connection.add_timeout(REQUEUE_TIMEOUT, lambda: self._channel.basic_nack(basic_deliver.delivery_tag))
+            self._connection.add_timeout(self.REQUEUE_TIMEOUT, lambda: self._channel.basic_nack(basic_deliver.delivery_tag))
             self.LOGGER.debug('Nacked message %s'%basic_deliver.delivery_tag)
         else:
             self._channel.basic_ack(basic_deliver.delivery_tag)

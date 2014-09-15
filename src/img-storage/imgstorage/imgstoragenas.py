@@ -499,7 +499,7 @@ class NasDaemon():
     def is_remotehost_busy(self, remotehost):
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('SELECT zvols.remotehost FROM zvols JOIN zvol_calls ON zvols.zvol = zvol_calls.zvol WHERE remotehost =?', remotehost)
+            cur.execute('SELECT zvols.remotehost FROM zvols JOIN zvol_calls ON zvols.zvol = zvol_calls.zvol WHERE remotehost =?', [remotehost])
             return cur.fetchone() is not None
 
     def get_node_zpool(self, remotehost_):
