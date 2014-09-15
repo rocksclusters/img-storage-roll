@@ -127,13 +127,13 @@ class NasDaemon():
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             try :
-                self.lock_zvol(zvol_name, props.reply_to)
                 
                 if self.is_remotehost_busy(remotehost):
                     self.logger.debug("Remotehost %s is busy, rescheduling the message"%remotehost)
                     self.release_zvol(zvol_name)
                     return False #requeue the message
 
+                self.lock_zvol(zvol_name, props.reply_to)
 
                 cur.execute('SELECT count(*) FROM zvols WHERE zvol = ?',[zvol_name])
                 if(cur.fetchone()[0] == 0):
@@ -175,7 +175,7 @@ class NasDaemon():
                 con.commit()
 
                 def failDeliver(target, zvol, reply_to, remotehost):
-                    self.detach_target(target, true)
+                    self.detach_target(target, True)
                     self.failAction(props.reply_to, 'zvol_mapped', 'Compute node %s is unavailable'%remotehost)
                     self.release_zvol(zvol_name)
 
