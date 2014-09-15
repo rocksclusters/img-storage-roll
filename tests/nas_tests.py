@@ -256,7 +256,7 @@ class TestNasFunctions(unittest.TestCase):
             BasicProperties(reply_to='reply_to', correlation_id='message_id'))
         self.client.queue_connector.publish_message.assert_called_with(
             {'action': 'zvol_mapped', 'status': 'error', 'error': 'Error attaching iSCSI target to compute node: Some error'}, routing_key=u'reply_to', exchange='')
-        self.assertTrue(self.check_zvol_busy(zvol)) # TODO IS THIS RIGHT?
+        self.assertFalse(self.check_zvol_busy(zvol)) # TODO IS THIS RIGHT?
 
     def check_zvol_busy(self, zvol):
         with sqlite3.connect(self.client.SQLITE_DB) as con:
