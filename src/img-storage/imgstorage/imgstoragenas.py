@@ -261,11 +261,16 @@ class NasDaemon():
         self.logger.debug("Got zvol mapped message %s"%target)
         with sqlite3.connect(self.SQLITE_DB) as con:
             try:
-                if(message['status'] != 'success'): raise ActionError('Error attaching iSCSI target to compute node: %s'%message.get('error'))
-                    
                 cur = con.cursor()
-                cur.execute('SELECT zvol_calls.reply_to, zvol_calls.zvol, zvols.zpool FROM zvol_calls JOIN zvols ON zvol_calls.zvol = zvols.zvol WHERE zvols.iscsi_target = ?',[target])
+                cur.execute('''SELECT zvol_calls.reply_to,
+                        zvol_calls.zvol, zvols.zpool FROM zvol_calls
+                        JOIN zvols ON zvol_calls.zvol = zvols.zvol
+                        WHERE zvols.iscsi_target = ?''',[target])
                 reply_to, zvol, zpool = cur.fetchone()
+
+                if(message['status'] != 'success'):
+                    raise ActionError('Error attaching iSCSI target '
+                            'to compute node: %s'%message.get('error'))
 
                 if(not self.is_sync_node(props.reply_to)):
                     self.release_zvol(zvol)
@@ -278,7 +283,7 @@ class NasDaemon():
                         exchange='', routing_key=reply_to)
             except ActionError, err:
                 self.release_zvol(zvol)
-                self.failAction(props.reply_to, 'zvol_mapped', str(err))
+                self.failAction(reply_to, 'zvol_mapped', str(err))
 
     """
     Received zvol_unmapped notification from compute node, passing to frontend
