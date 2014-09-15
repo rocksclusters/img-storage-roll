@@ -83,7 +83,7 @@ def main(argv):
             if(ans):
                 iscsi_target = targets[int(ans)].split(' ')[1]
                 logger.debug('Removing target %s'%iscsi_target)
-                runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', ans])
+                runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', ans, '--force'])
         except ActionError, e: logger.exception(e)
 
 
