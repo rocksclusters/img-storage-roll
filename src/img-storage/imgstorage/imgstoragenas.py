@@ -217,8 +217,11 @@ class NasDaemon():
                 self.logger.debug("Tearing down zvol %s sent"%zvol_name)
 
             except ActionError, err:
-                if not isinstance(err, ZvolBusyActionError): self.release_zvol(zvol_name)
-                self.failAction(props.reply_to, 'zvol_unmapped', str(err))
+                if not isinstance(err, ZvolBusyActionError): 
+                    self.release_zvol(zvol_name)
+                    self.failAction(props.reply_to, 'zvol_unmapped', str(err))
+                else:
+                    return False
 
     """
     Received zvol delete command from frontend
