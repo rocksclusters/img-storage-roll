@@ -9,18 +9,15 @@
 . /etc/init.d/functions
 
 start() {
-	echo -n "Starting img-storage-nas: "
-	/opt/rocks/bin/img-storage-vm start
-	touch /var/lock/subsys/img-storage-vm
-	return 0
+        action "Starting img-storage-vm: " \
+                /opt/rocks/bin/img-storage-vm start
+        return $?
 }	
 
 stop() {
-	echo -n "Shutting down img-storage-vm: "
-	#img-storage-vm stop
-	killproc /opt/rocks/bin/img-storage-vm
-	rm -f /var/lock/subsys/img-storage-vm
-	return 0
+	action "Shutting down img-storage-vm: "
+		/opt/rocks/bin/img-storage-vm stop
+	return $?
 }
 
 case "$1" in

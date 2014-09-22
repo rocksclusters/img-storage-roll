@@ -69,6 +69,41 @@ import rocks.db.helper
 
 from pysqlite2 import dbapi2 as sqlite3
 
+
+
+def get_blk_dev_list():
+    try:
+        out = runCommand(['iscsiadm', '-m', 'session', '-P3'])
+    except:
+        return {}
+    mappings = {}
+    cur_target = None
+    for line in out:
+            if "Target: " in line:
+                    cur_target = re.search(r'Target: ([\w\-\.]*)$',line, re.M).group(1)
+            if 'Attached scsi disk ' in line:
+                    blockdev = re.search( r'Attached scsi disk (\w*)', line, re.M)
+                    mappings[cur_target] = blockdev.group(1)
+    return mappings
+
+
+def disconnect_iscsi(iscsi_target):
+    return runCommand(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-u'])
+
+
+def get_zfs_list():
+    """return a list of string containing all zfs file systems"""
+    try:
+        out = runCommand(['zfs', 'list', '-H'])
+    except:
+        return None
+    
+    fs = []
+    for line in out:
+        fs.append(line.split('\t')[0])
+    return fs
+
+
 class VmDaemon():
 
     def __init__(self):
@@ -107,7 +142,7 @@ class VmDaemon():
         zvol = message.get('zvol')
         try:
             self.connect_iscsi(message['target'], message['nas'])
-            mappings = self.get_blk_dev_list()
+            mappings = get_blk_dev_list()
 
             if(message['target'] not in mappings.keys()): raise ActionError('Not found %s in targets'%message['target'])
 
@@ -138,7 +173,7 @@ class VmDaemon():
         if (self.sync_enabled):
             mappings = self.get_dev_list() 
         else:
-            mappings_map = self.get_blk_dev_list()
+            mappings_map = get_blk_dev_list()
             mappings = []
             for target in mappings_map.keys():
                 mappings.append({'target':target, 'device':mappings_map[target]})
@@ -147,25 +182,10 @@ class VmDaemon():
             'body':mappings}, exchange='', routing_key=props.reply_to)
 
 
-    def get_blk_dev_list(self):
-        try:
-            out = runCommand(['iscsiadm', '-m', 'session', '-P3'])
-        except:
-            return {}
-        mappings = {}
-        cur_target = None
-        for line in out:
-                if "Target: " in line:
-                        cur_target = re.search(r'Target: ([\w\-\.]*)$',line, re.M).group(1)
-                if 'Attached scsi disk ' in line:
-                        blockdev = re.search( r'Attached scsi disk (\w*)', line, re.M)
-                        mappings[cur_target] = blockdev.group(1)
-        return mappings
-
 
     def get_dev_list(self):
         mappings = {}
-        bdev_mappings = self.get_blk_dev_list()
+        bdev_mappings = get_blk_dev_list()
 
         try:    out = runCommand(['dmsetup', 'status'])
         except: out = []
@@ -206,16 +226,13 @@ class VmDaemon():
                 return runCommand(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-p', node_name, '-l'])
         raise ActionError('Could not find iSCSI target %s on compute node %s'%(iscsi_target, node_name))
 
-    def disconnect_iscsi(self, iscsi_target):
-        return runCommand(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-u'])
-
     """
     Received zvol unmap_zvol command from nas
     """
     def unmap_zvol(self, message, props):
         self.logger.debug("Tearing down zvol %s"%message['target'])
         zvol = message['zvol']
-        mappings_map = self.get_blk_dev_list()
+        mappings_map = get_blk_dev_list()
 
         try:
             if(self.sync_enabled):
@@ -226,7 +243,7 @@ class VmDaemon():
 
                 self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
             else:
-                if((message['target'] not in mappings_map.keys()) or self.disconnect_iscsi(message['target'])):
+                if((message['target'] not in mappings_map.keys()) or disconnect_iscsi(message['target'])):
                     self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
         except ActionError, msg:
             self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'error', 'error':str(msg)}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
@@ -237,7 +254,7 @@ class VmDaemon():
         zvol = message.get('zvol')
         target = message.get('target')
 
-        mappings = self.get_blk_dev_list()
+        mappings = get_blk_dev_list()
         try:
             if(target not in mappings.keys()):
                 raise ActionError('Not found %s in targets'%target)
@@ -290,7 +307,7 @@ class VmDaemon():
                         runCommand(['dmsetup', 'resume', '/dev/mapper/%s-snap'%zvol])
                         self.logger.debug('Synced local storage to local in %s'%(time.time()-start))
                         runCommand(['zfs', 'destroy', '%s/%s-temp-write'%(self.ZPOOL, zvol)])
-                        self.disconnect_iscsi(target)
+                        disconnect_iscsi(target)
 
                         self.queue_connector.publish_message({'action': 'zvol_synced', 'zvol':zvol, 'status':'success'}, reply_to, correlation_id=correlation_id)
                         self.logger.debug("Sync time: %s"%(time.time() - start))

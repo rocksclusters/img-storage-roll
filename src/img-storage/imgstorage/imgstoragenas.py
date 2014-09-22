@@ -73,6 +73,19 @@ import socket
 import rocks.db.helper
 import uuid
 
+
+
+def get_iscsi_targets():
+    """return a list of all the active target the dictionary keys
+    are the target names and the data is their associated TID"""
+    out = runCommand(['tgtadm', '--op', 'show', '--mode', 'target'])
+    ret = []
+    for line in out:
+        if line.startswith('Target ') and len(line.split()) >= 2:
+            ret.append(line.split()[2])
+    return ret
+
+
 class NasDaemon():
     def __init__(self):
         self.stdin_path = '/dev/null'
