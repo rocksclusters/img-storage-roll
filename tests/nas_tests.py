@@ -136,14 +136,9 @@ class TestNasFunctions(unittest.TestCase):
         zvol = 'vol3_busy'
         mockRunCommand.return_value = StringIO(tgtadm_response%(zvol, zvol))
 
-        self.client.unmap_zvol(
+        self.assertFalse(self.client.unmap_zvol(
             {'action': 'unmap_zvol', 'zvol': zvol},
-            BasicProperties(reply_to='reply_to'))
-
-        self.client.queue_connector.publish_message.assert_called_with(
-            {'action': 'zvol_unmapped', 'status': 'error', 'error': 'ZVol %s is busy'%zvol}, routing_key='reply_to', exchange='')
-        self.assertTrue(self.check_zvol_busy(zvol))
-
+            BasicProperties(reply_to='reply_to')))
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
     def test_teardown_unmapped_volume(self, mockRunCommand):
