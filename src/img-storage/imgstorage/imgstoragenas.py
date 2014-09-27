@@ -73,7 +73,7 @@ import socket
 import rocks.db.helper
 import uuid
 
-
+import subprocess
 
 def get_iscsi_targets():
     """return a list of all the active target the dictionary keys
@@ -425,9 +425,10 @@ class NasDaemon():
 
     def upload_snapshot(self, zpool, zvol, remotehost):
         snap_name = uuid.uuid4()
-        runCommand(['zfs', 'snap', '%s/%s@%s'%(zpool, zvol, snap_name)])
-        runCommand(['zfs', 'send', '%s/%s@%s'%(zpool, zvol, snap_name)], 
-                ['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs receive -F %s/%s"'%(remotehost, self.get_node_zpool(remotehost), zvol)])
+        params = {'zpool':zpool, 'zvol':zvol, 'snap_name':snap_name, 'remotehost':remotehost, 'remotehost_zpool':self.get_node_zpool(remotehost)}
+        
+        runCommand(['zfs', 'snap', '%(zpool)s/%(zvol)s@%(snap_name)s'%params])
+        runCommand(['zfs send %(zpool)s/%(zvol)s@%(snap_name)s | pv -L 10m | su zfs -c \'ssh %(remotehost)s "/sbin/zfs receive -F %(remotehost_zpool)s/%(zvol)s"\''%params], shell=True)
 
     def download_snapshot(self, zpool, zvol, remotehost):
         snap_name = uuid.uuid4()
