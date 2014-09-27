@@ -102,7 +102,7 @@ class NasDaemon():
         self.sync_result = None
 
         self.results = {}
-        self.SYNC_WORKERS = 5
+        self.SYNC_WORKERS = int(RabbitMQLocator.IMG_SYNC_WORKERS) if (RabbitMQLocator.IMG_SYNC_WORKERS) else 5
 
         self.SYNC_CHECK_TIMEOUT = 10
         self.SYNC_PULL_TIMEOUT = 60*5
