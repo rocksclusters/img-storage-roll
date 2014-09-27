@@ -58,10 +58,12 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.Command):
 		# zvol table cleanup
 		targets = imgstorage.imgstoragenas.get_iscsi_targets()
 		target = self.find_iscsi_target(targets, nas + '-' + volume)
-		target = target[0]
 		if target:
+			target = target[0]
 			print "removing ISCSI target ", target
 			nasclient.detach_target(target, True)
+
+		nasclient.clear_zvols_table(volume)
 
 		# zvol_calls table cleanup
 		print "clearing zvol_calls DB table"
@@ -78,6 +80,7 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.Command):
 		def func(x): return x.endswith(target_name)
 		target = self.find_one(mappings, func, target_name)
 		if target:
+			target = target[0]
 			print "removing ISCSI target ", target
 			imgstorage.imgstoragevm.disconnect_iscsi(target)
 

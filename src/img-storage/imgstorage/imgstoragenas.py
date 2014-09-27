@@ -467,6 +467,17 @@ class NasDaemon():
                 cur.execute('UPDATE zvols SET iscsi_target = NULL where iscsi_target = ?',[target])
             con.commit()
 
+
+    def clear_zvols_table(self, zvol):
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('''UPDATE zvols SET iscsi_target = NULL,
+                    remotehost = NULL, zpool = NULL
+                    where zvol = ?''', [zvol])
+            con.commit()
+
+
+
     def list_zvols(self, message, properties):
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
