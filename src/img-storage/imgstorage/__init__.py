@@ -64,15 +64,15 @@ class ZvolBusyActionError(ActionError):
     pass
 
 """ Runs system command. If passed second command, the output of first one will be piped to second one """
-def runCommand(params, params2 = None):
+def runCommand(params, params2 = None, shell=False):
     try:
-        cmd = subprocess.Popen(params, stdout=subprocess.PIPE, stderr = subprocess.PIPE)
+        cmd = subprocess.Popen(params, stdout=subprocess.PIPE, stderr = subprocess.PIPE, shell=shell)
     except OSError, e:
         raise ActionError('Command %s failed: %s' % (params[0], str(e)))
 
     if params2:
         try:
-            cmd2 = subprocess.Popen(params2, stdin=cmd.stdout, stdout=subprocess.PIPE, stderr = subprocess.PIPE)
+            cmd2 = subprocess.Popen(params2, stdin=cmd.stdout, stdout=subprocess.PIPE, stderr = subprocess.PIPE, shell=shell)
         except OSError, e:
             raise ActionError('Command %s failed: %s' % (params2[0], str(e)))
         cmd.stdout.close()
