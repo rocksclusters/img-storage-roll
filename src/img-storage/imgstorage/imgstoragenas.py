@@ -139,13 +139,7 @@ class NasDaemon():
 
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
-            try :
-                
-                if self.is_remotehost_busy(remotehost):
-                    self.logger.debug("Remotehost %s is busy, rescheduling the message"%remotehost)
-                    self.release_zvol(zvol_name)
-                    return False #requeue the message
-
+            try:
                 self.lock_zvol(zvol_name, props.reply_to)
 
                 cur.execute('SELECT count(*) FROM zvols WHERE zvol = ?',[zvol_name])
@@ -424,19 +418,22 @@ class NasDaemon():
         self.queue_connector._connection.add_timeout(self.SYNC_PULL_TIMEOUT, self.schedule_zvols_pull)
 
     def upload_snapshot(self, zpool, zvol, remotehost):
-        snap_name = uuid.uuid4()
-        params = {'zpool':zpool, 'zvol':zvol, 'snap_name':snap_name, 'remotehost':remotehost, 'remotehost_zpool':self.get_node_zpool(remotehost)}
-        
+        params = {'zpool':zpool, 'zvol':zvol, 'snap_name':uuid.uuid4(), 'remotehost':remotehost, 'remotehost_zpool':self.get_node_zpool(remotehost)}
+
+        upload_speed = self.get_node_upload_speed(remotehost)
+        params['throttle'] = ' | pv -L %s -q '%upload_speed if (upload_speed) else ''
+
         runCommand(['zfs', 'snap', '%(zpool)s/%(zvol)s@%(snap_name)s'%params])
-        runCommand(['zfs send %(zpool)s/%(zvol)s@%(snap_name)s | pv -L 10m | su zfs -c \'ssh %(remotehost)s "/sbin/zfs receive -F %(remotehost_zpool)s/%(zvol)s"\''%params], shell=True)
+        runCommand(['zfs send %(zpool)s/%(zvol)s@%(snap_name)s %(throttle)s | su zfs -c \'ssh %(remotehost)s "/sbin/zfs receive -F %(remotehost_zpool)s/%(zvol)s"\''%params], shell=True)
 
     def download_snapshot(self, zpool, zvol, remotehost):
-        snap_name = uuid.uuid4()
-        remote_zpool = self.get_node_zpool(remotehost)
-        runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs snap %s/%s@%s"'%(remotehost, remote_zpool, zvol, snap_name)])
-        runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs send -i %s/%s@%s %s/%s@%s"'%
-                        (remotehost, remote_zpool, zvol, self.find_last_snapshot(zpool, zvol), remote_zpool, zvol, snap_name)], 
-                ['zfs', 'receive', '-F', '%s/%s'%(zpool, zvol)])
+        params = {'zpool':zpool, 'zvol':zvol, 'snap_name':uuid.uuid4(), 'remotehost':remotehost, 'remotehost_zpool':self.get_node_zpool(remotehost), 'local_last_snapshot':self.find_last_snapshot(zpool, zvol)}
+
+        download_speed = self.get_node_download_speed(remotehost)
+        params['throttle'] = ' | pv -L %s -q '%download_speed if (download_speed) else ''
+
+        runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %(remotehost)s "/sbin/zfs snap %(remotehost_zpool)s/%(zvol)s@%(snap_name)s"'%params])
+        runCommand(['su zfs -c \'/usr/bin/ssh %(remotehost)s "/sbin/zfs send -i %(remotehost_zpool)s/%(zvol)s@%(local_last_snapshot)s %(remotehost_zpool)s/%(zvol)s@%(snap_name)s"\' %(throttle)s | zfs receive -F %(zpool)s/%(zvol)s'%params], shell=True) 
 
         def destroy_local_snapshot(snapshot):
            runCommand(['/sbin/zfs', 'destroy', snapshot]) 
@@ -537,6 +534,32 @@ class NasDaemon():
             raise ActionError("Unable to get vm_container_zpool attribute: " + str(e))
         finally:
             db.close()
+
+    def get_node_upload_speed(self, remotehost_):
+        try:
+            db = rocks.db.helper.DatabaseHelper()
+            db.connect()
+            remotehost = str(db.getHostname(remotehost_))
+            speed = db.getHostAttr(remotehost, 'img_upload_speed')
+            return speed
+        except Exception, e:
+            raise ActionError("Unable to get img_upload_speed attribute: " + str(e))
+        finally:
+            db.close()
+
+    def get_node_download_speed(self, remotehost_):
+        try:
+            db = rocks.db.helper.DatabaseHelper()
+            db.connect()
+            remotehost = str(db.getHostname(remotehost_))
+            speed = db.getHostAttr(remotehost, 'img_download_speed')
+            return speed
+        except Exception, e:
+            raise ActionError("Unable to get img_download_speed attribute: " + str(e))
+        finally:
+            db.close()
+
+
 
 
 

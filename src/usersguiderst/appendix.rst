@@ -32,7 +32,13 @@ Attributes table
 |``img_part_zfs_mirror``|If equal to true it enables standard partitioning on  |
 |                       |nodes where img_storage_vm is enabled.                |
 +-----------------------+------------------------------------------------------+
-
+|``img_download_speed`` |Optional parameters for VM container nodes for        |
+|``img_upload_speed``   |throttling the download/upload speeds (f.e. 10m, 1g)  |
+|                       |default: unlimited                                    |
++-----------------------+------------------------------------------------------+
+|``img_sync_workers``   |Optional parameter setting the number of image sync   |
+|                       |workers working in parallel on NAS. Default: 5        |
++------------------------------------------------------------------------------|
 
 
 ROCKS Copyright
