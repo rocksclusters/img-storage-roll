@@ -134,7 +134,8 @@ class TestSyncFunctions(unittest.TestCase):
         self.nas_client.schedule_next_sync()
 
         self.nas_client.queue_connector.publish_message.assert_called_with(
-            {'action': 'sync_zvol', 'zvol':zvol, 'target':target}, 'reply_to', self.nas_client.NODE_NAME, on_fail=ANY)
+            {'action': 'zvol_mapped', 'bdev':bdev, 'status': 'success'}, routing_key='reply_to', exchange='')
+
         self.assertTrue(self.check_zvol_busy(zvol))
         with sqlite3.connect(self.nas_client.SQLITE_DB) as con:
             cur = con.cursor()
@@ -158,8 +159,9 @@ class TestSyncFunctions(unittest.TestCase):
             cur.execute('SELECT is_delete_remote FROM sync_queue WHERE zvol = ?',[zvol])
             self.assertEqual(cur.fetchone()[0], 1)
 
-            self.nas_client.sync_result = MagicMock()
-            self.nas_client.sync_result.ready = MagicMock(return_value=True)
+            sync_result = MagicMock()
+            sync_result.ready = MagicMock(return_value=True)
+            self.nas_client.results[zvol] = sync_result
             self.nas_client.schedule_next_sync()
 
             self.assertFalse(self.check_zvol_busy(zvol))
