@@ -38,7 +38,7 @@ Attributes table
 +-----------------------+------------------------------------------------------+
 |``img_sync_workers``   |Optional parameter setting the number of image sync   |
 |                       |workers working in parallel on NAS. Default: 5        |
-+------------------------------------------------------------------------------|
++-----------------------+------------------------------------------------------+
 
 
 ROCKS Copyright
