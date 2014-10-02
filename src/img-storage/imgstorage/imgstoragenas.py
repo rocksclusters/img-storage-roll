@@ -59,6 +59,7 @@ from imgstorage import runCommand, ActionError, ZvolBusyActionError
 import logging
 
 import traceback
+import imgstorage
 
 import time
 import json
@@ -431,7 +432,7 @@ class NasDaemon():
     def upload_snapshot(self, zpool, zvol, remotehost):
         params = {'zpool':zpool, 'zvol':zvol, 'snap_name':uuid.uuid4(), 'remotehost':remotehost, 'remotehost_zpool':self.get_node_zpool(remotehost)}
 
-        upload_speed = self.get_node_upload_speed(remotehost)
+        upload_speed = imgstorage.get_attribute('img_upload_speed', remotehost, self.logger)
         params['throttle'] = ' | pv -L %s -q '%upload_speed if (upload_speed) else ''
 
         runCommand(['zfs', 'snap', '%(zpool)s/%(zvol)s@%(snap_name)s'%params])
@@ -440,7 +441,7 @@ class NasDaemon():
     def download_snapshot(self, zpool, zvol, remotehost):
         params = {'zpool':zpool, 'zvol':zvol, 'snap_name':uuid.uuid4(), 'remotehost':remotehost, 'remotehost_zpool':self.get_node_zpool(remotehost), 'local_last_snapshot':self.find_last_snapshot(zpool, zvol)}
 
-        download_speed = self.get_node_download_speed(remotehost)
+        download_speed = imgstorage.get_attribute('img_download_speed', remotehost, self.logger)
         params['throttle'] = ' | pv -L %s -q '%download_speed if (download_speed) else ''
 
         runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %(remotehost)s "/sbin/zfs snap %(remotehost_zpool)s/%(zvol)s@%(snap_name)s"'%params])
@@ -525,64 +526,21 @@ class NasDaemon():
                 return line.split()[1][:-1]
         return None
 
-    """ Get information from attributes if image sync is enabled for the node """
     def is_sync_node(self, remotehost):
-        try:
-            db = rocks.db.helper.DatabaseHelper()
-            db.connect()
-            is_sync_node = db.getHostAttr(remotehost, 'img_sync')
-            return is_sync_node
-        except Exception, e:
-            self.logger.exception("Unable to get img_sync attribute: " + str(e))
-            return False
-        finally:
-            db.close()
+        """ Get information from attributes if image sync is enabled for the
+        node"""
+        return imgstorage.get_attribute('img_sync', remotehost, self.logger)
+
+    def get_node_zpool(self, remotehost):
+        return imgstorage.get_attribute('vm_container_zpool', remotehost, \
+                self.logger)
+
 
     def is_remotehost_busy(self, remotehost):
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('SELECT zvols.remotehost FROM zvols JOIN zvol_calls ON zvols.zvol = zvol_calls.zvol WHERE remotehost =?', [remotehost])
             return cur.fetchone() is not None
-
-    def get_node_zpool(self, remotehost_):
-        try:
-            db = rocks.db.helper.DatabaseHelper()
-            db.connect()
-            remotehost = str(db.getHostname(remotehost_))
-            vm_container_zpool = db.getHostAttr(remotehost, 'vm_container_zpool')
-            return vm_container_zpool
-        except Exception, e:
-            self.logger.exception("Unable to get vm_container_zpool attribute for host %s: "%remotehost + str(e))
-            raise ActionError("Unable to get vm_container_zpool attribute: " + str(e))
-        finally:
-            db.close()
-
-    def get_node_upload_speed(self, remotehost_):
-        try:
-            db = rocks.db.helper.DatabaseHelper()
-            db.connect()
-            remotehost = str(db.getHostname(remotehost_))
-            speed = db.getHostAttr(remotehost, 'img_upload_speed')
-            return speed
-        except Exception, e:
-            raise ActionError("Unable to get img_upload_speed attribute: " + str(e))
-        finally:
-            db.close()
-
-    def get_node_download_speed(self, remotehost_):
-        try:
-            db = rocks.db.helper.DatabaseHelper()
-            db.connect()
-            remotehost = str(db.getHostname(remotehost_))
-            speed = db.getHostAttr(remotehost, 'img_download_speed')
-            return speed
-        except Exception, e:
-            raise ActionError("Unable to get img_download_speed attribute: " + str(e))
-        finally:
-            db.close()
-
-
-
 
 
     def find_last_snapshot(self, zpool, zvol):

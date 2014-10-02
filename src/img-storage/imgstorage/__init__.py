@@ -56,6 +56,7 @@
 
 import subprocess
 import logging
+import rocks.db.helper
 
 class ActionError(Exception):
     pass
@@ -100,4 +101,25 @@ def setupLogger(logger):
         logging.getLogger(log_name).addHandler(handler)
 
     return handler
+
+
+def get_attribute(attr_name, hostname, logger = None):
+    """connect to the database and return the value of the for the given
+    attr_name relative to the hostname"""
+    try:
+        db = rocks.db.helper.DatabaseHelper()
+        db.connect()
+        hostname = str(db.getHostname(hostname))
+        #logger.debug('hostname %s attr_name %s' % (hostname, attr_name))
+        value = db.getHostAttr(hostname, attr_name)
+        return value
+    except Exception, e:
+        error = "Unable to get attribute %s for host %s (%s)" % \
+                (attr_name, hostname, str(e))
+	if logger:
+            logger.exception(error)
+        raise ActionError(error)
+    finally:
+        db.close()
+        db.closeSession()
 
