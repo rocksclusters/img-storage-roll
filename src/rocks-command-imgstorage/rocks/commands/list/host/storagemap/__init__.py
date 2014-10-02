@@ -52,9 +52,9 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command)
             if(d['remotehost'] == None):
                 state = 'unmapped'
             elif(d['is_sending'] == 1):
-                state = 'NAS⇒ VM'
+                state = 'NAS->VM'
             elif(d['is_sending'] == 0):
-                state = 'NAS⇐ VM'
+                state = 'NAS<-VM'
                 if(d['is_delete_remote'] == 0):
                     state += ' sched'
 
