@@ -56,6 +56,7 @@
 #
 from rabbitmqclient import RabbitMQCommonClient, RabbitMQLocator
 from imgstorage import *
+import imgstorage
 import logging
 
 import time
