@@ -66,6 +66,7 @@ import signal
 import sys
 import traceback
 import rocks.db.helper
+import rocks.util
 
 from pysqlite2 import dbapi2 as sqlite3
 
@@ -126,12 +127,11 @@ class VmDaemon():
 
         rocks.db.helper.DatabaseHelper().closeSession() # to reopen after daemonization
 
+
     def is_sync_enabled(self):
-        db = rocks.db.helper.DatabaseHelper()
-        db.connect()
-        sync_enabled = False if db.getHostAttr(db.getHostname(), 'img_sync') is None else db.getHostAttr(db.getHostname(), 'img_sync').lower() == 'true'
-        db.close()
-        return sync_enabled
+        """return True if this node has the attribute img_sync == 'true'"""
+        sync_enable = imgstorage.get_attribute('img_sync', None, self.logger)
+        return rocks.util.str2bool(sync_enable)
 
 
     """
