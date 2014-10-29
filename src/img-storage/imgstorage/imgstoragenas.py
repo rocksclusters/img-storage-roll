@@ -490,7 +490,7 @@ class NasDaemon():
     def process_message(self, properties, message):
         #self.logger.debug("Received message %s"%message)
         if message['action'] not in self.function_dict.keys():
-            self.queue_connector.publish_message({'status': 'error', 'error':'action_unsupported'}, exchange='', routing_key=props.reply_to)
+            self.queue_connector.publish_message({'status': 'error', 'error':'action_unsupported'}, exchange='', routing_key=properties.reply_to)
             return
 
         try:
