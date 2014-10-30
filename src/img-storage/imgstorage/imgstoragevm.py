@@ -233,13 +233,13 @@ class VmDaemon():
     def unmap_zvol(self, message, props):
         self.logger.debug("Tearing down zvol %s"%message['target'])
         zvol = message['zvol']
-        mappings_map = get_blk_dev_list()
 
         try:
             if(self.sync_enabled):
                 runCommand(['dmsetup', 'remove', '%s-snap'%zvol])
                 self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
             else:
+                mappings_map = get_blk_dev_list()
                 if((message['target'] not in mappings_map.keys()) or disconnect_iscsi(message['target'])):
                     self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
         except ActionError, msg:
