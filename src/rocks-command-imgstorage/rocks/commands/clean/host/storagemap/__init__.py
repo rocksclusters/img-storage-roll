@@ -8,11 +8,17 @@ import os
 import rocks.commands
 
 import imgstorage
+from imgstorage.commandlauncher import CommandLauncher
 
 class Command(rocks.commands.HostArgumentProcessor, rocks.commands.Command):
 	"""
 	Clean a mapping between a virtual machine image from the NAS (or
 	virtual machine images repository) to the hosting environment.
+
+	This command will wipe all the data that is left on the virtual
+	machine container and return to the last saved state on the NAS.
+	If you want to restore some date from the virtual machine
+	container you should do it before running this command.
 
 	<arg type='string' name='nas' optional='0'>
 	The NAS name which will host the storage image
@@ -23,6 +29,14 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.Command):
 	environment
 	</arg>
 
+	<param type='string' name='nodetype'>
+	Under normal circustances this paramers is not needed.
+	But if you want to manually wipe storage mapping on
+	a NAS or on a virtual machine container, you will have
+	to ssh to the node and use this parameter with the value
+	of nas or vmc depending on the node type you want to clear.
+	</param>
+
 	<example cmd='remove host storagemap nas-0-0 vm-sdsc125-2'>
 	It removes the existing mapping on nas-0-0 vm-sdsc125-2
 	compute-0-0-0.
@@ -31,21 +45,77 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.Command):
 
 
 	def run(self, params, args):
+
 		(args, nas, volume) = self.fillPositionalArgs(
 				('nas', 'volume'))
+
+                (nodetype, ) = self.fillParams([('nodetype', '')])
+
+
 
 		if not (nas and volume):
 			self.abort("2 arguments are required for this " + \
 					"command nas and volume")
 
 
-		if os.path.exists('/etc/init.d/img-storage-vm'):
-			print " -- clearing VM Container --"
-			self.clean_vm(nas, volume)
+		if nodetype:
+			# ok we have to clear either a vmc or a nas
+			if nodetype == 'vmc' and \
+				os.path.exists('/etc/init.d/img-storage-vm'):
+				print " -- clearing VM Container --"
+				self.clean_vm(nas, volume)
 
-		if os.path.exists('/etc/init.d/img-storage-nas'):
-			print " -- clearing NAS --"
-			self.clean_nas(nas, volume)
+			elif nodetype == 'vmc':
+				self.abort("/etc/init.d/img-storage-vm is missing, "
+					"are you sure this is a virtual machine "
+					"container")
+
+			elif nodetype == 'nas' and \
+				os.path.exists('/etc/init.d/img-storage-nas'):
+				print " -- clearing NAS --"
+				self.clean_nas(nas, volume)
+
+			elif nodetype == 'nas':
+				self.abort("/etc/init.d/img-storage-nas is missing, "
+					"are you sure this is a nas enabled for "
+					"serving VM disk images?")
+
+			else:
+				self.abort("nodetype can be only nas or vmc (%s)"
+						% nodetype)
+
+		else:
+			#no nodetype specified so we need to query the nas
+			list = CommandLauncher().callListHostStoragemap(nas)
+			entry = [ d for d in list if d['zvol'] == volume]
+			if len(entry) == 0:
+				self.abort('Unable to find volume %s on nas %s'
+						% (volume, nas))
+			elif len(entry) > 1:
+				self.abort('Major failure: found %d volumes with '
+						'the same %s name' %
+						(len(entry), volume))
+
+			entry = entry[0]
+			if entry['remotehost'] == None:
+				self.abort('Volume %s is unmapped' % volume)
+
+			if entry['is_sending'] == 1 or (entry['is_sending'] == 0 and d['is_delete_remote'] != 0):
+				self.abort('Volume %s is currently getting transfered, please wait' % volume)
+
+
+			# ok we are good to go, we can destroy the mapping
+			# all possible error situation have been cleared
+			# clear the remote host first
+			cmdline = 'rocks clean host storagemap %s %s nodetype=' % (nas, volume)
+			print "cleaning ", d['remotehost']
+			self.command('run.host', [str(d['remotehost']), cmdline + 'vmc'])
+
+			# then clean the nas
+			print "cleaning ", nas
+			self.command('run.host', [nas, cmdline + 'nas'])
+
+
 
 
 	def clean_nas(self, nas, volume):
