@@ -65,6 +65,7 @@ import random
 import re
 import signal
 import sys
+import os
 import traceback
 import rocks.db.helper
 import rocks.util
@@ -231,18 +232,27 @@ class VmDaemon():
 
     def unmap_zvol(self, message, props):
         """ Received zvol unmap_zvol command from nas """
-        self.logger.debug("Tearing down zvol %s"%message['target'])
         zvol = message['zvol']
 
         try:
             if(self.sync_enabled):
+                self.logger.debug("Tearing down zvol %s" % message['zvol'])
+                while True:
+                    if isFileUsed('/dev/mapper/%s-snap' % zvol):
+                        time.sleep(0.1)
+                        self.logger.debug('/dev/mapper/%s-snap is in use' 
+                                % zvol)
+                    else:
+                        break
                 runCommand(['dmsetup', 'remove', '%s-snap'%zvol])
                 self.queue_connector.publish_message({'action': 'zvol_unmapped', 
                         'target':message['target'], 'zvol':zvol, 
                         'status':'success'}, props.reply_to, 
                         reply_to=self.NODE_NAME, 
                         correlation_id=props.message_id)
+
             else:
+                self.logger.debug("Tearing down target %s" % message['target'])
                 mappings_map = get_blk_dev_list()
                 if((message['target'] not in mappings_map.keys()) or 
                         disconnect_iscsi(message['target'])):

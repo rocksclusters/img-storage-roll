@@ -56,6 +56,7 @@
 
 import subprocess
 import logging
+import os
 import rocks.db.helper
 
 class ActionError(Exception):
@@ -122,4 +123,15 @@ def get_attribute(attr_name, hostname, logger = None):
     finally:
         db.close()
         db.closeSession()
+
+
+def isFileUsed(file):
+	"""return true if file is in use otherwise false"""
+	ret = os.system('fuser %s' % file)
+	returnValue = ret >> 5
+	if returnValue:
+		return False
+	else:
+		# fuser fails if the file is unused
+		return True
 
