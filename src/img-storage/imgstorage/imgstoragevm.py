@@ -347,6 +347,7 @@ class VmDaemon():
             self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[1].message}, exchange='', routing_key=props.reply_to, correlation_id=props.message_id)
 
     def run(self):
+        self.logger.debug('imgstoragevm starting')
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('CREATE TABLE IF NOT EXISTS sync_queue(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, devsize INT, reply_to TEXT, correlation_id TEXT, started BOOLEAN default 0, time INT)')
@@ -358,6 +359,6 @@ class VmDaemon():
 
     def stop(self):
         self.queue_connector.stop()
-        self.logger.info('RabbitMQ connector stopping called')
+        self.logger.info('RabbitMQ connector stopped')
 
 
