@@ -237,13 +237,10 @@ class VmDaemon():
         try:
             if(self.sync_enabled):
                 self.logger.debug("Tearing down zvol %s" % message['zvol'])
-                while True:
-                    if isFileUsed('/dev/mapper/%s-snap' % zvol):
-                        time.sleep(0.1)
-                        self.logger.debug('/dev/mapper/%s-snap is in use' 
-                                % zvol)
-                    else:
-                        break
+                if isFileUsed('/dev/mapper/%s-snap' % zvol):
+                    self.logger.debug('/dev/mapper/%s-snap is in use' 
+                            % zvol)
+                    return False
                 runCommand(['dmsetup', 'remove', '%s-snap'%zvol])
                 self.queue_connector.publish_message({'action': 'zvol_unmapped', 
                         'target':message['target'], 'zvol':zvol, 
@@ -350,7 +347,7 @@ class VmDaemon():
             return
 
         try:
-            self.function_dict[message['action']](message, props)
+            return self.function_dict[message['action']](message, props)
         except:
             self.logger.exception("Unexpected error: %s %s"%(sys.exc_info()[0], sys.exc_info()[1]))
             traceback.print_tb(sys.exc_info()[2])
