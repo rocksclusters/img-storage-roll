@@ -244,7 +244,7 @@ class VmDaemon():
                                 % zvol)
                     else:
                         break
-                runCommand(['dmsetup', 'remove', '%s-snap'%zvol])
+                runCommand(['dmsetup', 'remove', '--retry', '%s-snap'%zvol])
                 self.queue_connector.publish_message({'action': 'zvol_unmapped', 
                         'target':message['target'], 'zvol':zvol, 
                         'status':'success'}, props.reply_to, 
