@@ -76,6 +76,11 @@ import uuid
 
 import subprocess
 
+
+from tornado.gen import Task, Return, coroutine
+import tornado.process
+
+
 def get_iscsi_targets():
     """return a list of all the active target the dictionary keys
     are the target names and the data is their associated TID"""
@@ -85,6 +90,41 @@ def get_iscsi_targets():
         if line.startswith('Target ') and len(line.split()) >= 2:
             ret.append(line.split()[2])
     return ret
+
+
+STREAM = tornado.process.Subprocess.STREAM
+LOG = logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
+
+
+@coroutine
+def runCommandBackground(cmdlist, shell=False):
+    """
+    Wrapper around subprocess call using Tornado's Subprocess class.
+    This routine can fork a process in the background without blocking the
+    main IOloop, the the forked process can run for a long time without
+    problem
+    """
+    LOG.debug("Executing: " + str(cmdlist))
+    #tornado.process.initialize()
+    sub_process = tornado.process.Subprocess(
+        cmdlist, stdin=STREAM, stdout=STREAM, stderr=STREAM, shell=shell
+    )
+
+    # we need to set_exit_callback to fetch the return value
+    # the function can even be empty by it must be set or the 
+    # sub_process.returncode will be always None
+    retval = 0
+    sub_process.set_exit_callback(lambda value: value)
+
+    result, error = yield [
+        Task(sub_process.stdout.read_until_close),
+        Task(sub_process.stderr.read_until_close),
+    ]
+
+    if sub_process.returncode:
+        raise ActionError('Error executing %s: %s'%(cmdlist, error))
+
+    raise Return((result.splitlines(), error))
 
 
 class NasDaemon():
@@ -133,9 +173,12 @@ class NasDaemon():
         self.schedule_zvols_pull()
         self.schedule_next_sync()
 
+
+
     """
     Received map_zvol command from frontend, passing to compute node
     """
+    @coroutine
     def map_zvol(self, message, props):
         remotehost = message['remotehost']
         zpool_name = message['zpool']
@@ -149,7 +192,7 @@ class NasDaemon():
 
                 cur.execute('SELECT count(*) FROM zvols WHERE zvol = ?',[zvol_name])
                 if(cur.fetchone()[0] == 0):
-                    runCommand(['zfs', 'create', '-o', 'primarycache=metadata', '-o', 'volblocksize=128K', '-V', '%sgb'%message['size'], '%s/%s'%(zpool_name, zvol_name)])
+                    yield runCommandBackground(['zfs', 'create', '-o', 'primarycache=metadata', '-o', 'volblocksize=128K', '-V', '%sgb'%message['size'], '%s/%s'%(zpool_name, zvol_name)])
                     cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) ',(zvol_name, None, None, None))
                     con.commit()
                     self.logger.debug('Created new zvol %s'%zvol_name)
@@ -177,7 +220,7 @@ class NasDaemon():
 
                 iscsi_target = ''
 
-                out = runCommand(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(zpool_name, zvol_name), ip])
+                (out, err) = yield runCommandBackground(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(zpool_name, zvol_name), ip])
                 for line in out:
                     if "Creating new target" in line:
                         iscsi_target = line['Creating new target (name='.__len__():line.index(',')]
@@ -238,6 +281,7 @@ class NasDaemon():
     """
     Received zvol delete command from frontend
     """
+    @coroutine
     def del_zvol(self, message, props):
         zvol_name = message['zvol']
         zpool_name = message['zpool']
@@ -252,7 +296,7 @@ class NasDaemon():
                 if row[0] != None: raise ActionError('Error deleting zvol %s: is mapped'%zvol_name)
 
                 self.logger.debug("Invoking zfs destroy %s/%s"%(zpool_name,zvol_name))
-                runCommand(['zfs', 'destroy', '%s/%s'%(zpool_name, zvol_name), '-r'])
+                yield runCommandBackground(['zfs', 'destroy', '%s/%s'%(zpool_name, zvol_name), '-r'])
                 self.logger.debug('zfs destroy success %s'%zvol_name)
 
                 cur.execute('DELETE FROM zvols WHERE zvol = ?',[zvol_name])
@@ -350,6 +394,7 @@ class NasDaemon():
             self.release_zvol(zvol)
 
 
+    @coroutine
     def schedule_next_sync(self):
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
@@ -378,18 +423,16 @@ class NasDaemon():
                                 self.NODE_NAME,
                                 on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(remotehost, zvol)))
                         elif(is_delete_remote):
-                            # TODO make sure this doesn't take too long, as it's executing in main thread
-                            runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'%(remotehost, self.get_node_zpool(remotehost), zvol)])
+                            yield runCommandBackground(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'%(remotehost, self.get_node_zpool(remotehost), zvol)])
                             cur.execute('UPDATE zvols SET remotehost = NULL, zpool = NULL where zvol = ?',[zvol])
                             con.commit()
                             self.release_zvol(zvol)
                         else:
-                            out = runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs list -Hpr -t snapshot -o name -s creation  %s/%s"'%
+                            (out, err) = yield runCommandBackground(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs list -Hpr -t snapshot -o name -s creation  %s/%s"'%
                                (remotehost, self.get_node_zpool(remotehost), zvol)]) 
 
                             def destroy_remote_snapshot(snapshot):
-                                # TODO make sure this doesn't take too long, as it's executing in main thread
-                                runCommand(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s"'%(remotehost, snapshot)]) 
+                                yield runCommandBackground(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s"'%(remotehost, snapshot)])
                             map(destroy_remote_snapshot, out[:-2])
                     except ActionError, msg:
                         self.logger.exception('Error performing sync for %s: %s'%(zvol, str(msg)))
@@ -458,6 +501,9 @@ class NasDaemon():
         if(target):
             tgt_num = self.find_iscsi_target_num(target)
             if(tgt_num):
+                # this cammand is also run be the rocks clean host storagemap
+                # which is not inside an IOLoop for the moment do not use coroutine
+                # TODO find a solution for this
                 runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', tgt_num])# remove iscsi target
 
         with sqlite3.connect(self.SQLITE_DB) as con:
