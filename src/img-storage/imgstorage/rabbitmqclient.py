@@ -110,7 +110,7 @@ class RabbitMQCommonClient:
             self.LOGGER.info('Connecting to %s', self._url)
 
             try:
-                sel_con = pika.SelectConnection(pika.URLParameters(self._url),
+                sel_con = pika.adapters.tornado_connection.TornadoConnection(pika.URLParameters(self._url),
                                      self.on_connection_open,
                                      stop_ioloop_on_close=False)
 
@@ -169,16 +169,11 @@ class RabbitMQCommonClient:
         closed. See the on_connection_closed method.
 
         """
-        # This is the old connection IOLoop instance, stop its ioloop
-        self._connection.ioloop.stop()
-
         if not self._closing:
 
             # Create a new connection
             self._connection = self.connect()
 
-            # There is now a new connection, needs a new ioloop to run
-            self._connection.ioloop.start()
 
     def on_channel_closed(self, channel, reply_code, reply_text):
         """Invoked by pika when RabbitMQ unexpectedly closes the channel.
@@ -195,6 +190,11 @@ class RabbitMQCommonClient:
         self.LOGGER.warning('Channel %i was closed: (%s) %s',
                        channel, reply_code, reply_text)
         self._connection.close()
+        # for some reasons (which I don't have time to look at) it does not
+        # call the call back on_connection_close when we stop so we need to
+        # do it manually
+        if self._closing:
+            self._connection.ioloop.stop()
 
     def on_channel_open(self, channel):
         """This method is invoked by pika when the channel has been opened.
@@ -351,7 +351,7 @@ class RabbitMQCommonClient:
         """
         if self._channel:
             self.LOGGER.info('Sending a Basic.Cancel RPC command to RabbitMQ')
-            self._channel.basic_cancel(self.on_cancelok, self._consumer_tag)
+            self._channel.basic_cancel(callback=self.on_cancelok, consumer_tag=self._consumer_tag)
 
     def start_consuming(self):
         """This method sets up the consumer by first calling
@@ -419,5 +419,7 @@ class RabbitMQCommonClient:
         self.LOGGER.info('Stopping')
         self._closing = True
         self.stop_consuming()
-        self._connection.ioloop.start()
+        # for some reason the tornado ioloop does not get stopped when hit
+        # by a SIGTERM, so we don't need to re-start it here
+        #self._connection.ioloop.start()
         self.LOGGER.info('Stopped')
