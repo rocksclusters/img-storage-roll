@@ -107,7 +107,7 @@ def runCommandBackground(cmdlist, shell=False):
     LOG.debug("Executing: " + str(cmdlist))
     #tornado.process.initialize()
     sub_process = tornado.process.Subprocess(
-        cmdlist, stdin=STREAM, stdout=STREAM, stderr=STREAM, shell=shell
+        cmdlist, stdout=STREAM, stderr=STREAM, shell=shell
     )
 
     # we need to set_exit_callback to fetch the return value
