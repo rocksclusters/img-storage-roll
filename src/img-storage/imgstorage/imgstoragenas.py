@@ -93,7 +93,6 @@ def get_iscsi_targets():
 
 
 STREAM = tornado.process.Subprocess.STREAM
-LOG = logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
 
 
 @coroutine
@@ -104,6 +103,7 @@ def runCommandBackground(cmdlist, shell=False):
     main IOloop, the the forked process can run for a long time without
     problem
     """
+    LOG = logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
     LOG.debug("Executing: " + str(cmdlist))
     #tornado.process.initialize()
     sub_process = tornado.process.Subprocess(

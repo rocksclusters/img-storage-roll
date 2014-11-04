@@ -97,7 +97,7 @@ def setupLogger(logger):
     handler.setFormatter(formatter)
 
     #for log_name in (logger, 'pika.channel', 'pika.connection', 'rabbit_client.RabbitMQClient'):
-    for log_name in ([logger, 'rabbit_client.RabbitMQCommonClient']):
+    for log_name in ([logger, 'rabbit_client.RabbitMQCommonClient', 'tornado.application']):
         logging.getLogger(log_name).setLevel(logging.DEBUG)
         logging.getLogger(log_name).addHandler(handler)
 
