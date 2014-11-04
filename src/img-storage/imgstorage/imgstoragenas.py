@@ -134,7 +134,11 @@ class NasDaemon():
         self.stderr_path = '/tmp/err.log'
         self.pidfile_path =  '/var/run/img-storage-nas.pid'
         self.pidfile_timeout = 5
-        self.function_dict = {'map_zvol':self.map_zvol, 'unmap_zvol':self.unmap_zvol, 'zvol_mapped':self.zvol_mapped, 'zvol_unmapped': self.zvol_unmapped, 'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol, 'zvol_synced':self.zvol_synced }
+        self.function_dict = {'map_zvol': self.map_zvol,
+                'unmap_zvol':self.unmap_zvol, 'zvol_mapped':self.zvol_mapped,
+                'zvol_unmapped': self.zvol_unmapped,
+                'list_zvols': self.list_zvols, 'del_zvol': self.del_zvol,
+                'zvol_synced':self.zvol_synced }
 
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
         self.NODE_NAME = RabbitMQLocator.NODE_NAME
@@ -143,7 +147,10 @@ class NasDaemon():
         self.sync_result = None
 
         self.results = {}
-        self.SYNC_WORKERS = int(RabbitMQLocator.IMG_SYNC_WORKERS) if (RabbitMQLocator.IMG_SYNC_WORKERS) else 5
+        if (RabbitMQLocator.IMG_SYNC_WORKERS):
+            self.SYNC_WORKERS = int(RabbitMQLocator.IMG_SYNC_WORKERS)
+        else:
+            self.SYNC_WORKERS = 5
 
         self.SYNC_CHECK_TIMEOUT = 10
         self.SYNC_PULL_TIMEOUT = 60*5
@@ -152,21 +159,39 @@ class NasDaemon():
 
         self.logger = logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
 
+
     def run(self):
         self.pool = ThreadPool(processes=self.SYNC_WORKERS)
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('CREATE TABLE IF NOT EXISTS zvol_calls(zvol TEXT PRIMARY KEY NOT NULL, reply_to TEXT NOT NULL, time INT NOT NULL)')
-            cur.execute('CREATE TABLE IF NOT EXISTS zvols(zvol TEXT PRIMARY KEY NOT NULL, zpool TEXT, iscsi_target TEXT UNIQUE, remotehost TEXT)')
-            cur.execute('CREATE TABLE IF NOT EXISTS sync_queue(zvol TEXT PRIMARY KEY NOT NULL, zpool TEXT NOT NULL, remotehost TEXT, is_sending BOOLEAN, is_delete_remote BOOLEAN, time INT)')
+            cur.execute('''CREATE TABLE IF NOT EXISTS zvol_calls(
+                          zvol TEXT PRIMARY KEY NOT NULL,
+                          reply_to TEXT NOT NULL,
+                          time INT NOT NULL)''')
+            cur.execute('''CREATE TABLE IF NOT EXISTS zvols(
+                          zvol TEXT PRIMARY KEY NOT NULL,
+                          zpool TEXT,
+                          iscsi_target TEXT UNIQUE,
+                          remotehost TEXT)''')
+            cur.execute('''CREATE TABLE IF NOT EXISTS sync_queue(
+                          zvol TEXT PRIMARY KEY NOT NULL,
+                          zpool TEXT NOT NULL,
+                          remotehost TEXT,
+                          is_sending BOOLEAN,
+                          is_delete_remote BOOLEAN,
+                          time INT)''')
             con.commit()
 
-        self.queue_connector = RabbitMQCommonClient('rocks.vm-manage', 'direct', self.process_message, lambda a: self.startup())
+        self.queue_connector = RabbitMQCommonClient('rocks.vm-manage',
+                          'direct', self.process_message,
+                          lambda a: self.startup())
         self.queue_connector.run()
 
     def failAction(self, routing_key, action, error_message):
         if(routing_key != None and action != None):
-            self.queue_connector.publish_message({'action': action, 'status': 'error', 'error':error_message}, exchange='', routing_key=routing_key)
+            self.queue_connector.publish_message({'action': action,
+                    'status': 'error', 'error':error_message},
+                    exchange='', routing_key=routing_key)
         self.logger.error("Failed %s: %s"%(action, error_message))
 
     def startup(self):
@@ -189,11 +214,16 @@ class NasDaemon():
             cur = con.cursor()
             try:
                 self.lock_zvol(zvol_name, props.reply_to)
-
                 cur.execute('SELECT count(*) FROM zvols WHERE zvol = ?',[zvol_name])
+
                 if(cur.fetchone()[0] == 0):
-                    yield runCommandBackground(['zfs', 'create', '-o', 'primarycache=metadata', '-o', 'volblocksize=128K', '-V', '%sgb'%message['size'], '%s/%s'%(zpool_name, zvol_name)])
-                    cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) ',(zvol_name, None, None, None))
+                    # create the zfs FS
+                    yield runCommandBackground(['zfs', 'create', '-o',
+                            'primarycache=metadata', '-o', 'volblocksize=128K',
+                            '-V', '%sgb' % message['size'],
+                            '%s/%s' % (zpool_name, zvol_name)])
+                    cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) ',
+                            (zvol_name, None, None, None))
                     con.commit()
                     self.logger.debug('Created new zvol %s'%zvol_name)
 
@@ -218,24 +248,30 @@ class NasDaemon():
                     except:
                         raise ActionError('Host %s is unknown'%remotehost)
 
-                iscsi_target = ''
 
-                (out, err) = yield runCommandBackground(['tgt-setup-lun', '-n', zvol_name, '-d', '/dev/%s/%s'%(zpool_name, zvol_name), ip])
+                iscsi_target = ''
+                (out, err) = yield runCommandBackground(['tgt-setup-lun', '-n',
+                        zvol_name, '-d', '/dev/%s/%s' % (zpool_name, zvol_name), ip])
+
                 for line in out:
                     if "Creating new target" in line:
-                        iscsi_target = line['Creating new target (name='.__len__():line.index(',')]
-                self.logger.debug('Mapped %s to iscsi target %s'%(zvol_name, iscsi_target))
+                        start = 'Creating new target (name='.__len__()
+                        iscsi_target = line[start:line.index(',')]
+                self.logger.debug('Mapped %s to iscsi target %s'
+                        % (zvol_name, iscsi_target))
 
-                cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) ',(zvol_name, zpool_name, iscsi_target, remotehost))
+                cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) ',
+                        (zvol_name, zpool_name, iscsi_target, remotehost))
                 con.commit()
 
                 def failDeliver(target, zvol, reply_to, remotehost):
                     self.detach_target(target, True)
-                    self.failAction(props.reply_to, 'zvol_mapped', 'Compute node %s is unavailable'%remotehost)
+                    self.failAction(props.reply_to, 'zvol_mapped',
+                        'Compute node %s is unavailable' % remotehost)
                     self.release_zvol(zvol_name)
 
                 self.queue_connector.publish_message(
-                        {'action': 'map_zvol', 'target':iscsi_target, 
+                        {'action': 'map_zvol', 'target':iscsi_target,
                             'nas': ('%s.%s'%(self.NODE_NAME, self.ib_net)) if use_ib else self.NODE_NAME,
                             'size': message['size'], 'zvol':zvol_name},
                         remotehost,
