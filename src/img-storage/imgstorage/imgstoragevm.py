@@ -70,6 +70,10 @@ import traceback
 import rocks.db.helper
 import rocks.util
 
+from tornado.ioloop import IOLoop
+from tornado.gen import Task, coroutine
+
+
 from pysqlite2 import dbapi2 as sqlite3
 
 
@@ -139,16 +143,31 @@ class VmDaemon():
     """
     Received map_zvol command from nas
     """
+    @coroutine
     def map_zvol(self, message, props):
         self.logger.debug("Setting zvol %s"%message['target'])
         zvol = message.get('zvol')
         try:
             self.connect_iscsi(message['target'], message['nas'])
-            mappings = get_blk_dev_list()
 
-            if(message['target'] not in mappings.keys()): raise ActionError('Not found %s in targets'%message['target'])
+            # sometime get_blk_dev_list does not find the device because
+            # the kernel hasn't populated the entry in sysfs so we need
+            # this polling to make sure we avoid this latency
+            count = 0
+            while True:
+                mappings = get_blk_dev_list()
+                if message['target'] in mappings.keys():
+                    break
+                else:
+                    if count == 3:
+                        raise ActionError('Not found %s in targets'
+                                % message['target'])
+                    # asynchronous time.sleep(1)
+                    yield Task(IOLoop.instance().add_timeout,
+                                time.time() + 1)
+                    count += 1
 
-            bdev = '/dev/%s'%mappings[message['target']]
+            bdev = '/dev/%s' % mappings[message['target']]
 
             if(self.sync_enabled):
                 temp_size_cur = min(self.temp_size, int(message['size'])-1)
