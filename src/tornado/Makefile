@@ -53,52 +53,25 @@
 # 
 # @Copyright@
 #
+# $Log$
 
-PKGROOT		= /opt/rocks
-REDHAT.ROOT     = $(CURDIR)/../../
+REDHAT.ROOT = $(CURDIR)/../../
+
+
 -include $(ROCKSROOT)/etc/Rules.mk
 include Rules.mk
 
-# we need this to disable the stupid 
-# /usr/lib/rpm/brp-python-bytecompile
-# which just does a big mess in compiling all the python files
-MAKE.rpmflag	= -bb --define "__spec_install_post :"
+build: $(SRC_DIRS)
+	tar -xvzf $(SOURCE_PKG)
+	@echo "::: Package $(NAME) build complete :::"
 
-#DISTRIBUTE_DISABLE_VERSIONED_EASY_INSTALL_SCRIPT=1;
-
-# if ROOT is not defined assign / so that 
-# python setup.py install --root=$(ROOT)
-# has always something after the = if not distutils 
-# will bail on you
-ROOT ?= /
-
-build:: rocks-copyright.txt
-	
-install:: build
-	find rocks | sed -e 's/\//./g' -e '/\.py/d' > packages
-	$(PY.PATH) setup.py install -f --root=$(ROOT)
-
+install::
+	( \
+	  cd $(SOURCE_DIR); \
+	  $(PY.PATH) setup.py install --root=$(ROOT) \
+	)
+	@echo "::: Package $(NAME) install complete :::"
 
 clean::
-	rm -rf build
-	rm -rf dist
-	rm -rf rocks_command_imgstorage.egg-info
-	rm -rf packages
-
-
-ctags:
-	ctags  --python-kinds=-i --exclude=*/build/* -R .
-
-# add the RollName = "base" variable to all the command files we can 
-# commit this into the repo since this property never changes
-#
-# this script is a helper for adding the variable to all the file in 
-# this package
-addrollvariable:
-	for i in `find rocks/commands -name "*.py"`; do\
-		grep "^RollName = " $$i > /dev/null ||                  \
-		echo -e "\nRollName = \"$(ROLL)\"" >> $$i;              \
-	done
- 
-
+	rm -rf $(SOURCE_DIR)
 

@@ -1,4 +1,5 @@
-#
+#!/opt/rocks/bin/python
+# 
 # @Copyright@
 # 
 # 				Rocks(r)
@@ -54,51 +55,23 @@
 # @Copyright@
 #
 
-PKGROOT		= /opt/rocks
-REDHAT.ROOT     = $(CURDIR)/../../
--include $(ROCKSROOT)/etc/Rules.mk
-include Rules.mk
-
-# we need this to disable the stupid 
-# /usr/lib/rpm/brp-python-bytecompile
-# which just does a big mess in compiling all the python files
-MAKE.rpmflag	= -bb --define "__spec_install_post :"
-
-#DISTRIBUTE_DISABLE_VERSIONED_EASY_INSTALL_SCRIPT=1;
-
-# if ROOT is not defined assign / so that 
-# python setup.py install --root=$(ROOT)
-# has always something after the = if not distutils 
-# will bail on you
-ROOT ?= /
-
-build:: rocks-copyright.txt
-	
-install:: build
-	find rocks | sed -e 's/\//./g' -e '/\.py/d' > packages
-	$(PY.PATH) setup.py install -f --root=$(ROOT)
+import rocks.commands
 
 
-clean::
-	rm -rf build
-	rm -rf dist
-	rm -rf rocks_command_imgstorage.egg-info
-	rm -rf packages
+class Plugin(rocks.commands.Plugin):
+
+	def provides(self):
+		return 'plugin_preboot_discargecache'
+
+	def run(self, node):
+		# we need to drop caches from VM if not KVM will not start 
+		# because there is no memory
+		# 
+		# why we have to do this it doesn't make any sense to me
+		self.owner.command('run.host', [node.vm_defs.physNode.name, 
+				'sync; echo 3 > /proc/sys/vm/drop_caches'])
+		return
 
 
-ctags:
-	ctags  --python-kinds=-i --exclude=*/build/* -R .
 
-# add the RollName = "base" variable to all the command files we can 
-# commit this into the repo since this property never changes
-#
-# this script is a helper for adding the variable to all the file in 
-# this package
-addrollvariable:
-	for i in `find rocks/commands -name "*.py"`; do\
-		grep "^RollName = " $$i > /dev/null ||                  \
-		echo -e "\nRollName = \"$(ROLL)\"" >> $$i;              \
-	done
- 
-
-
+RollName = "img-storage"

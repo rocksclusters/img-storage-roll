@@ -65,6 +65,7 @@ import random
 import re
 import signal
 import sys
+import os
 import traceback
 import rocks.db.helper
 import rocks.util
@@ -227,24 +228,48 @@ class VmDaemon():
                 return runCommand(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-p', node_name, '-l'])
         raise ActionError('Could not find iSCSI target %s on compute node %s'%(iscsi_target, node_name))
 
-    """
-    Received zvol unmap_zvol command from nas
-    """
+
+
     def unmap_zvol(self, message, props):
-        self.logger.debug("Tearing down zvol %s"%message['target'])
+        """ Received zvol unmap_zvol command from nas """
         zvol = message['zvol']
-        mappings_map = get_blk_dev_list()
 
         try:
             if(self.sync_enabled):
-                runCommand(['dmsetup', 'remove', '%s-snap'%zvol])
-                self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
+                self.logger.debug("Tearing down zvol %s" % message['zvol'])
+                while True:
+                    if isFileUsed('/dev/mapper/%s-snap' % zvol):
+                        time.sleep(0.1)
+                        self.logger.debug('/dev/mapper/%s-snap is in use' 
+                                % zvol)
+                    else:
+                        break
+                runCommand(['dmsetup', 'remove', '--retry', '%s-snap'%zvol])
+                self.queue_connector.publish_message({'action': 'zvol_unmapped', 
+                        'target':message['target'], 'zvol':zvol, 
+                        'status':'success'}, props.reply_to, 
+                        reply_to=self.NODE_NAME, 
+                        correlation_id=props.message_id)
+
             else:
-                if((message['target'] not in mappings_map.keys()) or disconnect_iscsi(message['target'])):
-                    self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'success'}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
+                self.logger.debug("Tearing down target %s" % message['target'])
+                mappings_map = get_blk_dev_list()
+                if((message['target'] not in mappings_map.keys()) or 
+                        disconnect_iscsi(message['target'])):
+                    self.queue_connector.publish_message(
+                            {'action': 'zvol_unmapped', 
+                            'target':message['target'], 'zvol':zvol, 
+                            'status':'success'}, props.reply_to, 
+                            reply_to=self.NODE_NAME, 
+                            correlation_id=props.message_id)
+
         except ActionError, msg:
-            self.queue_connector.publish_message({'action': 'zvol_unmapped', 'target':message['target'], 'zvol':zvol, 'status':'error', 'error':str(msg)}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
+            self.queue_connector.publish_message({'action': 'zvol_unmapped',
+                    'target':message['target'], 'zvol':zvol, 'status':'error', 
+                    'error':str(msg)}, props.reply_to, reply_to=self.NODE_NAME, 
+                    correlation_id=props.message_id)
             self.logger.error('Error unmapping %s: %s'%(message['target'], str(msg)))
+
 
 
     def sync_zvol(self, message, props):
@@ -332,6 +357,7 @@ class VmDaemon():
             self.queue_connector.publish_message({'status': 'error', 'error':sys.exc_info()[1].message}, exchange='', routing_key=props.reply_to, correlation_id=props.message_id)
 
     def run(self):
+        self.logger.debug('imgstoragevm starting')
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('CREATE TABLE IF NOT EXISTS sync_queue(zvol TEXT PRIMARY KEY NOT NULL, iscsi_target TEXT UNIQUE, devsize INT, reply_to TEXT, correlation_id TEXT, started BOOLEAN default 0, time INT)')
@@ -343,6 +369,6 @@ class VmDaemon():
 
     def stop(self):
         self.queue_connector.stop()
-        self.logger.info('RabbitMQ connector stopping called')
+        self.logger.info('RabbitMQ connector stopped')
 
 
