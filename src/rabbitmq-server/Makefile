@@ -1,3 +1,4 @@
+#
 # $Id$
 #
 # @Copyright@
@@ -54,20 +55,25 @@
 # @Copyright@
 #
 # $Log$
+#
 
 REDHAT.ROOT = $(CURDIR)/../../
 
-MAKE.iscontrib = 1
-
 -include $(ROCKSROOT)/etc/Rules.mk
 include Rules.mk
+include pull.mk
 
-
-build:
-	mkdir -p ../../RPMS/x86_64
-	cd ../../RPMS/x86_64 && curl http://www.scidrive.org/vospace-2.0/data/51a70d3e-954f-4e41-aad9-196e84c125d5 | tar xvz
+build: $(SRC_DIRS)
+	( \
+	  cd $(SOURCE_DIR); \
+	  cp -av *.noarch.rpm $(REDHAT.ROOT)/RPMS/noarch ;\
+	  cp -av *.x86_64.rpm  $(REDHAT.ROOT)/RPMS/x86_64 ;\
+	)
+	@echo "::: Package $(NAME) build complete :::"
 	
-rpm:: build
+install::
+	mkdir -p $(ROOT)/$(PKGROOT)
+	@echo "::: Package $(NAME) install complete :::"
 
 clean::
-	rm -rf $(NAME)-$(VERSION)
+	rm -rf $(SOURCE_DIR)
