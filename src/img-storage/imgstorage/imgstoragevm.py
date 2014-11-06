@@ -174,8 +174,12 @@ class VmDaemon():
                 if(zvol and len(zvol) > 0): # don't want to destroy the zpool
                     try: runCommand(['zfs', 'destroy', '-r', '%s/%s'%(self.ZPOOL, zvol)])
                     except: pass
-                runCommand(['zfs', 'create', '-V', '%sgb'%message['size'], '%s/%s'%(self.ZPOOL, zvol)])
-                runCommand(['zfs', 'create', '-V', '%sgb'%temp_size_cur, '%s/%s-temp-write'%(self.ZPOOL, zvol)])
+                runCommand(['zfs', 'create', '-o', 'primarycache=metadata',
+                        '-o', 'volblocksize=128K', '-V', '%sgb'%message['size'],
+                        '%s/%s'%(self.ZPOOL, zvol)])
+                runCommand(['zfs', 'create', '-o', 'primarycache=metadata',
+                        '-o', 'volblocksize=128K', '-V', '%sgb'%temp_size_cur,
+                        '%s/%s-temp-write'%(self.ZPOOL, zvol)])
                 time.sleep(2)
                 runCommand(['dmsetup', 'create', '%s-snap'%zvol,
                     '--table', '0 %s snapshot %s /dev/zvol/%s/%s-temp-write P 16'%(int(1024**3*temp_size_cur/512), bdev, self.ZPOOL, zvol)])
