@@ -188,6 +188,12 @@ class VmDaemon():
         except ActionError, msg:
             self.queue_connector.publish_message({'action': 'zvol_mapped', 'target':message['target'], 'status':'error', 'error':str(msg)}, props.reply_to, reply_to=self.NODE_NAME, correlation_id=props.message_id)
             self.logger.exception('Error mapping %s: %s'%(message['target'], str(msg)))
+        except:
+            self.logger.error("Unexpected exception (map_zvol).", exc_info=True)
+            self.queue_connector.publish_message({'action': 'zvol_unmapped',
+                    'target':message['target'], 'zvol':zvol, 'status':'error',
+                    'error':'unhandled exception in unmap_zvol'}, props.reply_to,
+                    reply_to=self.NODE_NAME, correlation_id=props.message_id)
 
 
     def list_dev(self, message, props):
