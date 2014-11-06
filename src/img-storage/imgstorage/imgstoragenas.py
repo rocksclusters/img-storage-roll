@@ -468,9 +468,11 @@ class NasDaemon():
                                 (out, err) = yield runCommandBackground(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs list -Hpr -t snapshot -o name -s creation  %s/%s"'%
                                    (remotehost, self.get_node_zpool(remotehost), zvol)]) 
 
-                                def destroy_remote_snapshot(snapshot):
-                                    yield runCommandBackground(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s"'%(remotehost, snapshot)])
-                                map(destroy_remote_snapshot, out[:-2])
+                                for snapshot in out[:-2]:
+                                    yield runCommandBackground(['su', 'zfs', '-c',
+                                            '/usr/bin/ssh %s "/sbin/zfs destroy %s"'
+                                            % (remotehost, snapshot)])
+
                         except ActionError, msg:
                             self.logger.exception('Error performing sync for %s: %s'%(zvol, str(msg)))
                         finally:
