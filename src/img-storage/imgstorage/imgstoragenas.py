@@ -432,65 +432,69 @@ class NasDaemon():
 
     @coroutine
     def schedule_next_sync(self):
-        with sqlite3.connect(self.SQLITE_DB) as con:
-            cur = con.cursor()
+        try:
+            with sqlite3.connect(self.SQLITE_DB) as con:
+                cur = con.cursor()
 
-            for zvol, job_result in self.results.items():
-                if job_result.ready():
-                    del self.results[zvol]
-                    cur.execute('SELECT remotehost, is_sending, zvol, zpool, is_delete_remote FROM sync_queue WHERE zvol = ?', [zvol])
-                    row = cur.fetchone()
-                    
-                    try:
-                        if(not row):
-                            raise ActionError("Not found record for %s in sync_queue table"%zvol)
+                for zvol, job_result in self.results.items():
+                    if job_result.ready():
+                        del self.results[zvol]
+                        cur.execute('SELECT remotehost, is_sending, zvol, zpool, is_delete_remote FROM sync_queue WHERE zvol = ?', [zvol])
+                        row = cur.fetchone()
 
-                        remotehost, is_sending, zvol, zpool, is_delete_remote  = row
-                        
-                        self.logger.debug("Sync %s is ready"%zvol)
+                        try:
+                            if(not row):
+                                raise ActionError("Not found record for %s in sync_queue table"%zvol)
 
-                        job_result.get() # will raise exception is there was one during job execution
-                        if(is_sending):
-                            cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?',[zvol])
-                            target = cur.fetchone()[0]
-                            self.queue_connector.publish_message(
-                                {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
-                                remotehost, #reply back to compute node
-                                self.NODE_NAME,
-                                on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(remotehost, zvol)))
-                        elif(is_delete_remote):
-                            yield runCommandBackground(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'%(remotehost, self.get_node_zpool(remotehost), zvol)])
-                            cur.execute('UPDATE zvols SET remotehost = NULL, zpool = NULL where zvol = ?',[zvol])
+                            remotehost, is_sending, zvol, zpool, is_delete_remote  = row
+
+                            self.logger.debug("Sync %s is ready"%zvol)
+
+                            job_result.get() # will raise exception is there was one during job execution
+                            if(is_sending):
+                                cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?',[zvol])
+                                target = cur.fetchone()[0]
+                                self.queue_connector.publish_message(
+                                    {'action': 'sync_zvol', 'zvol':zvol, 'target':target},
+                                    remotehost, #reply back to compute node
+                                    self.NODE_NAME,
+                                    on_fail=lambda: self.logger.error('Compute node %s is unavailable to sync zvol %s'%(remotehost, zvol)))
+                            elif(is_delete_remote):
+                                yield runCommandBackground(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'%(remotehost, self.get_node_zpool(remotehost), zvol)])
+                                cur.execute('UPDATE zvols SET remotehost = NULL, zpool = NULL where zvol = ?',[zvol])
+                                con.commit()
+                                self.release_zvol(zvol)
+                            else:
+                                (out, err) = yield runCommandBackground(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs list -Hpr -t snapshot -o name -s creation  %s/%s"'%
+                                   (remotehost, self.get_node_zpool(remotehost), zvol)]) 
+
+                                def destroy_remote_snapshot(snapshot):
+                                    yield runCommandBackground(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s"'%(remotehost, snapshot)])
+                                map(destroy_remote_snapshot, out[:-2])
+                        except ActionError, msg:
+                            self.logger.exception('Error performing sync for %s: %s'%(zvol, str(msg)))
+                        finally:
+                            cur.execute('DELETE FROM sync_queue WHERE zvol = ?', [zvol])
                             con.commit()
-                            self.release_zvol(zvol)
-                        else:
-                            (out, err) = yield runCommandBackground(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs list -Hpr -t snapshot -o name -s creation  %s/%s"'%
-                               (remotehost, self.get_node_zpool(remotehost), zvol)]) 
-
-                            def destroy_remote_snapshot(snapshot):
-                                yield runCommandBackground(['su', 'zfs', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s"'%(remotehost, snapshot)])
-                            map(destroy_remote_snapshot, out[:-2])
-                    except ActionError, msg:
-                        self.logger.exception('Error performing sync for %s: %s'%(zvol, str(msg)))
-                    finally:
-                        cur.execute('DELETE FROM sync_queue WHERE zvol = ?', [zvol])
-                        con.commit()
  
-            for row in cur.execute('SELECT remotehost, is_sending, zvol, zpool, is_delete_remote FROM sync_queue ORDER BY time ASC'):
-                remotehost, is_sending, zvol, zpool, is_delete_remote  = row
-                self.logger.debug("Have sync job %s"%zvol)
+                for row in cur.execute('SELECT remotehost, is_sending, zvol, zpool, is_delete_remote FROM sync_queue ORDER BY time ASC'):
+                    remotehost, is_sending, zvol, zpool, is_delete_remote  = row
+                    self.logger.debug("Have sync job %s"%zvol)
 
-                if(self.ib_net):
-                    remotehost += ".%s"%self.ib_net
+                    if(self.ib_net):
+                        remotehost += ".%s"%self.ib_net
 
-                if(not(self.results.get(zvol)) and len(self.results) < self.SYNC_WORKERS):
-                    self.logger.debug("Starting new sync %s"%(zvol))
-                    if is_sending:
-                        self.results[zvol] = self.pool.apply_async(self.upload_snapshot, [zpool, zvol, remotehost])
-                    else:
-                        self.results[zvol] = self.pool.apply_async(self.download_snapshot, [zpool, zvol, remotehost])
-                           
-            self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
+                    if(not(self.results.get(zvol)) and len(self.results) < self.SYNC_WORKERS):
+                        self.logger.debug("Starting new sync %s"%(zvol))
+                        if is_sending:
+                            self.results[zvol] = self.pool.apply_async(self.upload_snapshot, [zpool, zvol, remotehost])
+                        else:
+                            self.results[zvol] = self.pool.apply_async(self.download_snapshot, [zpool, zvol, remotehost])
+                               
+                self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT, self.schedule_next_sync)
+        except:
+            self.logger.error('Exception in schedule_next_sync', exc_info=True)
+
 
     def schedule_zvols_pull(self):
         #self.logger.debug("Scheduling new pull jobs")
