@@ -60,6 +60,7 @@ import logging
 
 import traceback
 import imgstorage
+import imgstoragedaemon
 
 import time
 import json
@@ -218,9 +219,8 @@ class NasDaemon():
 
                 if(cur.fetchone()[0] == 0):
                     # create the zfs FS
-                    yield runCommandBackground(['zfs', 'create', '-o',
-                            'primarycache=metadata', '-o', 'volblocksize=128K',
-                            '-V', '%sgb' % message['size'],
+                    yield runCommandBackground(imgstoragedaemon.zfs_create +
+                            [ '-V', '%sgb' % message['size'],
                             '%s/%s' % (zpool_name, zvol_name)])
                     cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) ',
                             (zvol_name, None, None, None))

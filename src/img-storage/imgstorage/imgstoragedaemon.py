@@ -57,6 +57,12 @@ from daemon import runner
 import signal
 from imgstorage import *
 
+
+zfs_create = ['zfs', 'create', '-o', 'primarycache=metadata',
+             '-o', 'volblocksize=128K']
+
+
+
 def runDaemon(app, handler):
     daemon_runner = runner.DaemonRunner(app)
 
