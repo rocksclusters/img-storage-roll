@@ -1,10 +1,11 @@
+#!/bin/bash
 #
 # @Copyright@
 #
-# 				Rocks(r)
-# 		         www.rocksclusters.org
-# 		         version 5.6 (Emerald Boa)
-# 		         version 6.1 (Emerald Boa)
+#                               Rocks(r)
+#                        www.rocksclusters.org
+#                        version 5.6 (Emerald Boa)
+#                        version 6.1 (Emerald Boa)
 #
 # Copyright (c) 2000 - 2013 The Regents of the University of California.
 # All rights reserved.
@@ -24,9 +25,9 @@
 # 3. All advertising and press materials, printed or electronic, mentioning
 # features or use of this software must display the following acknowledgement:
 #
-# 	"This product includes software developed by the Rocks(r)
-# 	Cluster Group at the San Diego Supercomputer Center at the
-# 	University of California, San Diego and its contributors."
+#       "This product includes software developed by the Rocks(r)
+#       Cluster Group at the San Diego Supercomputer Center at the
+#       University of California, San Diego and its contributors."
 #
 # 4. Except as permitted for the purposes of acknowledgment in paragraph 3,
 # neither the name or logo of this software nor the names of its
@@ -53,61 +54,23 @@
 #
 # @Copyright@
 #
-
-PKGROOT		= /opt/rocks
-REDHAT.ROOT     = $(CURDIR)/../../
-#ROCKSROOT       = $(CURDIR)/../../src/devel/devel
--include $(ROCKSROOT)/etc/Rules.mk
-include Rules.mk
-
-# we need this to disable the stupid
-# /usr/lib/rpm/brp-python-bytecompile
-# which just does a big mess in compiling all the python files
-MAKE.rpmflag	= -bb --define "__spec_install_post :"
-
-# If MICRO_VERSION isn't defined, then force it to zero
-ifndef VERSION.MICRO
-	VERSION.MICRO = 0
-endif
-
-# we need this variable inside setup.py to set the
-# version of the python egg
-myenv = ROCKS_VERSION=$(ROCKS_VERSION)
-
-#DISTRIBUTE_DISABLE_VERSIONED_EASY_INSTALL_SCRIPT=1;
-
-# if ROOT is not defined assign / so that
-# python setup.py install --root=$(ROOT)
-# has always something after the = if not distutils
-# will bail on you
-ROOT ?= /
-
-build:: rocks-copyright.txt
-
-install:: build
-	#test "$(ROOT)" && \
-	#  $(myenv) $(PY.PATH) setup.py install --root=$(ROOT) || \
-	#  $(myenv) $(PY.PATH) setup.py install --root=/
-	$(myenv) $(PY.PATH) setup.py install --root=$(ROOT)
-	install -m 755 init.d/img-storage-nas $(ROOT)/etc/rc.d/init.d/img-storage-nas -D
-	install -m 755 bin/tgt-setup-lun-lock $(ROOT)$(PKGROOT)/bin/tgt-setup-lun-lock -D
-
-clean::
-	rm -rf build
-	rm -rf dist
-	rm -rf rocks_pylib.egg-info
-
-
-ctags:
-	ctags  --python-kinds=-i --exclude=*/build/* -R .
-
-# add the RollName = "base" variable to all the command files we can
-# commit this into the repo since this property never changes
+# we need this non-sense because tgt-setup-lun can not be run concurrently
+# so need this crap to make sure only one tgt-setup-lun will run concurrently
 #
-# this script is a helper for adding the variable to all the file in
-# this package
-addrollvariable:
-	for i in `find rocks/commands -name "*.py"`; do\
-		grep "^RollName = " $$i > /dev/null ||                  \
-		echo -e "\nRollName = \"$(ROLL)\"" >> $$i;              \
-	done
+# http://www.spinics.net/lists/linux-stgt/msg03353.html
+
+
+(
+  # Wait for lock on /var/lock/.tgt-setup-lun-lock.exclusivelock
+  flock 200 || exit 1
+
+  # lock acquired
+  echo "lock acquired" >> /tmp/locklog
+  echo "running: ${@}" >> /tmp/locklog
+  tgt-setup-lun "${@}"
+  
+
+) 200>/var/lock/.tgt-setup-lun-lock.exclusivelock
+
+
+

@@ -250,8 +250,8 @@ class NasDaemon():
 
 
                 iscsi_target = ''
-                (out, err) = yield runCommandBackground(['tgt-setup-lun', '-n',
-                        zvol_name, '-d', '/dev/%s/%s' % (zpool_name, zvol_name), ip])
+                (out, err) = yield runCommandBackground(['/opt/rocks/bin/tgt-setup-lun-lock',
+                        '-n', zvol_name, '-d', '/dev/%s/%s' % (zpool_name, zvol_name), ip])
 
                 for line in out:
                     if "Creating new target" in line:
