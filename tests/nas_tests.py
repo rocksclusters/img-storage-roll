@@ -18,6 +18,10 @@ from pysqlite2 import dbapi2 as sqlite3
 from pika.spec import BasicProperties
 from StringIO import StringIO
 
+from tornado.gen import Task, Return, coroutine                                                                                                               
+import tornado.process
+
+
 class TestNasFunctions(unittest.TestCase):
 
     def mock_rabbitcli(self, exchange, exchange_type, process_message=None):
@@ -210,7 +214,8 @@ class TestNasFunctions(unittest.TestCase):
 
 
     @mock.patch('imgstorage.imgstoragenas.runCommand')
-    def test_zvol_unmapped_success(self, mockRunCommand):
+    @mock.patch('imgstorage.imgstoragenas.NasDaemon.is_sync_node', return_value=False)
+    def test_zvol_unmapped_success(self, mockIsSyncMode, mockRunCommand):
         zvol = 'vol3_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         self.client.zvol_unmapped(
@@ -233,7 +238,8 @@ class TestNasFunctions(unittest.TestCase):
         self.assertFalse(self.check_zvol_busy(zvol))
 
 
-    def test_zvol_mapped_success(self):
+    @mock.patch('imgstorage.imgstoragenas.NasDaemon.is_sync_node', return_value=False)
+    def test_zvol_mapped_success(self, mockIsSyncMode):
         zvol = 'vol4_busy'
         target = 'iqn.2001-04.com.nas-0-1-%s'%zvol
         self.client.zvol_mapped(

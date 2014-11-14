@@ -104,3 +104,5 @@ fe:
 	cd src/rocks-command-imgstorage && make rpm
 	yum reinstall /usr/src/redhat/RPMS/x86_64/rocks-command-imgstorage-6.2-1.x86_64.rpm
 
+test:
+	nosetests tests
