@@ -130,8 +130,7 @@ class CommandLauncher():
             else:
                 raise CommandError('Message could not be delivered')
         finally:
-           channel.close()
-
+            connection.close()
 
     def on_message(self, channel, method_frame, header_frame, body):
         channel.basic_ack(delivery_tag=method_frame.delivery_tag)
