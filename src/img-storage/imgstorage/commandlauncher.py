@@ -1,11 +1,10 @@
 #!/opt/rocks/bin/python
-#
 # @Copyright@
 #
-# 				Rocks(r)
-# 		         www.rocksclusters.org
-# 		         version 5.6 (Emerald Boa)
-# 		         version 6.1 (Emerald Boa)
+#                               Rocks(r)
+#                        www.rocksclusters.org
+#                        version 5.6 (Emerald Boa)
+#                        version 6.1 (Emerald Boa)
 #
 # Copyright (c) 2000 - 2013 The Regents of the University of California.
 # All rights reserved.
@@ -25,9 +24,9 @@
 # 3. All advertising and press materials, printed or electronic, mentioning
 # features or use of this software must display the following acknowledgement:
 #
-# 	"This product includes software developed by the Rocks(r)
-# 	Cluster Group at the San Diego Supercomputer Center at the
-# 	University of California, San Diego and its contributors."
+#       "This product includes software developed by the Rocks(r)
+#       Cluster Group at the San Diego Supercomputer Center at the
+#       University of California, San Diego and its contributors."
 #
 # 4. Except as permitted for the purposes of acknowledgment in paragraph 3,
 # neither the name or logo of this software nor the names of its
@@ -54,6 +53,7 @@
 #
 # @Copyright@
 #
+
 import sys
 import string
 import pika
@@ -66,63 +66,86 @@ from imgstorage.rabbitmqclient import RabbitMQLocator
 
 logging.basicConfig()
 
-class CommandLauncher():
+
+class CommandLauncher:
 
     def __init__(self):
-       self.RABBITMQ_URL = RabbitMQLocator().RABBITMQ_URL
-       self.ret_message = None
+        self.RABBITMQ_URL = RabbitMQLocator().RABBITMQ_URL
+        self.ret_message = None
 
-    def callAddHostStoragemap(self, nas, zpool, volume, remotehost, size):
-       message = {'action': 'map_zvol', 'zpool':zpool, 'zvol': volume, 'remotehost': remotehost, 'size': size}
-       self.callCommand(message, nas)
-       block_dev = self.ret_message['bdev']
-       return block_dev
+    def callAddHostStoragemap(
+        self,
+        nas,
+        zpool,
+        volume,
+        remotehost,
+        size,
+        ):
+        message = {
+            'action': 'map_zvol',
+            'zpool': zpool,
+            'zvol': volume,
+            'remotehost': remotehost,
+            'size': size,
+            }
+        self.callCommand(message, nas)
+        block_dev = self.ret_message['bdev']
+        return block_dev
 
     def callDelHostStoragemap(self, nas, volume):
-       message = {'action': 'unmap_zvol', 'zvol': volume}
-       self.callCommand(message, nas)
-       return
+        message = {'action': 'unmap_zvol', 'zvol': volume}
+        self.callCommand(message, nas)
+        return
 
-    def callDelHostStorageimg(self, nas, zpool, volume):
-       message = {'action': 'del_zvol', 'zpool':zpool, 'zvol': volume}
-       self.callCommand(message, nas)
-       return
+    def callDelHostStorageimg(
+        self,
+        nas,
+        zpool,
+        volume,
+        ):
+        message = {'action': 'del_zvol', 'zpool': zpool, 'zvol': volume}
+        self.callCommand(message, nas)
+        return
 
     def callListHostStoragemap(self, nas):
-       message = {'action': 'list_zvols'}
-       self.callCommand(message, nas)
-       return self.ret_message['body']
+        message = {'action': 'list_zvols'}
+        self.callCommand(message, nas)
+        return self.ret_message['body']
 
     def callListHostStoragedev(self, compute):
-       message = {'action': 'list_dev'}
-       self.callCommand(message, compute)
-       return {'node_type': self.ret_message['node_type'], 'body': self.ret_message['body']}
+        message = {'action': 'list_dev'}
+        self.callCommand(message, compute)
+        return {'node_type': self.ret_message['node_type'],
+                'body': self.ret_message['body']}
 
     def callCommand(self, message, nas):
-        connection = pika.BlockingConnection(pika.URLParameters(self.RABBITMQ_URL))
+        connection = \
+            pika.BlockingConnection(pika.URLParameters(self.RABBITMQ_URL))
 
         channel = connection.channel()
 
         try:
+
             # Declare the queue
-            method_frame = channel.queue_declare(exclusive=True, auto_delete=True)
+
+            method_frame = channel.queue_declare(exclusive=True,
+                    auto_delete=True)
             zvol_manage_queue = method_frame.method.queue
             channel.confirm_delivery()
 
             # Send a message
+
             if channel.basic_publish(exchange='rocks.vm-manage',
-                                 routing_key=nas,
-                                 mandatory=True,
-                                 body=json.dumps(message, ensure_ascii=True),
-                                 properties=pika.BasicProperties(content_type='application/json',
-                                                                 delivery_mode=1,
-                                                                 reply_to = zvol_manage_queue
-                                                                )
-                                ):
-                channel.basic_consume(self.on_message, zvol_manage_queue)
+                    routing_key=nas, mandatory=True,
+                    body=json.dumps(message, ensure_ascii=True),
+                    properties=pika.BasicProperties(content_type='application/json'
+                    , delivery_mode=1, reply_to=zvol_manage_queue)):
+
+                channel.basic_consume(self.on_message,
+                        zvol_manage_queue)
                 channel.start_consuming()
                 if self.ret_message['status'] == 'error':
-                    if('error' in self.ret_message.keys()):
+                    if 'error' in self.ret_message.keys():
                         raise CommandError(self.ret_message['error'])
                     else:
                         raise CommandError('Error occured')
@@ -132,7 +155,13 @@ class CommandLauncher():
         finally:
             connection.close()
 
-    def on_message(self, channel, method_frame, header_frame, body):
+    def on_message(
+        self,
+        channel,
+        method_frame,
+        header_frame,
+        body,
+        ):
         channel.basic_ack(delivery_tag=method_frame.delivery_tag)
         channel.stop_consuming()
         self.ret_message = json.loads(body)
