@@ -62,6 +62,7 @@ REDHAT.ROOT = $(CURDIR)/../../
 
 -include $(ROCKSROOT)/etc/Rules.mk
 include Rules.mk
+include pull.mk
 
 build: $(SRC_DIRS)
 	tar -xvzf $(SOURCE_PKG)
