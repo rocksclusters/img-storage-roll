@@ -13,6 +13,9 @@ It includes:
 - img-storage-vm - the Compute node daemon
 - img-storage - the common library containing the code for all daemons
 
+For more information you can read the user guide at:
+[http://img-storage.readthedocs.org/en/latest/](http://img-storage.readthedocs.org/en/latest/)
+
 
 ## Requirements
 
