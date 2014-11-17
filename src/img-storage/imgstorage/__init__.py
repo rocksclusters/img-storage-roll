@@ -59,65 +59,83 @@ import logging
 import os
 import rocks.db.helper
 
+
 class ActionError(Exception):
+
     pass
+
 
 class ZvolBusyActionError(ActionError):
+
     pass
 
-""" Runs system command. If passed second command, the output of first one will be piped to second one """
-def runCommand(params, params2 = None, shell=False):
+
+def runCommand(params, params2=None, shell=False):
     try:
-        cmd = subprocess.Popen(params, stdout=subprocess.PIPE, stderr = subprocess.PIPE, shell=shell)
+        cmd = subprocess.Popen(params, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, shell=shell)
     except OSError, e:
         raise ActionError('Command %s failed: %s' % (params[0], str(e)))
 
     if params2:
         try:
-            cmd2 = subprocess.Popen(params2, stdin=cmd.stdout, stdout=subprocess.PIPE, stderr = subprocess.PIPE, shell=shell)
+            cmd2 = subprocess.Popen(params2, stdin=cmd.stdout,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, shell=shell)
         except OSError, e:
-            raise ActionError('Command %s failed: %s' % (params2[0], str(e)))
+            raise ActionError('Command %s failed: %s' % (params2[0],
+                              str(e)))
         cmd.stdout.close()
-        out, err = cmd2.communicate()
+        (out, err) = cmd2.communicate()
         if cmd2.returncode:
-            raise ActionError('Error executing %s: %s'%(params2[0], err))
+            raise ActionError('Error executing %s: %s' % (params2[0],
+                              err))
+        else:
+            return out.splitlines()
+    else:
+
+        (out, err) = cmd.communicate()
+        if cmd.returncode:
+            raise ActionError('Error executing %s: %s' % (params[0],
+                              err))
         else:
             return out.splitlines()
 
-    else:
-        out, err = cmd.communicate()
-        if cmd.returncode:
-            raise ActionError('Error executing %s: %s'%(params[0], err))
-        else:
-            return out.splitlines()
 
 def setupLogger(logger):
-    formatter = logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -30s %(funcName) -35s %(lineno) -5d: %(message)s'")
-    handler = logging.FileHandler("/var/log/rocks/img-storage.log")
+    formatter = \
+        logging.Formatter("'%(levelname) -10s %(asctime)s %(name) -30s %(funcName) -35s %(lineno) -5d: %(message)s'"
+                          )
+    handler = logging.FileHandler('/var/log/rocks/img-storage.log')
     handler.setFormatter(formatter)
 
-    #for log_name in (logger, 'pika.channel', 'pika.connection', 'rabbit_client.RabbitMQClient'):
-    for log_name in ([logger, 'rabbit_client.RabbitMQCommonClient', 'tornado.application']):
+    # for log_name in (logger, 'pika.channel', 'pika.connection', 'rabbit_client.RabbitMQClient'):
+
+    for log_name in [logger, 'rabbit_client.RabbitMQCommonClient',
+                     'tornado.application']:
         logging.getLogger(log_name).setLevel(logging.DEBUG)
         logging.getLogger(log_name).addHandler(handler)
 
     return handler
 
 
-def get_attribute(attr_name, hostname, logger = None):
+def get_attribute(attr_name, hostname, logger=None):
     """connect to the database and return the value of the for the given
     attr_name relative to the hostname"""
+
     try:
         db = rocks.db.helper.DatabaseHelper()
         db.connect()
         hostname = str(db.getHostname(hostname))
-        #logger.debug('hostname %s attr_name %s' % (hostname, attr_name))
+
+        # logger.debug('hostname %s attr_name %s' % (hostname, attr_name))
+
         value = db.getHostAttr(hostname, attr_name)
         return value
     except Exception, e:
-        error = "Unable to get attribute %s for host %s (%s)" % \
-                (attr_name, hostname, str(e))
-	if logger:
+        error = 'Unable to get attribute %s for host %s (%s)' \
+            % (attr_name, hostname, str(e))
+        if logger:
             logger.exception(error)
         raise ActionError(error)
     finally:
@@ -126,12 +144,14 @@ def get_attribute(attr_name, hostname, logger = None):
 
 
 def isFileUsed(file):
-	"""return true if file is in use otherwise false"""
-	ret = os.system('fuser %s' % file)
-	returnValue = ret >> 5
-	if returnValue:
-		return False
-	else:
-		# fuser fails if the file is unused
-		return True
+    """return true if file is in use otherwise false"""
 
+    ret = os.system('fuser %s' % file)
+    returnValue = ret >> 5
+    if returnValue:
+        return False
+    else:
+
+        # fuser fails if the file is unused
+
+        return True
