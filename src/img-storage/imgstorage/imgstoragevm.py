@@ -53,11 +53,10 @@
 #
 # @Copyright@
 #
-
-from rabbitmqclient import RabbitMQCommonClient, RabbitMQLocator
+from rabbitmqclient import RabbitMQCommonClient
 from imgstorage import *
 import imgstorage
-import imgstoragedaemon
+from imgstoragedaemon import *
 import logging
 
 import time

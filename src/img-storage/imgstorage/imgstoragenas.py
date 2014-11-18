@@ -53,14 +53,13 @@
 #
 # @Copyright@
 #
-
-from rabbitmqclient import RabbitMQCommonClient, RabbitMQLocator
+from rabbitmqclient import RabbitMQCommonClient
 from imgstorage import runCommand, ActionError, ZvolBusyActionError
 import logging
 
 import traceback
 import imgstorage
-import imgstoragedaemon
+from imgstoragedaemon import *
 
 import time
 import json

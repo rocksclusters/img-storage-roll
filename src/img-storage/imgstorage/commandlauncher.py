@@ -62,7 +62,7 @@ import json
 import uuid
 from rocks.util import CommandError
 import logging
-from imgstorage.rabbitmqclient import RabbitMQLocator
+from imgstorage.imgstoragedaemon import RabbitMQLocator
 
 logging.basicConfig()
 
