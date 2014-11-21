@@ -193,10 +193,10 @@ class VmDaemon:
                                    % (self.ZPOOL, zvol)])
                     except:
                         pass
-                runCommand(imgstoragedaemon.zfs_create + ['-V', '%sgb'
+                runCommand(zfs_create + ['-V', '%sgb'
                            % message['size'], '%s/%s' % (self.ZPOOL,
                            zvol)])
-                runCommand(imgstoragedaemon.zfs_create + ['-V', '%sgb'
+                runCommand(zfs_create + ['-V', '%sgb'
                            % temp_size_cur, '%s/%s-temp-write'
                            % (self.ZPOOL, zvol)])
                 time.sleep(2)
@@ -207,36 +207,36 @@ class VmDaemon:
                            bdev, self.ZPOOL, zvol)])
                 bdev = '/dev/mapper/%s-snap' % zvol
 
-            self.queue_connector.publish_message({
+            self.queue_connector.publish_message(json.dumps({
                 'action': 'zvol_mapped',
                 'target': message['target'],
                 'bdev': bdev,
                 'status': 'success',
-                }, props.reply_to, reply_to=self.NODE_NAME,
+                }), props.reply_to, reply_to=self.NODE_NAME,
                     correlation_id=props.message_id)
 
             self.logger.debug('Successfully mapped %s to %s'
                               % (message['target'], bdev))
         except ActionError, msg:
-            self.queue_connector.publish_message({
+            self.queue_connector.publish_message(json.dumps({
                 'action': 'zvol_mapped',
                 'target': message['target'],
                 'status': 'error',
                 'error': str(msg),
-                }, props.reply_to, reply_to=self.NODE_NAME,
+                }), props.reply_to, reply_to=self.NODE_NAME,
                     correlation_id=props.message_id)
             self.logger.exception('Error mapping %s: %s'
                                   % (message['target'], str(msg)))
         except:
             self.logger.error('Unexpected exception (map_zvol).',
                               exc_info=True)
-            self.queue_connector.publish_message({
+            self.queue_connector.publish_message(json.dumps({
                 'action': 'zvol_unmapped',
                 'target': message['target'],
                 'zvol': zvol,
                 'status': 'error',
                 'error': 'unhandled exception in unmap_zvol',
-                }, props.reply_to, reply_to=self.NODE_NAME,
+                }), props.reply_to, reply_to=self.NODE_NAME,
                     correlation_id=props.message_id)
 
     def list_dev(self, message, props):
@@ -249,12 +249,12 @@ class VmDaemon:
                 mappings.append({'target': target,
                                 'device': mappings_map[target]})
         self.logger.debug('Got mappings %s' % mappings)
-        self.queue_connector.publish_message({
+        self.queue_connector.publish_message(json.dumps({
             'action': 'dev_list',
             'status': 'success',
             'node_type': ('sync' if self.sync_enabled else 'iscsi'),
             'body': mappings,
-            }, exchange='', routing_key=props.reply_to)
+            }), exchange='', routing_key=props.reply_to)
 
     def get_dev_list(self):
         mappings = {}
@@ -339,12 +339,12 @@ class VmDaemon:
                         break
                 runCommand(['dmsetup', 'remove', '--retry', '%s-snap'
                            % zvol])
-                self.queue_connector.publish_message({
+                self.queue_connector.publish_message(json.dumps({
                     'action': 'zvol_unmapped',
                     'target': message['target'],
                     'zvol': zvol,
                     'status': 'success',
-                    }, props.reply_to, reply_to=self.NODE_NAME,
+                    }), props.reply_to, reply_to=self.NODE_NAME,
                         correlation_id=props.message_id)
             else:
 
@@ -353,22 +353,22 @@ class VmDaemon:
                 mappings_map = get_blk_dev_list()
                 if message['target'] not in mappings_map.keys() \
                     or disconnect_iscsi(message['target']):
-                    self.queue_connector.publish_message({
+                    self.queue_connector.publish_message(json.dumps({
                         'action': 'zvol_unmapped',
                         'target': message['target'],
                         'zvol': zvol,
                         'status': 'success',
-                        }, props.reply_to, reply_to=self.NODE_NAME,
+                        }), props.reply_to, reply_to=self.NODE_NAME,
                             correlation_id=props.message_id)
         except ActionError, msg:
 
-            self.queue_connector.publish_message({
+            self.queue_connector.publish_message(json.dumps({
                 'action': 'zvol_unmapped',
                 'target': message['target'],
                 'zvol': zvol,
                 'status': 'error',
                 'error': str(msg),
-                }, props.reply_to, reply_to=self.NODE_NAME,
+                }), props.reply_to, reply_to=self.NODE_NAME,
                     correlation_id=props.message_id)
             self.logger.error('Error unmapping %s: %s'
                               % (message['target'], str(msg)))
@@ -400,12 +400,12 @@ class VmDaemon:
                                   % (zvol, devsize))
                 con.commit()
         except ActionError, msg:
-            self.queue_connector.publish_message({
+            self.queue_connector.publish_message(json.dumps({
                 'action': 'zvol_synced',
                 'zvol': zvol,
                 'status': 'error',
                 'error': str(msg),
-                }, props.reply_to, correlation_id=props.message_id)
+                }), props.reply_to, correlation_id=props.message_id)
 
             self.logger.exception('Error syncing %s: %s' % (zvol,
                                   str(msg)))
@@ -479,8 +479,8 @@ class VmDaemon:
                                     % (self.ZPOOL, zvol)])
                         disconnect_iscsi(target)
 
-                        self.queue_connector.publish_message({'action': 'zvol_synced'
-                                , 'zvol': zvol, 'status': 'success'},
+                        self.queue_connector.publish_message(json.dumps({'action': 'zvol_synced'
+                                , 'zvol': zvol, 'status': 'success'}),
                                 reply_to, correlation_id=correlation_id)
                         self.logger.debug('Sync time: %s'
                                 % (time.time() - start))
@@ -491,21 +491,22 @@ class VmDaemon:
 
                     self.logger.exception('Error syncing %s: %s'
                             % (zvol, str(msg)))
-                    self.queue_connector.publish_message({
+                    self.queue_connector.publish_message(json.dumps({
                         'action': 'zvol_synced',
                         'zvol': zvol,
                         'status': 'error',
                         'error': str(msg),
-                        }, reply_to, correlation_id=correlation_id)
+                        }), reply_to, correlation_id=correlation_id)
 
         self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT,
                 self.run_sync)
 
-    def process_message(self, props, message):
+    def process_message(self, props, message_str):
+        message = json.loads(message_str)
         self.logger.debug('Received message %s' % message)
         if message['action'] not in self.function_dict.keys():
-            self.queue_connector.publish_message({'status': 'error',
-                    'error': 'action_unsupported'}, exchange='',
+            self.queue_connector.publish_message(json.dumps({'status': 'error',
+                    'error': 'action_unsupported'}), exchange='',
                     routing_key=props.reply_to)
             return
 
@@ -516,8 +517,8 @@ class VmDaemon:
                                   % (sys.exc_info()[0],
                                   sys.exc_info()[1]))
             traceback.print_tb(sys.exc_info()[2])
-            self.queue_connector.publish_message({'status': 'error',
-                    'error': sys.exc_info()[1].message}, exchange='',
+            self.queue_connector.publish_message(json.dumps({'status': 'error',
+                    'error': sys.exc_info()[1].message}), exchange='',
                     routing_key=props.reply_to,
                     correlation_id=props.message_id)
 

@@ -54,7 +54,6 @@
 #
 # @Copyright@
 #
-from imgstorage.rabbitmqclient import RabbitMQLocator
 from imgstorage import runCommand, ActionError, ZvolBusyActionError
 import logging
 

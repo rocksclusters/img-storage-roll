@@ -202,8 +202,8 @@ class NasDaemon:
         error_message,
         ):
         if routing_key != None and action != None:
-            self.queue_connector.publish_message({'action': action,
-                    'status': 'error', 'error': error_message},
+            self.queue_connector.publish_message(json.dumps({'action': action,
+                    'status': 'error', 'error': error_message}),
                     exchange='', routing_key=routing_key)
         self.logger.error('Failed %s: %s' % (action, error_message))
 
@@ -229,7 +229,7 @@ class NasDaemon:
 
                     # create the zfs FS
 
-                    yield runCommandBackground(imgstoragedaemon.zfs_create
+                    yield runCommandBackground(zfs_create
                             + ['-V', '%sgb' % message['size'], '%s/%s'
                             % (zpool_name, zvol_name)])
                     cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) '
@@ -296,14 +296,14 @@ class NasDaemon:
                                     % remotehost)
                     self.release_zvol(zvol_name)
 
-                self.queue_connector.publish_message({
+                self.queue_connector.publish_message(json.dumps({
                     'action': 'map_zvol',
                     'target': iscsi_target,
                     'nas': ('%s.%s' % (self.NODE_NAME,
                             self.ib_net) if use_ib else self.NODE_NAME),
                     'size': message['size'],
                     'zvol': zvol_name,
-                    }, remotehost, self.NODE_NAME, on_fail=lambda : \
+                    }), remotehost, self.NODE_NAME, on_fail=lambda : \
                         failDeliver(iscsi_target, zvol_name,
                                     props.reply_to, remotehost))
                 self.logger.debug('Setting iscsi %s sent'
@@ -332,8 +332,8 @@ class NasDaemon:
                             % zvol_name)
 
                 self.lock_zvol(zvol_name, props.reply_to)
-                self.queue_connector.publish_message({'action': 'unmap_zvol'
-                        , 'target': target, 'zvol': zvol_name},
+                self.queue_connector.publish_message(json.dumps({'action': 'unmap_zvol'
+                        , 'target': target, 'zvol': zvol_name}),
                         remotehost, self.NODE_NAME, on_fail=lambda : \
                         self.failAction(props.reply_to, 'zvol_unmapped'
                         , 'Compute node %s is unavailable'
@@ -379,8 +379,8 @@ class NasDaemon:
                 con.commit()
 
                 self.release_zvol(zvol_name)
-                self.queue_connector.publish_message({'action': 'zvol_deleted'
-                        , 'status': 'success'}, exchange='',
+                self.queue_connector.publish_message(json.dumps({'action': 'zvol_deleted'
+                        , 'status': 'success'}), exchange='',
                         routing_key=props.reply_to)
             except ActionError, err:
                 if not isinstance(err, ZvolBusyActionError):
@@ -422,9 +422,9 @@ class NasDaemon:
                                 target])
                     con.commit()
 
-                self.queue_connector.publish_message({'action': 'zvol_mapped'
+                self.queue_connector.publish_message(json.dumps({'action': 'zvol_mapped'
                         , 'bdev': message['bdev'], 'status': 'success'
-                        }, exchange='', routing_key=reply_to)
+                        }), exchange='', routing_key=reply_to)
             except ActionError, err:
                 self.release_zvol(zvol)
                 self.failAction(reply_to, 'zvol_mapped', str(err))
@@ -467,8 +467,8 @@ class NasDaemon:
                                     time.time()])
                     con.commit()
 
-                self.queue_connector.publish_message({'action': 'zvol_unmapped'
-                        , 'status': 'success'}, exchange='',
+                self.queue_connector.publish_message(json.dumps({'action': 'zvol_unmapped'
+                        , 'status': 'success'}), exchange='',
                         routing_key=reply_to)
         except ActionError, err:
 
@@ -516,9 +516,9 @@ class NasDaemon:
                                 cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?'
                                         , [zvol])
                                 target = cur.fetchone()[0]
-                                self.queue_connector.publish_message({'action': 'sync_zvol'
+                                self.queue_connector.publish_message(json.dumps({'action': 'sync_zvol'
                                         , 'zvol': zvol,
-                                        'target': target}, remotehost,
+                                        'target': target}), remotehost,
                                         self.NODE_NAME,
                                         on_fail=lambda : \
                                         self.logger.error('Compute node %s is unavailable to sync zvol %s'
@@ -739,17 +739,17 @@ class NasDaemon:
                         )
             r = [dict((cur.description[i][0], value) for (i, value) in
                  enumerate(row)) for row in cur.fetchall()]
-            self.queue_connector.publish_message({'action': 'zvol_list'
-                    , 'status': 'success', 'body': r}, exchange='',
+            self.queue_connector.publish_message(json.dumps({'action': 'zvol_list'
+                    , 'status': 'success', 'body': r}), exchange='',
                     routing_key=properties.reply_to)
 
-    def process_message(self, properties, message):
+    def process_message(self, properties, message_str):
 
         # self.logger.debug("Received message %s"%message)
-
+        message = json.loads(message_str)
         if message['action'] not in self.function_dict.keys():
-            self.queue_connector.publish_message({'status': 'error',
-                    'error': 'action_unsupported'}, exchange='',
+            self.queue_connector.publish_message(json.dumps({'status': 'error',
+                    'error': 'action_unsupported'}), exchange='',
                     routing_key=properties.reply_to)
             return
 
@@ -761,8 +761,8 @@ class NasDaemon:
                                   % (sys.exc_info()[0],
                                   sys.exc_info()[1]))
             if properties.reply_to:
-                self.queue_connector.publish_message({'status': 'error'
-                        , 'error': sys.exc_info()[1].message},
+                self.queue_connector.publish_message(json.dumps({'status': 'error'
+                        , 'error': sys.exc_info()[1].message}),
                         exchange='', routing_key=properties.reply_to)
 
     def stop(self):
