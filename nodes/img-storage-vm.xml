@@ -34,7 +34,7 @@ mkdir /var/log/rocks
 #
 # while for the config file to be ready
 
-while [ ! -f /opt/rocks/etc/rabbitmq.conf ] ; do 
+while ! [ -f /opt/rocks/etc/rabbitmq.conf ] || ! [ -f /opt/rocks/etc/rabbitmq_img-storage.conf ] ; do
 	sleep 1;
 done
 

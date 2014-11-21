@@ -22,22 +22,17 @@
 	<package>roll-img-storage-usersguide</package>
 
 <post>
-/sbin/chkconfig rabbitmq-server on
-/usr/lib/rabbitmq/bin/rabbitmq-plugins enable rabbitmq_management
-
-# start the server and set up user credential
-/sbin/service rabbitmq-server start
 admin_pass=$(&lt; /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c26)
-/usr/sbin/rabbitmqctl add_user rocks ${admin_pass}
-/usr/sbin/rabbitmqctl set_user_tags rocks administrator
-/usr/sbin/rabbitmqctl set_permissions -p / rocks ".*" ".*" ".*"
-echo "amqp://rocks:${admin_pass}@&Kickstart_PrivateHostname;:5672/%2F?connection_attempts=1000&amp;frame_max=64000&amp;heartbeat_interval=30" \
-						&gt; /opt/rocks/etc/rabbitmq.conf
-chmod 400 /opt/rocks/etc/rabbitmq.conf
+/usr/sbin/rabbitmqctl add_user img-storage ${admin_pass}
+/usr/sbin/rabbitmqctl set_user_tags img-storage management
+/usr/sbin/rabbitmqctl add_vhost img-storage
+/usr/sbin/rabbitmqctl set_permissions -p img-storage img-storage ".*" ".*" ".*"
+echo "${admin_pass}" &gt; /opt/rocks/etc/rabbitmq_img-storage.conf
+chmod 400 /opt/rocks/etc/rabbitmq_img-storage.conf
 
 
 # adding rabbitmq to 411 so we push the password to the nodes
-echo "FILES_NOCOMMENT += /opt/rocks/etc/rabbitmq.conf" &gt;&gt; /var/411/Files.mk
+echo "FILES_NOCOMMENT += /opt/rocks/etc/rabbitmq_img-storage.conf" &gt;&gt; /var/411/Files.mk
 /usr/bin/make -C /var/411 411.mk
 
 # setting default attribute to install daemon

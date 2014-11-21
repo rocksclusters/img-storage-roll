@@ -53,7 +53,7 @@
 #
 # @Copyright@
 #
-from rabbitmqclient import RabbitMQCommonClient
+from rabbitmqclient import RabbitMQCommonClient, RabbitMQLocator
 from imgstorage import runCommand, ActionError, ZvolBusyActionError
 import logging
 
@@ -190,7 +190,8 @@ class NasDaemon:
             con.commit()
 
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage',
-                'direct', self.process_message, lambda a: \
+                'direct', "img-storage", "img-storage",
+                self.process_message, lambda a: \
                 self.startup())
         self.queue_connector.run()
 

@@ -62,7 +62,7 @@ import json
 import uuid
 from rocks.util import CommandError
 import logging
-from imgstorage.imgstoragedaemon import RabbitMQLocator
+from rabbitmqclient import RabbitMQLocator
 
 logging.basicConfig()
 
@@ -70,7 +70,10 @@ logging.basicConfig()
 class CommandLauncher:
 
     def __init__(self):
-        self.RABBITMQ_URL = RabbitMQLocator().RABBITMQ_URL
+        self.USERNAME = "img-storage"
+        loc = RabbitMQLocator(self.USERNAME)
+        self.RABBITMQ_PW = loc.RABBITMQ_PW
+        self.RABBITMQ_URL = loc.RABBITMQ_URL
         self.ret_message = None
 
     def callAddHostStoragemap(
@@ -119,8 +122,13 @@ class CommandLauncher:
                 'body': self.ret_message['body']}
 
     def callCommand(self, message, nas):
+        credentials = pika.PlainCredentials(self.USERNAME, self.RABBITMQ_PW)
+        parameters = pika.ConnectionParameters(self.RABBITMQ_URL,
+                                                       5672,
+                                                       self.USERNAME,
+                                                       credentials)
         connection = \
-            pika.BlockingConnection(pika.URLParameters(self.RABBITMQ_URL))
+            pika.BlockingConnection(parameters)
 
         channel = connection.channel()
 
