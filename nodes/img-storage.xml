@@ -24,9 +24,9 @@
 <post>
 admin_pass=$(&lt; /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c26)
 /usr/sbin/rabbitmqctl add_user img-storage ${admin_pass}
-/usr/sbin/rabbitmqctl set_user_tags img-storage management
 /usr/sbin/rabbitmqctl add_vhost img-storage
 /usr/sbin/rabbitmqctl set_permissions -p img-storage img-storage ".*" ".*" ".*"
+/usr/sbin/rabbitmqctl set_permissions -p img-storage admin ".*" ".*" ".*"
 echo "${admin_pass}" &gt; /opt/rocks/etc/rabbitmq_img-storage.conf
 chmod 400 /opt/rocks/etc/rabbitmq_img-storage.conf
 
