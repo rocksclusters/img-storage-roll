@@ -743,7 +743,7 @@ class NasDaemon:
                     , 'status': 'success', 'body': r}), exchange='',
                     routing_key=properties.reply_to)
 
-    def process_message(self, properties, message_str):
+    def process_message(self, properties, message_str, deliver):
 
         # self.logger.debug("Received message %s"%message)
         message = json.loads(message_str)

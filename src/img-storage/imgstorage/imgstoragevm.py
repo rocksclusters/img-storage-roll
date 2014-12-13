@@ -501,7 +501,7 @@ class VmDaemon:
         self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT,
                 self.run_sync)
 
-    def process_message(self, props, message_str):
+    def process_message(self, props, message_str, deliver):
         message = json.loads(message_str)
         self.logger.debug('Received message %s' % message)
         if message['action'] not in self.function_dict.keys():
