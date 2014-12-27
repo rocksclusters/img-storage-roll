@@ -53,7 +53,7 @@
 #
 # @Copyright@
 #
-from rabbitmqclient import RabbitMQCommonClient, RabbitMQLocator
+from rabbitmqclient import RabbitMQCommonClient
 from imgstorage import *
 import imgstorage
 from imgstoragedaemon import *
@@ -122,7 +122,7 @@ def get_zfs_list():
 class VmDaemon:
 
     def __init__(self):
-        self.NODE_NAME = RabbitMQLocator.NODE_NAME
+        self.NODE_NAME = NodeConfig.NODE_NAME
         self.stdin_path = '/dev/null'
         self.stdout_path = '/dev/null'
         self.stderr_path = '/tmp/err.log'
@@ -138,7 +138,7 @@ class VmDaemon:
             logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
         self.sync_enabled = self.is_sync_enabled()
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
-        self.ZPOOL = RabbitMQLocator.VM_CONTAINER_ZPOOL
+        self.ZPOOL = NodeConfig.VM_CONTAINER_ZPOOL
         if self.sync_enabled and not self.ZPOOL:
             raise Exception('Missing vm_container_zpool attribute')
 

@@ -53,8 +53,8 @@
 #
 # @Copyright@
 #
-from rabbitmqclient import RabbitMQCommonClient, RabbitMQLocator
-from imgstorage import runCommand, ActionError, ZvolBusyActionError
+from rabbitmqclient import RabbitMQCommonClient
+from imgstorage import runCommand, ActionError, ZvolBusyActionError, NodeConfig
 import logging
 
 import traceback
@@ -148,14 +148,14 @@ class NasDaemon:
             }
 
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
-        self.NODE_NAME = RabbitMQLocator.NODE_NAME
-        self.ib_net = RabbitMQLocator.IB_NET
+        self.NODE_NAME = NodeConfig.NODE_NAME
+        self.ib_net = NodeConfig.IB_NET
 
         self.sync_result = None
 
         self.results = {}
-        if RabbitMQLocator.IMG_SYNC_WORKERS:
-            self.SYNC_WORKERS = int(RabbitMQLocator.IMG_SYNC_WORKERS)
+        if NodeConfig.IMG_SYNC_WORKERS:
+            self.SYNC_WORKERS = int(NodeConfig.IMG_SYNC_WORKERS)
         else:
             self.SYNC_WORKERS = 5
 
