@@ -538,7 +538,8 @@ class VmDaemon:
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage',
                 'direct', "img-storage", "img-storage",
                 self.process_message, lambda a: \
-                self.run_sync())
+                self.run_sync(),
+                routing_key=NodeConfig.NODE_NAME)
         self.queue_connector.run()
 
     def stop(self):

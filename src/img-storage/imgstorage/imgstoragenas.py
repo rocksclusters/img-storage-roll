@@ -192,7 +192,8 @@ class NasDaemon:
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage',
                 'direct', "img-storage", "img-storage",
                 self.process_message, lambda a: \
-                self.startup())
+                self.startup(),
+                routing_key=NodeConfig.NODE_NAME)
         self.queue_connector.run()
 
     def failAction(
