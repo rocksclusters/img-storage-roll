@@ -77,20 +77,22 @@ from pysqlite2 import dbapi2 as sqlite3
 
 
 def get_blk_dev_list():
+    """ Return mappings of isci targets """
     try:
         out = runCommand(['iscsiadm', '-m', 'session', '-P3'])
+        mappings = {}
+        cur_target = None
+        for line in out:
+            if 'Target: ' in line:
+                cur_target = re.search(r'Target: ([\w\-\.]*)', line,
+                                       re.M).group(1)
+            if 'Attached scsi disk ' in line:
+                blockdev = re.search(r'Attached scsi disk (\w*)', line,
+                                     re.M)
+                mappings[cur_target] = blockdev.group(1)
     except:
         return {}
-    mappings = {}
-    cur_target = None
-    for line in out:
-        if 'Target: ' in line:
-            cur_target = re.search(r'Target: ([\w\-\.]*)$', line,
-                                   re.M).group(1)
-        if 'Attached scsi disk ' in line:
-            blockdev = re.search(r'Attached scsi disk (\w*)', line,
-                                 re.M)
-            mappings[cur_target] = blockdev.group(1)
+
     return mappings
 
 
