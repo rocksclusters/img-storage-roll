@@ -17,6 +17,7 @@
 	$Log$
 	</changelog>
 
+	<package>img-storage-pw-plugin</package>
 	<package>pika</package>
 	<package>rocks-command-imgstorage</package>
 	<package>roll-img-storage-usersguide</package>
@@ -29,11 +30,10 @@ admin_pass=$(&lt; /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c26)
 /usr/sbin/rabbitmqctl set_permissions -p img-storage admin ".*" ".*" ".*"
 echo "${admin_pass}" &gt; /opt/rocks/etc/rabbitmq_img-storage.conf
 chmod 400 /opt/rocks/etc/rabbitmq_img-storage.conf
+/opt/rocks/bin/rocks add sec_attr attr=img-storage_pw crypted=true value=/opt/rocks/etc/rabbitmq_img-storage.conf
 
-
-# adding rabbitmq to 411 so we push the password to the nodes
-echo "FILES_NOCOMMENT += /opt/rocks/etc/rabbitmq_img-storage.conf" &gt;&gt; /var/411/Files.mk
-/usr/bin/make -C /var/411 411.mk
+# rabbitmq_img_pw is synced through rocks sync host sec_attr, not through 411.
+# see /var/opt/rocks/plugins on frontend 
 
 # setting default attribute to install daemon
 # all vm-container run the vm daemon
