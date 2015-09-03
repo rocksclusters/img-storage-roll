@@ -49,19 +49,19 @@ rm /etc/rc.d/rocksconfig.d/post-99-restart-img-storage
 
 <post cond="img_sync">
 <file name="/etc/udev/rules.d/91-zfs-permissions.rules" perms="644">
-ACTION=="add", KERNEL=="zfs", MODE="0660", GROUP="zfs"
+ACTION=="add", KERNEL=="zfs", MODE="0660", GROUP="img-storage"
 </file>
 
 <file name="/etc/rc.d/rocksconfig.d/post-98-restart-udev-zfs-perm" perms="755">
 #!/bin/bash
 #
-# while for the zfs user to appear
+# while for the img-storage user to appear
 
-while [ ! `id -u zfs` ];do
+while [ ! `id -u img-storage` ];do
 	sleep 5
 done
 
-# so udevd sees that there is not zfs group at boot time
+# so udevd sees that there is not img-storage group at boot time
 # then it caches that value for the 91-zfs-permissions.rules
 #
 # to stop this behaviour we need to touch the file

@@ -42,7 +42,7 @@ echo "FILES_NOCOMMENT += /opt/rocks/etc/rabbitmq_img-storage.conf" &gt;&gt; /var
 /opt/rocks/bin/rocks set appliance attr nas img_storage_nas true
 /opt/rocks/bin/rocks set appliance attr compute vm_container_zpool tank
 
-/usr/sbin/adduser zfs -m
+/usr/sbin/adduser img-storage -m
 /opt/rocks/bin/rocks sync users
 </post>
 
