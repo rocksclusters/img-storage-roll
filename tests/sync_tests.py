@@ -167,7 +167,7 @@ class TestSyncFunctions(unittest.TestCase):
             self.assertFalse(self.check_zvol_busy(zvol))
             
             print mock_run_command.mock_calls
-            mock_run_command.assert_any_call(['su', 'zfs', '-c', '/usr/bin/ssh compute-0-3 "/sbin/zfs destroy my_tank/%s -r"'%zvol])
+            mock_run_command.assert_any_call(['su', 'img-storage', '-c', '/usr/bin/ssh compute-0-3 "/sbin/zfs destroy my_tank/%s -r"'%zvol])
 
 
     @mock.patch('imgstorage.imgstoragenas.runCommand', return_value=
