@@ -1,22 +1,29 @@
 #!/bin/bash
  
 if [ $# -lt 1 ] ; then
-   echo "Usage: $0 zpool zvol remotehost remotehost_zpool is_delete_remote
-f.e.: $0 tank vm-hpcdev-pub03-0-vol compute-0-1 tank 0"
+   echo "Usage: $0 zpool zvol remotehost is_delete_remote
+f.e.: $0 tank vm-hpcdev-pub03-0-vol compute-0-1 0"
    exit 1
 fi
 
-REMOTE_SNAPSHOTS_TRIM=3
-LOCAL_SNAPSHOTS_TRIM=3
+# Save standard output and standard error
+exec 3>&1 4>&2
+# Redirect standard output to a log file
+exec 1>/tmp/stdout.log
+# Redirect standard error to a log file
+exec 2>/tmp/stderr.log
+
+
+REMOTE_SNAPSHOTS_TRIM=10
+LOCAL_SNAPSHOTS_TRIM=10
 
 ZPOOL=$1
 ZVOL=$2
 REMOTEHOST=$3
-REMOTEZPOOL=$4
+IS_DELETE_REMOTE=$4
 
-THROTTLE=`/opt/rocks/bin/rocks list host attr $REMOTEHOST | grep -q img_download_speed`
-
-IS_DELETE_REMOTE=$6
+REMOTEZPOOL=`/opt/rocks/bin/rocks list host attr $REMOTEHOST | grep "vm_container_zpool " | awk '{print $3}'`
+THROTTLE=`/opt/rocks/bin/rocks list host attr $REMOTEHOST | grep "img_download_speed " | awk '{print $3}'`
 
 SNAP_NAME=`/usr/bin/uuidgen`
 LOCAL_LAST_SNAP_NAME=`/sbin/zfs list -Hpr -t snapshot -o name -s creation "$ZPOOL/$ZVOL" | tail -n 1 | sed -e 's/.\+@//g'`

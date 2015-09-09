@@ -601,11 +601,11 @@ class NasDaemon:
         zvol,
         remotehost,
         ):
-        runCommand('/opt/rocks/bin/snapshot_download.sh', 
+        runCommand(['/opt/rocks/bin/snapshot_upload.sh', 
                 zpool, 
                 zvol, 
                 remotehost, 
-                self.get_node_zpool(remotehost)) 
+                self.get_node_zpool(remotehost)])
 
     def download_snapshot(
         self,
@@ -615,12 +615,12 @@ class NasDaemon:
         is_delete_remote
         ):
 
-        runCommand('/opt/rocks/bin/snapshot_download.sh', 
+        runCommand(['/opt/rocks/bin/snapshot_download.sh', 
                 zpool, 
                 zvol, 
                 remotehost, 
                 self.get_node_zpool(remotehost), 
-                is_delete_remote)
+                "%s"%is_delete_remote])
 
     def detach_target(self, target, is_remove_host):
         if target:
