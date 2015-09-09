@@ -29,5 +29,5 @@ setup(
     # disable zip installation
     zip_safe = False,
     #the command line called by users    
-    scripts=['bin/img-storage-nas', 'bin/imgstorageadmin'],
+    scripts=['bin/img-storage-nas', 'bin/imgstorageadmin', 'bin/snapshot_download.sh', 'bin/snapshot_upload.sh'],
 )

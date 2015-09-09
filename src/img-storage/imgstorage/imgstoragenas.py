@@ -525,29 +525,10 @@ class NasDaemon:
                                         self.logger.error('Compute node %s is unavailable to sync zvol %s'
                                          % (remotehost, zvol)))  # reply back to compute node
                             elif is_delete_remote:
-                                yield runCommandBackground(['su', 'img-storage'
-                                        , '-c',
-                                        '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'
-                                         % (remotehost,
-                                        self.get_node_zpool(remotehost),
-                                        zvol)])
                                 cur.execute('UPDATE zvols SET remotehost = NULL, zpool = NULL where zvol = ?'
                                         , [zvol])
                                 con.commit()
                                 self.release_zvol(zvol)
-                            else:
-                                (out, err) = \
-                                    (yield runCommandBackground(['su',
-                                        'img-storage', '-c',
-                                        '/usr/bin/ssh %s "/sbin/zfs list -Hpr -t snapshot -o name -s creation  %s/%s"'
-                                         % (remotehost,
-                                        self.get_node_zpool(remotehost),
-                                        zvol)]))
-
-                                for snapshot in out[:-2]:
-                                    yield runCommandBackground(['su',
-        'img-storage', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s"'
-        % (remotehost, snapshot)])
                         except ActionError, msg:
 
                             self.logger.exception('Error performing sync for %s: %s'
@@ -580,7 +561,7 @@ class NasDaemon:
                         else:
                             self.results[zvol] = \
                                 self.pool.apply_async(self.download_snapshot,
-                                    [zpool, zvol, remotehost])
+                                    [zpool, zvol, remotehost, is_delete_remote])
 
                 self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT,
                         self.schedule_next_sync)
@@ -620,68 +601,26 @@ class NasDaemon:
         zvol,
         remotehost,
         ):
-        params = {
-            'zpool': zpool,
-            'zvol': zvol,
-            'snap_name': uuid.uuid4(),
-            'remotehost': remotehost,
-            'remotehost_zpool': self.get_node_zpool(remotehost),
-            }
-
-        upload_speed = imgstorage.get_attribute('img_upload_speed',
-                remotehost, self.logger)
-        params['throttle'] = (' | pv -L %s -q '
-                              % upload_speed if upload_speed else '')
-
-        runCommand(['zfs', 'snap', '%(zpool)s/%(zvol)s@%(snap_name)s'
-                   % params])
-        runCommand(['zfs send %(zpool)s/%(zvol)s@%(snap_name)s %(throttle)s | su img-storage -c \'ssh %(remotehost)s "/sbin/zfs receive -F %(remotehost_zpool)s/%(zvol)s"\''
-                    % params], shell=True)
+        runCommand('/opt/rocks/bin/snapshot_download.sh', 
+                zpool, 
+                zvol, 
+                remotehost, 
+                self.get_node_zpool(remotehost)) 
 
     def download_snapshot(
         self,
         zpool,
         zvol,
         remotehost,
+        is_delete_remote
         ):
-        params = {
-            'zpool': zpool,
-            'zvol': zvol,
-            'snap_name': uuid.uuid4(),
-            'remotehost': remotehost,
-            'remotehost_zpool': self.get_node_zpool(remotehost),
-            'local_last_snapshot': self.find_last_snapshot(zpool,
-                    zvol),
-            }
 
-        download_speed = imgstorage.get_attribute('img_download_speed',
-                remotehost, self.logger)
-        params['throttle'] = (' | pv -L %s -q '
-                              % download_speed if download_speed else ''
-                              )
-
-        runCommand(['su', 'img-storage', '-c',
-                   '/usr/bin/ssh %(remotehost)s "/sbin/zfs snap %(remotehost_zpool)s/%(zvol)s@%(snap_name)s"'
-                    % params])
-        runCommand(['su img-storage -c \'/usr/bin/ssh %(remotehost)s "/sbin/zfs send -i %(remotehost_zpool)s/%(zvol)s@%(local_last_snapshot)s %(remotehost_zpool)s/%(zvol)s@%(snap_name)s"\' %(throttle)s | zfs receive -F %(zpool)s/%(zvol)s'
-                    % params], shell=True)
-
-        def destroy_local_snapshot(snapshot):
-            runCommand(['/sbin/zfs', 'destroy', snapshot])
-
-        out = runCommand([
-            '/sbin/zfs',
-            'list',
-            '-Hpr',
-            '-t',
-            'snapshot',
-            '-o',
-            'name',
-            '-s',
-            'creation',
-            '%s/%s' % (zpool, zvol),
-            ])
-        map(destroy_local_snapshot, out[:-2])
+        runCommand('/opt/rocks/bin/snapshot_download.sh', 
+                zpool, 
+                zvol, 
+                remotehost, 
+                self.get_node_zpool(remotehost), 
+                is_delete_remote)
 
     def detach_target(self, target, is_remove_host):
         if target:
@@ -814,19 +753,3 @@ class NasDaemon:
                         , [remotehost])
             return cur.fetchone() is not None
 
-    def find_last_snapshot(self, zpool, zvol):
-        out = runCommand([
-            'zfs',
-            'list',
-            '-Hpr',
-            '-t',
-            'snapshot',
-            '-o',
-            'name',
-            '-s',
-            'creation',
-            '%s/%s' % (zpool, zvol),
-            ])
-        if not out:
-            raise ActionError('No shapshots found')
-        return out[-1].split('@')[1]

@@ -1,8 +1,8 @@
 #!/bin/bash
  
 if [ $# -lt 1 ] ; then
-   echo "Usage: $0 zpool zvol remotehost remotehost_zpool throttle is_delete_remote
-f.e.: $0 tank vm-hpcdev-pub03-0-vol compute-0-1 tank 10G 0"
+   echo "Usage: $0 zpool zvol remotehost remotehost_zpool is_delete_remote
+f.e.: $0 tank vm-hpcdev-pub03-0-vol compute-0-1 tank 0"
    exit 1
 fi
 
@@ -13,7 +13,9 @@ ZPOOL=$1
 ZVOL=$2
 REMOTEHOST=$3
 REMOTEZPOOL=$4
-THROTTLE=$5
+
+THROTTLE=`/opt/rocks/bin/rocks list host attr $REMOTEHOST | grep -q img_download_speed`
+
 IS_DELETE_REMOTE=$6
 
 SNAP_NAME=`/usr/bin/uuidgen`

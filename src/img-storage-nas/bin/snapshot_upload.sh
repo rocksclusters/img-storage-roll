@@ -1,8 +1,8 @@
 #!/bin/bash
  
 if [ $# -lt 1 ] ; then
-   echo "Usage: $0 zpool zvol remotehost remotehost_zpool throttle
-f.e.: $0 tank vm-hpcdev-pub03-0-vol compute-0-1 tank 10G"
+   echo "Usage: $0 zpool zvol remotehost remotehost_zpool
+f.e.: $0 tank vm-hpcdev-pub03-0-vol compute-0-1 tank"
    exit 1
 fi
 
@@ -12,7 +12,8 @@ ZPOOL=$1
 ZVOL=$2
 REMOTEHOST=$3
 REMOTEZPOOL=$4
-THROTTLE=$5
+
+THROTTLE=`/opt/rocks/bin/rocks list host attr $REMOTEHOST | grep -q img_upload_speed`
 
 SNAP_NAME=`/usr/bin/uuidgen`
 
