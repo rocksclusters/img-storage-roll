@@ -604,8 +604,7 @@ class NasDaemon:
         runCommand(['/opt/rocks/bin/snapshot_upload.sh', 
                 zpool, 
                 zvol, 
-                remotehost, 
-                self.get_node_zpool(remotehost)])
+                remotehost])
 
     def download_snapshot(
         self,
@@ -615,12 +614,15 @@ class NasDaemon:
         is_delete_remote
         ):
 
-        runCommand(['/opt/rocks/bin/snapshot_download.sh', 
-                zpool, 
-                zvol, 
-                remotehost, 
-                self.get_node_zpool(remotehost), 
-                "%s"%is_delete_remote])
+
+        cmd = subprocess.Popen(['/opt/rocks/bin/snapshot_download.sh', 
+                    zpool, 
+                    zvol, 
+                    remotehost, 
+                    "%s"%is_delete_remote], 
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, shell=False)
+        
 
     def detach_target(self, target, is_remove_host):
         if target:
@@ -743,13 +745,4 @@ class NasDaemon:
         return imgstorage.get_attribute('vm_container_zpool',
                 remotehost, self.logger)
 
-    def is_remotehost_busy(self, remotehost):
-        with sqlite3.connect(self.SQLITE_DB) as con:
-            cur = con.cursor()
-            cur.execute('''SELECT zvols.remotehost 
-                            FROM zvols JOIN zvol_calls 
-                            ON zvols.zvol = zvol_calls.zvol 
-                            WHERE remotehost =?'''
-                        , [remotehost])
-            return cur.fetchone() is not None
 
