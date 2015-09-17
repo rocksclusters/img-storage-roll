@@ -621,7 +621,7 @@ class NasDaemon:
                     remotehost, 
                     "%s"%is_delete_remote], 
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, shell=False)
+                stderr=subprocess.PIPE)
         
 
     def detach_target(self, target, is_remove_host):
