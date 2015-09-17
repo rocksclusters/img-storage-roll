@@ -138,23 +138,31 @@ class VmDaemon:
             }
         self.logger = \
             logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
-        self.sync_enabled = self.is_sync_enabled()
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
-        self.ZPOOL = NodeConfig.VM_CONTAINER_ZPOOL
-        if self.sync_enabled and not self.ZPOOL:
-            raise Exception('Missing vm_container_zpool attribute')
 
         self.temp_size = 35
 
         self.SYNC_CHECK_TIMEOUT = 10
 
-        rocks.db.helper.DatabaseHelper().closeSession()  # to reopen after daemonization
+        self.init_params()
 
-    def is_sync_enabled(self):
+    def init_params(self):
         """return True if this node has the attribute img_sync == 'true'"""
 
-        sync_enable = imgstorage.get_attribute('img_sync', None,
-                self.logger)
+        db = rocks.db.helper.DatabaseHelper()
+        db.connect()
+        NODE_NAME = db.getHostname()
+        IB_NET = db.getHostAttr(db.getHostname(), 'IB_net')
+        self.ZPOOL = db.getHostAttr(db.getHostname(),
+                'vm_container_zpool')
+        self.sync_enabled = rocks.util.str2bool(db.getHostAttr(db.getHostname(),
+                'img_sync')
+        db.close()
+        db.closeSession()
+
+        if self.sync_enabled and not self.ZPOOL:
+            raise Exception('Missing vm_container_zpool attribute')
+
         return rocks.util.str2bool(sync_enable)
 
     @coroutine

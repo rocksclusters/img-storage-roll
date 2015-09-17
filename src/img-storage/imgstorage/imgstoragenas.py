@@ -54,7 +54,7 @@
 # @Copyright@
 #
 from rabbitmqclient import RabbitMQCommonClient
-from imgstorage import runCommand, ActionError, ZvolBusyActionError, NodeConfig
+from imgstorage import runCommand, ActionError, ZvolBusyActionError
 import logging
 
 import traceback
@@ -148,26 +148,31 @@ class NasDaemon:
             }
 
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
-        self.NODE_NAME = NodeConfig.NODE_NAME
-        self.ib_net = NodeConfig.IB_NET
 
         self.sync_result = None
 
         self.results = {}
-        if NodeConfig.IMG_SYNC_WORKERS:
-            self.SYNC_WORKERS = int(NodeConfig.IMG_SYNC_WORKERS)
-        else:
-            self.SYNC_WORKERS = 5
+        self.SYNC_WORKERS = 5
 
         self.SYNC_CHECK_TIMEOUT = 10
         self.SYNC_PULL_TIMEOUT = 60 * 5
-
-        rocks.db.helper.DatabaseHelper().closeSession()  # to reopen after daemonization
 
         self.logger = \
             logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
 
     def run(self):
+
+        self.db = rocks.db.helper.DatabaseHelper()
+        self.db.connect()
+
+        self.NODE_NAME = self.db.getHostname()
+        self.ib_net = self.db.getHostAttr(self.db.getHostname(), 'IB_net')
+        IMG_SYNC_WORKERS = self.db.getHostAttr(self.db.getHostname(),
+                'img_sync_workers')
+        if IMG_SYNC_WORKERS:
+            self.SYNC_WORKERS = int(IMG_SYNC_WORKERS)
+
+
         self.pool = ThreadPool(processes=self.SYNC_WORKERS)
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
@@ -711,6 +716,10 @@ class NasDaemon:
         self.queue_connector.stop()
         self.logger.info('RabbitMQ connector stopping called')
 
+        self.db.close()
+        self.db.closeSession()
+
+
     def lock_zvol(self, zvol_name, reply_to):
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
@@ -738,11 +747,6 @@ class NasDaemon:
         """ Get information from attributes if image sync is enabled for the
         node"""
 
-        return imgstorage.get_attribute('img_sync', remotehost,
-                self.logger)
-
-    def get_node_zpool(self, remotehost):
-        return imgstorage.get_attribute('vm_container_zpool',
-                remotehost, self.logger)
-
+        hostname = str(self.db.getHostname(remotehost))
+        return self.db.getHostAttr(hostname, 'img_sync')
 

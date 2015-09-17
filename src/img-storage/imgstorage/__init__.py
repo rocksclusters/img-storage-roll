@@ -127,9 +127,6 @@ def get_attribute(attr_name, hostname, logger=None):
         db = rocks.db.helper.DatabaseHelper()
         db.connect()
         hostname = str(db.getHostname(hostname))
-
-        # logger.debug('hostname %s attr_name %s' % (hostname, attr_name))
-
         value = db.getHostAttr(hostname, attr_name)
         return value
     except Exception, e:
@@ -156,13 +153,3 @@ def isFileUsed(file):
 
         return True
 
-class NodeConfig:
-    db = rocks.db.helper.DatabaseHelper()
-    db.connect()
-    NODE_NAME = db.getHostname()
-    IB_NET = db.getHostAttr(db.getHostname(), 'IB_net')
-    VM_CONTAINER_ZPOOL = db.getHostAttr(db.getHostname(),
-            'vm_container_zpool')
-    IMG_SYNC_WORKERS = db.getHostAttr(db.getHostname(),
-            'img_sync_workers')
-    db.close()
