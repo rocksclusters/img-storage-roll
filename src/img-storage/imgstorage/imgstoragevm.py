@@ -124,7 +124,6 @@ def get_zfs_list():
 class VmDaemon:
 
     def __init__(self):
-        self.NODE_NAME = NodeConfig.NODE_NAME
         self.stdin_path = '/dev/null'
         self.stdout_path = '/dev/null'
         self.stderr_path = '/tmp/err.log'
@@ -151,19 +150,17 @@ class VmDaemon:
 
         db = rocks.db.helper.DatabaseHelper()
         db.connect()
-        NODE_NAME = db.getHostname()
-        IB_NET = db.getHostAttr(db.getHostname(), 'IB_net')
+        self.NODE_NAME = db.getHostname()
+        self.IB_NET = db.getHostAttr(db.getHostname(), 'IB_net')
         self.ZPOOL = db.getHostAttr(db.getHostname(),
                 'vm_container_zpool')
         self.sync_enabled = rocks.util.str2bool(db.getHostAttr(db.getHostname(),
-                'img_sync')
+                'img_sync'))
         db.close()
         db.closeSession()
 
         if self.sync_enabled and not self.ZPOOL:
             raise Exception('Missing vm_container_zpool attribute')
-
-        return rocks.util.str2bool(sync_enable)
 
     @coroutine
     def map_zvol(self, message, props):
@@ -549,7 +546,7 @@ class VmDaemon:
                 'direct', "img-storage", "img-storage",
                 self.process_message, lambda a: \
                 self.run_sync(),
-                routing_key=NodeConfig.NODE_NAME)
+                routing_key=self.NODE_NAME)
         self.queue_connector.run()
 
     def stop(self):
