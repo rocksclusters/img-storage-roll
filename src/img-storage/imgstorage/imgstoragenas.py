@@ -132,6 +132,9 @@ def runCommandBackground(cmdlist, shell=False):
 class NasDaemon:
 
     def __init__(self):
+        ## FIXME: user should be configurable at startup 
+        self.imgUser = 'img-storage'    
+
         self.stdin_path = '/dev/null'
         self.stdout_path = '/tmp/out.log'
         self.stderr_path = '/tmp/err.log'
@@ -226,17 +229,26 @@ class NasDaemon:
                 cur.execute('SELECT count(*) FROM zvols WHERE zvol = ?'
                             , [zvol_name])
 
+		volume = "%s/%s" % (zpool_name, zvol_name)
                 if cur.fetchone()[0] == 0:
 
-                    # create the zfs FS
+       	            """ Create a zvol, if it doesn't already exist """ 
+       	            # check if volume already exists
+                    self.logger.debug('checking if  zvol %s exists' % volume)
+                    rcode = subprocess.call(["zfs","list",volume])
+                    self.logger.debug('check complete (%s)' % volume)
+       	            if rcode != 0:
+                        # create the zfs FS
+                        yield runCommandBackground(zfs_create
+                            + ['-V', '%sgb' % message['size'], volume ])
+                        self.logger.debug('Created new zvol %s' % volume)
+       	            else:
+                        self.logger.debug('Vol %s exists' % volume)
 
-                    yield runCommandBackground(zfs_create
-                            + ['-V', '%sgb' % message['size'], '%s/%s'
-                            % (zpool_name, zvol_name)])
                     cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) '
                                 , (zvol_name, None, None, None))
                     con.commit()
-                    self.logger.debug('Created new zvol %s' % zvol_name)
+                    self.logger.debug('Created new zvol %s' % volume)
 
                 cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?'
                             , [zvol_name])
@@ -525,7 +537,7 @@ class NasDaemon:
                                         self.logger.error('Compute node %s is unavailable to sync zvol %s'
                                          % (remotehost, zvol)))  # reply back to compute node
                             elif is_delete_remote:
-                                yield runCommandBackground(['su', 'img-storage'
+                                yield runCommandBackground(['su', self.imgUser 
                                         , '-c',
                                         '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'
                                          % (remotehost,
@@ -538,7 +550,7 @@ class NasDaemon:
                             else:
                                 (out, err) = \
                                     (yield runCommandBackground(['su',
-                                        'img-storage', '-c',
+                                        self.imgUser, '-c',
                                         '/usr/bin/ssh %s "/sbin/zfs list -Hpr -t snapshot -o name -s creation  %s/%s"'
                                          % (remotehost,
                                         self.get_node_zpool(remotehost),
@@ -546,7 +558,7 @@ class NasDaemon:
 
                                 for snapshot in out[:-2]:
                                     yield runCommandBackground(['su',
-        'img-storage', '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s"'
+        self.imgUser, '-c', '/usr/bin/ssh %s "/sbin/zfs destroy %s"'
         % (remotehost, snapshot)])
                         except ActionError, msg:
 
@@ -621,6 +633,7 @@ class NasDaemon:
         remotehost,
         ):
         params = {
+            'user': self.imgUser,
             'zpool': zpool,
             'zvol': zvol,
             'snap_name': uuid.uuid4(),
@@ -635,7 +648,7 @@ class NasDaemon:
 
         runCommand(['zfs', 'snap', '%(zpool)s/%(zvol)s@%(snap_name)s'
                    % params])
-        runCommand(['zfs send %(zpool)s/%(zvol)s@%(snap_name)s %(throttle)s | su img-storage -c \'ssh %(remotehost)s "/sbin/zfs receive -F %(remotehost_zpool)s/%(zvol)s"\''
+        runCommand(['zfs send %(zpool)s/%(zvol)s@%(snap_name)s %(throttle)s | su %(user)s -c \'ssh %(remotehost)s "/sbin/zfs receive -F %(remotehost_zpool)s/%(zvol)s"\''
                     % params], shell=True)
 
     def download_snapshot(
@@ -645,6 +658,7 @@ class NasDaemon:
         remotehost,
         ):
         params = {
+            'user': self.imgUser,
             'zpool': zpool,
             'zvol': zvol,
             'snap_name': uuid.uuid4(),
@@ -660,10 +674,10 @@ class NasDaemon:
                               % download_speed if download_speed else ''
                               )
 
-        runCommand(['su', 'img-storage', '-c',
+        runCommand(['su', self.imgUser, '-c',
                    '/usr/bin/ssh %(remotehost)s "/sbin/zfs snap %(remotehost_zpool)s/%(zvol)s@%(snap_name)s"'
                     % params])
-        runCommand(['su img-storage -c \'/usr/bin/ssh %(remotehost)s "/sbin/zfs send -i %(remotehost_zpool)s/%(zvol)s@%(local_last_snapshot)s %(remotehost_zpool)s/%(zvol)s@%(snap_name)s"\' %(throttle)s | zfs receive -F %(zpool)s/%(zvol)s'
+        runCommand(['su %(user)s -c \'/usr/bin/ssh %(remotehost)s "/sbin/zfs send -i %(remotehost_zpool)s/%(zvol)s@%(local_last_snapshot)s %(remotehost_zpool)s/%(zvol)s@%(snap_name)s"\' %(throttle)s | zfs receive -F %(zpool)s/%(zvol)s'
                     % params], shell=True)
 
         def destroy_local_snapshot(snapshot):
