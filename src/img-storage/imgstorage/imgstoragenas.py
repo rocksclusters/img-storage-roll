@@ -160,6 +160,11 @@ class NasDaemon:
         self.logger = \
             logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
 
+        db = rocks.db.helper.DatabaseHelper() 
+        db.close()
+        db.closeSession()
+
+
     def run(self):
 
         self.db = rocks.db.helper.DatabaseHelper()
@@ -198,7 +203,7 @@ class NasDaemon:
                 'direct', "img-storage", "img-storage",
                 self.process_message, lambda a: \
                 self.startup(),
-                routing_key=NodeConfig.NODE_NAME)
+                routing_key=self.NODE_NAME)
         self.queue_connector.run()
 
     def failAction(
