@@ -134,6 +134,7 @@ class NasDaemon:
     def __init__(self):
         ## FIXME: user should be configurable at startup 
         self.imgUser = 'img-storage'    
+	self.prefix = "IMG-STORAGE-"
 
         self.stdin_path = '/dev/null'
         self.stdout_path = '/tmp/out.log'
@@ -626,6 +627,9 @@ class NasDaemon:
         self.queue_connector._connection.add_timeout(self.SYNC_PULL_TIMEOUT,
                 self.schedule_zvols_pull)
 
+    def snapname(self):
+        return self.prefix + str(uuid.uuid4())
+
     def upload_snapshot(
         self,
         zpool,
@@ -636,7 +640,7 @@ class NasDaemon:
             'user': self.imgUser,
             'zpool': zpool,
             'zvol': zvol,
-            'snap_name': uuid.uuid4(),
+            'snap_name': self.snapname(),
             'remotehost': remotehost,
             'remotehost_zpool': self.get_node_zpool(remotehost),
             }
@@ -661,7 +665,7 @@ class NasDaemon:
             'user': self.imgUser,
             'zpool': zpool,
             'zvol': zvol,
-            'snap_name': uuid.uuid4(),
+            'snap_name': self.snapname(),
             'remotehost': remotehost,
             'remotehost_zpool': self.get_node_zpool(remotehost),
             'local_last_snapshot': self.find_last_snapshot(zpool,
@@ -695,6 +699,8 @@ class NasDaemon:
             'creation',
             '%s/%s' % (zpool, zvol),
             ])
+	## Find only the snapshots that we have created
+	out = filter(lambda x : x.find(self.prefix) >= 0, out)
         map(destroy_local_snapshot, out[:-2])
 
     def detach_target(self, target, is_remove_host):
