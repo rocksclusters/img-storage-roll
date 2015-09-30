@@ -72,6 +72,7 @@ import signal
 import pika
 import socket
 import rocks.db.helper
+import rocks.util
 import uuid
 
 import subprocess
@@ -817,8 +818,8 @@ class NasDaemon:
         """ Get information from attributes if image sync is enabled for the
         node"""
 
-        return imgstorage.get_attribute('img_sync', remotehost,
-                self.logger)
+        return rocks.util.str2bool(imgstorage.get_attribute('img_sync', remotehost,
+                self.logger))
 
     def get_node_zpool(self, remotehost):
         return imgstorage.get_attribute('vm_container_zpool',
