@@ -72,6 +72,7 @@ import signal
 import pika
 import socket
 import rocks.db.helper
+import rocks.util
 import uuid
 
 import subprocess
@@ -132,6 +133,9 @@ def runCommandBackground(cmdlist, shell=False):
 class NasDaemon:
 
     def __init__(self):
+        ## FIXME: user should be configurable at startup 
+        self.imgUser = 'img-storage'    
+
         self.stdin_path = '/dev/null'
         self.stdout_path = '/tmp/out.log'
         self.stderr_path = '/tmp/err.log'
@@ -236,19 +240,27 @@ class NasDaemon:
                 cur.execute('SELECT count(*) FROM zvols WHERE zvol = ?'
                             , [zvol_name])
 
+                volume = "%s/%s" % (zpool_name, zvol_name)
                 if cur.fetchone()[0] == 0:
 
-                    # create the zfs FS
-
-                    yield runCommandBackground(zfs_create
-                            + ['-V', '%sgb' % message['size'], '%s/%s'
-                            % (zpool_name, zvol_name)])
+       	            """ Create a zvol, if it doesn't already exist """ 
+       	            # check if volume already exists
+                    self.logger.debug('checking if  zvol %s exists' % volume)
+                    rcode = subprocess.call(["zfs","list",volume])
+                    self.logger.debug('check complete (%s)' % volume)
+       	            if rcode != 0:
+                        # create the zfs FS
+                        yield runCommandBackground(zfs_create
+                            + ['-V', '%sgb' % message['size'], volume ])
+                        self.logger.debug('Created new zvol %s' % volume)
+       	            else:
+                        self.logger.debug('Vol %s exists' % volume)
                     cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) '
                                 , (zvol_name, None, None, None))
                     con.commit()
-                    self.logger.debug('Created new zvol %s' % zvol_name)
+                    self.logger.debug('Created new zvol %s' % volume)
 
-                cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?'
+                cur.execute('SELECT remotehost FROM zvols WHERE zvol = ?'
                             , [zvol_name])
                 row = cur.fetchone()
                 if row != None and row[0] != None:  # zvol is mapped
@@ -752,6 +764,9 @@ class NasDaemon:
         """ Get information from attributes if image sync is enabled for the
         node"""
 
-        hostname = str(self.db.getHostname(remotehost))
-        return self.db.getHostAttr(hostname, 'img_sync')
+        return rocks.util.str2bool(imgstorage.get_attribute('img_sync', remotehost,
+                self.logger))
 
+    def get_node_zpool(self, remotehost):
+        return imgstorage.get_attribute('vm_container_zpool',
+                remotehost, self.logger)

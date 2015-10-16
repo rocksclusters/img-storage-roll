@@ -13,6 +13,7 @@ exec 1>/tmp/stdout.log
 # Redirect standard error to a log file
 exec 2>/tmp/stderr.log
 
+PREFIX="IMG-STORAGE-"
 
 REMOTE_SNAPSHOTS_TRIM=10
 LOCAL_SNAPSHOTS_TRIM=10
@@ -25,7 +26,7 @@ IS_DELETE_REMOTE=$4
 REMOTEZPOOL=`/opt/rocks/bin/rocks list host attr $REMOTEHOST | grep "vm_container_zpool " | awk '{print $3}'`
 THROTTLE=`/opt/rocks/bin/rocks list host attr $REMOTEHOST | grep "img_download_speed " | awk '{print $3}'`
 
-SNAP_NAME=`/usr/bin/uuidgen`
+SNAP_NAME=$PREFIX+`/usr/bin/uuidgen`
 LOCAL_LAST_SNAP_NAME=`/sbin/zfs list -Hpr -t snapshot -o name -s creation "$ZPOOL/$ZVOL" | tail -n 1 | sed -e 's/.\+@//g'`
 
 /bin/su img-storage -c "/usr/bin/ssh $REMOTEHOST \"/sbin/zfs snap $REMOTEZPOOL/$ZVOL@$SNAP_NAME\""
@@ -39,7 +40,7 @@ fi
 if (( $IS_DELETE_REMOTE )); then
     /bin/su img-storage -c "/usr/bin/ssh $REMOTEHOST \"/sbin/zfs destroy -r $REMOTEZPOOL/$ZVOL\""
 else
-    /bin/su img-storage -c "/usr/bin/ssh $REMOTEHOST \"/sbin/zfs list -Hpr -t snapshot -o name -s creation $REMOTEZPOOL/$ZVOL | head -n -$REMOTE_SNAPSHOTS_TRIM | xargs -r -l1 /sbin/zfs destroy\""
+    /bin/su img-storage -c "/usr/bin/ssh $REMOTEHOST \"/sbin/zfs list -Hpr -t snapshot -o name -s creation $REMOTEZPOOL/$ZVOL | grep $PREFIX | head -n -$REMOTE_SNAPSHOTS_TRIM | xargs -r -l1 /sbin/zfs destroy\""
 fi
 
 #trim local snapshots

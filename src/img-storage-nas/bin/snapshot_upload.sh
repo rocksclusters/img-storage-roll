@@ -13,6 +13,7 @@ exec 1>/tmp/stdout.log
 # Redirect standard error to a log file
 exec 2>/tmp/stderr.log
 
+PREFIX="IMG-STORAGE-"
 
 LOCAL_SNAPSHOTS_TRIM=10
 
