@@ -119,19 +119,21 @@ def setupLogger(logger):
     return handler
 
 
-def get_attribute(attr_name, hostname, logger=None):
+def get_attribute(attr_names, hostname, logger=None):
     """connect to the database and return the value of the for the given
-    attr_name relative to the hostname"""
+    attr_name relative to the hostname. attr_name can be an array"""
 
     try:
         db = rocks.db.helper.DatabaseHelper()
         db.connect()
         hostname = str(db.getHostname(hostname))
-        value = db.getHostAttr(hostname, attr_name)
-        return value
+        if(isinstance(attr_names, list)):
+            return [ db.getHostAttr(hostname, attr) for attr in attr_names ]
+        else:
+            return db.getHostAttr(hostname, attr_names)
     except Exception, e:
         error = 'Unable to get attribute %s for host %s (%s)' \
-            % (attr_name, hostname, str(e))
+            % (attr_names, hostname, str(e))
         if logger:
             logger.exception(error)
         raise ActionError(error)

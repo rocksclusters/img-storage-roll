@@ -171,15 +171,23 @@ class NasDaemon:
 
     def run(self):
 
-        self.db = rocks.db.helper.DatabaseHelper()
-        self.db.connect()
-
-        self.NODE_NAME = self.db.getHostname()
-        self.ib_net = self.db.getHostAttr(self.db.getHostname(), 'IB_net')
-        IMG_SYNC_WORKERS = self.db.getHostAttr(self.db.getHostname(),
-                'img_sync_workers')
-        if IMG_SYNC_WORKERS:
-            self.SYNC_WORKERS = int(IMG_SYNC_WORKERS)
+        try:
+            db = rocks.db.helper.DatabaseHelper()
+            db.connect()
+            self.NODE_NAME = db.getHostname()
+            self.ib_net = db.getHostAttr(db.getHostname(), 'IB_net')
+            IMG_SYNC_WORKERS = db.getHostAttr(db.getHostname(),
+                    'img_sync_workers')
+            if IMG_SYNC_WORKERS:
+                self.SYNC_WORKERS = int(IMG_SYNC_WORKERS)
+        except Exception, e:
+            error = 'Unable to get init attributes (%s)' \
+                % (str(e))
+            self.logger.exception(error)
+            raise ActionError(error)
+        finally:
+            db.close()
+            db.closeSession()
 
 
         self.pool = ThreadPool(processes=self.SYNC_WORKERS)
@@ -201,6 +209,7 @@ class NasDaemon:
                           is_sending BOOLEAN,
                           is_delete_remote BOOLEAN,
                           time INT)''')
+            cur.execute('''DELETE FROM sync_queue''')
             con.commit()
 
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage',
@@ -577,13 +586,17 @@ class NasDaemon:
                         < self.SYNC_WORKERS:
                         self.logger.debug('Starting new sync %s' % zvol)
                         if is_sending:
+                            remotezpool, throttle = imgstorage.get_attribute(['vm_container_zpool', 'img_upload_speed'],
+                                            remotehost, self.logger)
                             self.results[zvol] = \
                                 self.pool.apply_async(self.upload_snapshot,
-                                    [zpool, zvol, remotehost])
+                                    [zpool, zvol, remotehost, remotezpool, throttle])
                         else:
+                            remotezpool, throttle = imgstorage.get_attribute(['vm_container_zpool', 'img_download_speed'],
+                                            remotehost, self.logger)
                             self.results[zvol] = \
                                 self.pool.apply_async(self.download_snapshot,
-                                    [zpool, zvol, remotehost, is_delete_remote])
+                                    [zpool, zvol, remotehost,  remotezpool, is_delete_remote, throttle])
 
                 self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT,
                         self.schedule_next_sync)
@@ -622,26 +635,37 @@ class NasDaemon:
         zpool,
         zvol,
         remotehost,
+        remotezpool,
+        throttle
         ):
-        runCommand(['/opt/rocks/bin/snapshot_upload.sh', 
+        args = ['/opt/rocks/bin/snapshot_upload.sh', 
                 zpool, 
                 zvol, 
-                remotehost])
+                remotehost,
+                remotezpool]
+        if(throttle):
+            args.append(throttle)
+        runCommand(args)
 
     def download_snapshot(
         self,
         zpool,
         zvol,
         remotehost,
-        is_delete_remote
+        remotezpool,
+        is_delete_remote,
+        throttle
         ):
-
-
-        cmd = subprocess.Popen(['/opt/rocks/bin/snapshot_download.sh', 
+        args = ['/opt/rocks/bin/snapshot_download.sh', 
                     zpool, 
                     zvol, 
-                    remotehost, 
-                    "%s"%is_delete_remote], 
+                    remotehost,
+                    remotezpool,
+                    "%s"%is_delete_remote]
+        if(throttle):
+            args.append(throttle)
+
+        cmd = subprocess.Popen(args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE)
         
@@ -732,10 +756,6 @@ class NasDaemon:
     def stop(self):
         self.queue_connector.stop()
         self.logger.info('RabbitMQ connector stopping called')
-
-        self.db.close()
-        self.db.closeSession()
-
 
     def lock_zvol(self, zvol_name, reply_to):
         with sqlite3.connect(self.SQLITE_DB) as con:

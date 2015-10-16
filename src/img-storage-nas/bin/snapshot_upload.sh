@@ -1,8 +1,8 @@
 #!/bin/bash
  
 if [ $# -lt 1 ] ; then
-   echo "Usage: $0 zpool zvol remotehost
-f.e.: $0 tank vm-hpcdev-pub03-0-vol compute-0-1"
+   echo "Usage: $0 zpool zvol remotehost remotezpool [throttle]
+f.e.: $0 tank vm-hpcdev-pub03-0-vol compute-0-1 tank 10m"
    exit 1
 fi
 
@@ -13,6 +13,8 @@ exec 1>/tmp/stdout.log
 # Redirect standard error to a log file
 exec 2>/tmp/stderr.log
 
+set -e
+
 PREFIX="IMG-STORAGE-"
 
 LOCAL_SNAPSHOTS_TRIM=10
@@ -20,11 +22,10 @@ LOCAL_SNAPSHOTS_TRIM=10
 ZPOOL=$1
 ZVOL=$2
 REMOTEHOST=$3
+REMOTEZPOOL=$4
+THROTTLE=$5
 
-REMOTEZPOOL=`/opt/rocks/bin/rocks list host attr $REMOTEHOST | grep "vm_container_zpool " | awk '{print $3}'`
-THROTTLE=`/opt/rocks/bin/rocks list host attr $REMOTEHOST | grep "img_upload_speed " | awk '{print $3}'`
-
-SNAP_NAME=`/usr/bin/uuidgen`
+SNAP_NAME=$PREFIX`/usr/bin/uuidgen`
 
 /sbin/zfs snap "$ZPOOL/$ZVOL@$SNAP_NAME"
 

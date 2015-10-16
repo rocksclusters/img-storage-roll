@@ -146,21 +146,27 @@ class VmDaemon:
         self.init_params()
 
     def init_params(self):
-        """return True if this node has the attribute img_sync == 'true'"""
+        try:
+            db = rocks.db.helper.DatabaseHelper()
+            db.connect()
 
-        db = rocks.db.helper.DatabaseHelper()
-        db.connect()
-        self.NODE_NAME = db.getHostname()
-        self.IB_NET = db.getHostAttr(db.getHostname(), 'IB_net')
-        self.ZPOOL = db.getHostAttr(db.getHostname(),
-                'vm_container_zpool')
-        self.sync_enabled = rocks.util.str2bool(db.getHostAttr(db.getHostname(),
-                'img_sync'))
-        db.close()
-        db.closeSession()
+            self.NODE_NAME = db.getHostname()
+            self.IB_NET = db.getHostAttr(db.getHostname(), 'IB_net')
+            self.ZPOOL = db.getHostAttr(db.getHostname(),
+                    'vm_container_zpool')
+            self.sync_enabled = rocks.util.str2bool(db.getHostAttr(db.getHostname(),
+                    'img_sync'))
+            if self.sync_enabled and not self.ZPOOL:
+                raise Exception('Missing vm_container_zpool attribute')
 
-        if self.sync_enabled and not self.ZPOOL:
-            raise Exception('Missing vm_container_zpool attribute')
+        except Exception, e:
+            error = 'Unable to get init attributes (%s)' \
+                % (str(e))
+            self.logger.exception(error)
+            raise ActionError(error)
+        finally:
+            db.close()
+            db.closeSession()
 
     @coroutine
     def map_zvol(self, message, props):

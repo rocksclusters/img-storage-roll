@@ -74,7 +74,7 @@ reall:
 
 base:
 	cd src/img-storage && make rpm
-	scp RPMS/noarch/img-storage-6.2-1.noarch.rpm nas-0-0: && ssh nas-0-0 'yum reinstall ./img-storage-6.2-0.noarch.rpm' &
+	scp RPMS/noarch/img-storage-6.2-1.noarch.rpm nas-0-0: && ssh nas-0-0 'yum reinstall ./img-storage-6.2-1.noarch.rpm' &
 	scp RPMS/noarch/img-storage-6.2-1.noarch.rpm compute-0-1: && ssh compute-0-1 'yum reinstall ./img-storage-6.2-1.noarch.rpm'&
 	scp RPMS/noarch/img-storage-6.2-1.noarch.rpm compute-0-2: && ssh compute-0-2 'yum reinstall ./img-storage-6.2-1.noarch.rpm'&
 	scp RPMS/noarch/img-storage-6.2-1.noarch.rpm compute-0-3: && ssh compute-0-3 'yum reinstall ./img-storage-6.2-1.noarch.rpm'&
@@ -99,7 +99,7 @@ vm:
 	ssh compute-0-1 'service img-storage-vm restart'
 	ssh compute-0-2 'service img-storage-vm restart'
 	ssh compute-0-3 'service img-storage-vm restart'
-	yum reinstall RPMS/noarch/img-storage-vm-6.2-0.noarch.rpm
+	yum reinstall RPMS/noarch/img-storage-vm-6.2-1.noarch.rpm
 	service img-storage-vm restart
 
 fe:
