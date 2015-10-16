@@ -238,7 +238,7 @@ class NasDaemon:
                     con.commit()
                     self.logger.debug('Created new zvol %s' % zvol_name)
 
-                cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?'
+                cur.execute('SELECT remotehost FROM zvols WHERE zvol = ?'
                             , [zvol_name])
                 row = cur.fetchone()
                 if row != None and row[0] != None:  # zvol is mapped
