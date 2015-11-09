@@ -82,7 +82,9 @@ class CommandLauncher:
         zpool,
         volume,
         remotehost,
+	remotepool,
         size,
+	sync,
         ):
         message = {
             'action': 'map_zvol',
@@ -90,6 +92,8 @@ class CommandLauncher:
             'zvol': volume,
             'remotehost': remotehost,
             'size': size,
+	    'remotepool': remotepool,
+	    'sync': sync,
             }
         self.callCommand(message, nas)
         block_dev = self.ret_message['bdev']

@@ -57,6 +57,7 @@ from rabbitmqclient import RabbitMQCommonClient
 from imgstorage import *
 import imgstorage
 from imgstoragedaemon import *
+import NodeConfig
 import logging
 
 import time
@@ -75,6 +76,26 @@ from tornado.gen import Task, coroutine
 
 from pysqlite2 import dbapi2 as sqlite3
 
+
+#############
+# SQLite TABLES Defined
+# 
+# zvols:  zvol | zpool | iscsi_target | remotehost | remotepool | sync
+# sync_queue:  zvol | zpool | remotehost | remotepool | is_sending  | is_delete_remote | time
+# zvol_calls:  zvol |reply_to | time 
+#############
+# msg formats
+#
+# Receive Messages:
+#       map_zvol:  zpool, zvol, remotehost, remotepoool, sync
+#	unmap_zvol:  zvol                             
+#	list_dev: 
+#	sync_zvol
+#
+# Send Messages:
+#       zvol_mapped: nas, target, size, zvol, remotehost, remotepool, sync 
+# 	zvol_unmapped: target, zvol
+#	zvol_deleted: 
 
 def get_blk_dev_list():
     """ Return mappings of isci targets """
@@ -124,7 +145,8 @@ def get_zfs_list():
 class VmDaemon:
 
     def __init__(self):
-        self.NODE_NAME = NodeConfig.NODE_NAME
+        self.nc = NodeConfig.NodeConfig()
+	NODE_NAME = self.nc.NODE_NAME
         self.stdin_path = '/dev/null'
         self.stdout_path = '/dev/null'
         self.stderr_path = '/tmp/err.log'
@@ -138,29 +160,51 @@ class VmDaemon:
             }
         self.logger = \
             logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
-        self.sync_enabled = self.is_sync_enabled()
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
-        self.ZPOOL = NodeConfig.VM_CONTAINER_ZPOOL
-        if self.sync_enabled and not self.ZPOOL:
-            raise Exception('Missing vm_container_zpool attribute')
+
+	# sync is part of the map_zvol message
+        # self.sync_enabled = self.is_sync_enabled()
+	# pool to use is part of the map_zvol message
+        # self.ZPOOL = NodeConfig.VM_CONTAINER_ZPOOL
+        #if self.sync_enabled and not self.ZPOOL:
+        #     raise Exception('Missing vm_container_zpool attribute')
 
         self.temp_size = 35
 
         self.SYNC_CHECK_TIMEOUT = 10
 
-        rocks.db.helper.DatabaseHelper().closeSession()  # to reopen after daemonization
+        # rocks.db.helper.DatabaseHelper().closeSession()  # to reopen after daemonization
 
-    def is_sync_enabled(self):
-        """return True if this node has the attribute img_sync == 'true'"""
+    def is_sync_enabled(self,zvol):
+         """return True if a particular volume is supposed to sync """
 
-        sync_enable = imgstorage.get_attribute('img_sync', None,
-                self.logger)
-        return rocks.util.str2bool(sync_enable)
+         with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('SELECT sync FROM zvols WHERE zvol = ?' , [zvol])
+            row = cur.fetchone()
+            return row
+         return False
+	
+    def zpool(self,zvol):
+         """returns pool on which a particular volume is located """
+         with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('SELECT zpool FROM zvols WHERE zvol = ?' , [zvol])
+            row = cur.fetchone()
+            return row
+
+         return None
 
     @coroutine
     def map_zvol(self, message, props):
+	""" map a volume """
         self.logger.debug('Setting zvol %s' % message['target'])
         zvol = message.get('zvol')
+	sync = message.get('sync')
+	pool = message.get('remotepool')
+	nas = message.get('nas')
+	target = message.get('target')
+
         try:
             self.connect_iscsi(message['target'], message['nas'])
 
@@ -186,28 +230,40 @@ class VmDaemon:
 
             bdev = '/dev/%s' % mappings[message['target']]
 
-            if self.sync_enabled:
+            # Record information about this volume. If the subsequent
+            # volume creation fails, this is just stale information.
+ 
+            with sqlite3.connect(self.SQLITE_DB) as con:
+                cur = con.cursor()
+                cur.execute('''INSERT OR REPLACE INTO 
+                    zvols(zvol,zpool,nas,iscsi_target,sync) 
+                    VALUES (?,?,?,?,?) '''
+                    , (zvol, pool, nas, target, sync))
+                con.commit()
+
+            if sync: 
                 temp_size_cur = min(self.temp_size, int(message['size'
                                     ]) - 1)
                 if zvol and len(zvol) > 0:  # don't want to destroy the zpool
                     try:
                         runCommand(['zfs', 'destroy', '-r', '%s/%s'
-                                   % (self.ZPOOL, zvol)])
+                                   % (pool, zvol)])
                     except:
                         pass
                 runCommand(zfs_create + ['-V', '%sgb'
-                           % message['size'], '%s/%s' % (self.ZPOOL,
+                           % message['size'], '%s/%s' % (pool,
                            zvol)])
                 runCommand(zfs_create + ['-V', '%sgb'
                            % temp_size_cur, '%s/%s-temp-write'
-                           % (self.ZPOOL, zvol)])
+                           % (pool, zvol)])
                 time.sleep(2)
                 runCommand(['dmsetup', 'create', '%s-snap' % zvol,
                            '--table',
                            '0 %s snapshot %s /dev/zvol/%s/%s-temp-write P 16'
                             % (int(1024 ** 3 * temp_size_cur / 512),
-                           bdev, self.ZPOOL, zvol)])
+                           bdev, pool, zvol)])
                 bdev = '/dev/mapper/%s-snap' % zvol
+
 
             self.queue_connector.publish_message(json.dumps({
                 'action': 'zvol_mapped',
@@ -216,9 +272,11 @@ class VmDaemon:
                 'status': 'success',
                 }), props.reply_to, reply_to=self.NODE_NAME,
                     correlation_id=props.message_id)
+	
 
             self.logger.debug('Successfully mapped %s to %s'
                               % (message['target'], bdev))
+
         except ActionError, msg:
             self.queue_connector.publish_message(json.dumps({
                 'action': 'zvol_mapped',
@@ -242,26 +300,21 @@ class VmDaemon:
                     correlation_id=props.message_id)
 
     def list_dev(self, message, props):
-        if self.sync_enabled:
-            mappings = self.get_dev_list()
-        else:
-            mappings_map = get_blk_dev_list()
-            mappings = []
-            for target in mappings_map.keys():
-                mappings.append({'target': target,
-                                'device': mappings_map[target]})
+        mappings = self.get_dev_list()
         self.logger.debug('Got mappings %s' % mappings)
         self.queue_connector.publish_message(json.dumps({
             'action': 'dev_list',
             'status': 'success',
-            'node_type': ('sync' if self.sync_enabled else 'iscsi'),
             'body': mappings,
             }), exchange='', routing_key=props.reply_to)
 
     def get_dev_list(self):
         mappings = {}
         bdev_mappings = get_blk_dev_list()
+        bdev_mapped = []
 
+        ## Step 1. Find all the devices that are part of dmsetup (eg. some
+        ##         state of sync
         try:
             out = runCommand(['dmsetup', 'status'])
         except:
@@ -276,6 +329,7 @@ class VmDaemon:
                                    'status': dev_ar[3],
                                    'size': int(dev_ar[2]) * 512 / 1024 \
                                    ** 3}
+	    mappings[zvol_name]['sync'] =  'sync'
             if dev_ar[3] != 'linear':
                 mappings[zvol_name]['synced'] = '%s %s' % (dev_ar[4],
                         dev_ar[5])
@@ -284,6 +338,7 @@ class VmDaemon:
                 if target.endswith(zvol_name):
                     mappings[zvol_name]['target'] = target
                     mappings[zvol_name]['bdev'] = bdev_mappings[target]
+                    bdev_mapped.append(target)
 
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
@@ -293,6 +348,23 @@ class VmDaemon:
                 mappings[zvol]['started'] = started
                 mappings[zvol]['time'] = time
 
+	## Step 2. Want what is left-over (non-synced volumes, pure iSCSI)
+ 	for t in bdev_mapped:
+		try:
+			del bdev_mappings[t]
+		except:
+			pass
+
+        ## Step 3.  Now go through any mappings left over and add
+        mapidx=0
+        mkeys = bdev_mappings.keys()
+        mkeys.sort()
+        for target in mkeys:
+            vname = "volume%d" % mapidx
+            mappings[vname] = {'target': target,
+                'device': mappings_map[target],
+                'sync' : ('sync' if self.sync_enabled(target) else 'iscsi')}
+            mapidx += 1
         return mappings
 
     def connect_iscsi(self, iscsi_target, node_name):
@@ -324,12 +396,12 @@ class VmDaemon:
                            % (iscsi_target, node_name))
 
     def unmap_zvol(self, message, props):
-        """ Received zvol unmap_zvol command from nas """
 
+        """ Received zvol unmap_zvol command from nas """
         zvol = message['zvol']
 
         try:
-            if self.sync_enabled:
+            if self.is_sync_enabled(zvol):
                 self.logger.debug('Tearing down zvol %s'
                                   % message['zvol'])
                 while True:
@@ -441,8 +513,8 @@ class VmDaemon:
                                    '/dev/mapper/%s-snap' % zvol,
                                    '--table',
                                    '0 %s snapshot-merge /dev/zvol/%s/%s /dev/zvol/%s/%s-temp-write P 16'
-                                    % (devsize, self.ZPOOL, zvol,
-                                   self.ZPOOL, zvol)])
+                                    % (devsize, self.zpool(zvol), zvol,
+                                   self.zpool(zvol), zvol)])
                         runCommand(['dmsetup', 'resume',
                                    '/dev/mapper/%s-snap' % zvol])
                         cur.execute('UPDATE sync_queue SET started = 1 WHERE zvol = ?'
@@ -472,13 +544,13 @@ class VmDaemon:
                                    '/dev/mapper/%s-snap' % zvol,
                                    '--table',
                                    '0 %s linear /dev/zvol/%s/%s 0'
-                                   % (devsize, self.ZPOOL, zvol)])
+                                   % (devsize, self.zpool(zvol), zvol)])
                         runCommand(['dmsetup', 'resume',
                                    '/dev/mapper/%s-snap' % zvol])
                         self.logger.debug('Synced local storage to local in %s'
                                  % (time.time() - start))
                         runCommand(['zfs', 'destroy', '%s/%s-temp-write'
-                                    % (self.ZPOOL, zvol)])
+                                    % (self.zpool(zvol), zvol)])
                         disconnect_iscsi(target)
 
                         self.queue_connector.publish_message(json.dumps({'action': 'zvol_synced'
@@ -528,6 +600,14 @@ class VmDaemon:
         self.logger.debug('imgstoragevm starting')
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
+
+            cur.execute('''CREATE TABLE IF NOT EXISTS zvols(
+                          zvol TEXT PRIMARY KEY NOT NULL,
+                          zpool TEXT,
+                          nas TEXT,
+                          iscsi_target TEXT UNIQUE,
+			  sync BOOLEAN,)''')
+
             cur.execute('''CREATE TABLE IF NOT EXISTS sync_queue(
                                 zvol TEXT PRIMARY KEY NOT NULL, 
                                 iscsi_target TEXT UNIQUE, 
@@ -541,7 +621,7 @@ class VmDaemon:
                 'direct', "img-storage", "img-storage",
                 self.process_message, lambda a: \
                 self.run_sync(),
-                routing_key=NodeConfig.NODE_NAME)
+                routing_key=self.nc.NODE_NAME)
         self.queue_connector.run()
 
     def stop(self):
