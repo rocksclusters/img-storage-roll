@@ -156,7 +156,7 @@ def isFileUsed(file):
 
         return True
 
-class NodeConfig:
+class NodeConfigRocks:
     db = rocks.db.helper.DatabaseHelper()
     db.connect()
     NODE_NAME = db.getHostname()

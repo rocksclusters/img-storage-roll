@@ -176,14 +176,14 @@ class NasDaemon:
 
 	self.nc = NodeConfig.NodeConfig()
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
-        self.NODE_NAME =nc.NODE_NAME
-        self.ib_net = nc.SYNC_NETWORK
+        self.NODE_NAME = self.nc.NODE_NAME
+        self.ib_net = self.nc.SYNC_NETWORK
 
         self.sync_result = None
 
         self.results = {}
-        if nc.IMG_SYNC_WORKERS:
-            self.SYNC_WORKERS = int(nc.IMG_SYNC_WORKERS)
+        if self.nc.IMG_SYNC_WORKERS:
+            self.SYNC_WORKERS = int(self.nc.IMG_SYNC_WORKERS)
         else:
             self.SYNC_WORKERS = 5
 
@@ -207,7 +207,7 @@ class NasDaemon:
                           iscsi_target TEXT UNIQUE,
                           remotehost TEXT,
 			  remotepool TEXT,
-			  sync BOOLEAN,)''')
+			  sync BOOLEAN)''')
             cur.execute('''CREATE TABLE IF NOT EXISTS sync_queue(
                           zvol TEXT PRIMARY KEY NOT NULL,
                           zpool TEXT NOT NULL,
@@ -253,6 +253,7 @@ class NasDaemon:
         zvol_name = message['zvol']
 	sync = message['sync']
 
+	print "XXX map_zvol (message): ", message
         self.logger.debug('Setting zvol %s' % zvol_name)
 
         with sqlite3.connect(self.SQLITE_DB) as con:
@@ -267,8 +268,10 @@ class NasDaemon:
 
        	            """ Create a zvol, if it doesn't already exist """ 
        	            # check if volume already exists
+                    print 'XXX checking if  zvol %s exists' % volume
                     self.logger.debug('checking if  zvol %s exists' % volume)
                     rcode = subprocess.call(["zfs","list",volume])
+                    print 'XXX check complete (%s)' % volume
                     self.logger.debug('check complete (%s)' % volume)
        	            if rcode != 0:
                         # create the zfs FS
@@ -280,10 +283,11 @@ class NasDaemon:
 
                     # Record the creation of the volume 
                     cur.execute('''INSERT OR REPLACE INTO 
-                                zvols(zvol,zpool,iscsi_target,remote_host,remotepool,sync) 
+                                zvols(zvol,zpool,iscsi_target,remotehost,remotepool,sync) 
                                 VALUES (?,?,?,?,?,?) '''
                                 , (zvol_name, zpool_name, None, None,None,False))
                     con.commit()
+                    print 'XXX Created new zvol %s' % volume
                     self.logger.debug('Created new zvol %s' % volume)
 
                 cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?'
@@ -324,15 +328,19 @@ class NasDaemon:
                     if 'Creating new target' in line:
                         start = 'Creating new target (name='.__len__()
                         iscsi_target = line[start:line.index(',')]
+
+                print 'XXX Mapped %s to iscsi target %s' % (zvol_name, iscsi_target)
                 self.logger.debug('Mapped %s to iscsi target %s'
                                   % (zvol_name, iscsi_target))
 
 		# Update the Zvols table with the target, remote and sync attributes
                 cur.execute('''INSERT OR REPLACE INTO 
                             zvols(zvol,zpool,iscsi_target,remotehost, remotepool,sync) 
-                            VALUES (?,?,?,?,?,?,?) '''
+                            VALUES (?,?,?,?,?,?) '''
                             , (zvol_name, zpool_name, iscsi_target, remotehost, remotepool,sync))
                 con.commit()
+
+                print 'XXX iscsi target %s inserted into DB' % iscsi_target
 
                 def failDeliver(
                     target,
