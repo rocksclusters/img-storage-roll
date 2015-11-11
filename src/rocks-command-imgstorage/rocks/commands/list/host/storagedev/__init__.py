@@ -21,47 +21,38 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command)
     """
     Lists the VM container node status
     
-    <arg type='string' name='compute' optional='0'>
-    The COMPUTE name which we want to interrogate
+    <arg type='string' name='host' optional='0'>
+    The host (physical) name which we want to interrogate
     </arg>
 
-    <example cmd='list host storagemap compute-0-0'>
-    It will display the list of mappings on compute-0-0
+    <example cmd='list host storagemap vm-container-0-0'>
+    It will display the list of mappings on vm-container-0-0
     </example>
     """
 
     def run(self, params, args):
-        (args, compute) = self.fillPositionalArgs(('compute'))
+        (args, host) = self.fillPositionalArgs(('host'))
 
-        if not compute:
-            self.abort("you must enter the compute name")
+        if not host:
+            self.abort("you must enter the host name")
 
-        response = CommandLauncher().callListHostStoragedev(compute)
-        if(response['node_type'] == 'iscsi'):
-            self.beginOutput()
-            for d in response['body']:
-                self.addOutput(compute, d.values())
-            headers=['compute','target', 'device']
-            self.endOutput(headers)
-        elif(response['node_type'] == 'sync'):
-            self.beginOutput()
-            map = response['body']
-            for d in map.keys():
-                self.addOutput(compute, (d, 
-                        map[d].get('dev'),
-                        map[d].get('status'), 
-                        map[d].get('size'), 
-                        #map[d].get('target'),
-                        map[d].get('bdev'),
-                        map[d].get('started'),
-                        map[d].get('synced'),
-                        str(datetime.timedelta(seconds=(int(time.time()-map[d].get('time'))))) if map[d].get('time') else None
-                    )
+        response = CommandLauncher().callListHostStoragedev(host)
+
+        map = response['body']
+        self.beginOutput()
+        for volume in map.keys():
+            self.addOutput(host, (volume, 
+                    map[volume].get('sync'),
+                    map[volume].get('target'),
+                    map[volume].get('device'),
+                    map[volume].get('status'), 
+                    map[volume].get('size'), 
+                    map[volume].get('bdev'),
+                    map[volume].get('started'),
+                    map[volume].get('synced'),
+                    str(datetime.timedelta(seconds=(int(time.time()-map[volume].get('time'))))) if map[volume].get('time') else None
                 )
-            headers=['compute','zvol','lvm','status','size (GB)','block dev','is started','synced','time']
-            self.endOutput(headers)
+            )
+        headers=['host','volume','sync', 'target','device','status','size (GB)','block dev','is started','synced','time']
+	self.endOutput(headers)
 
-
-
-
-RollName = "img-storage"
