@@ -1,4 +1,4 @@
 NAME = img-storage-vm
-RELEASE = 0
+RELEASE = 1
 RPM.ARCH	= noarch
 

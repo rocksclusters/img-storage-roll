@@ -1,4 +1,4 @@
 NAME = img-storage-nas
-RELEASE = 0
+RELEASE = 1
 RPM.ARCH	= noarch
 
