@@ -662,7 +662,7 @@ class NasDaemon:
                     remotehost,
                     remotezpool,
                     "%s"%is_delete_remote]
-        if(throttle):
+        if(throttle and not is_delete_remote):
             args.append(throttle)
 
         cmd = subprocess.Popen(args,
