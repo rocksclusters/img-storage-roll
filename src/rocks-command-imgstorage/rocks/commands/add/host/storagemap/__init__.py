@@ -30,17 +30,17 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.add.command):
 	The machine name that will mount the storage volume
 	</arg>
 
-	<arg type='string' name='remotepool' optional='1'>
-	pool in remote host on which to place storage volume. Required if 
-        img_sync is true	
-	</arg>
-
 	<arg type='string' name='size' optional='0'>
 	The size of the volume in Gigabyte.
 	If the disk is already present on the NAS the size will be ignored.
 	</arg>
 
-	<arg type='bool' name='img_sync' optional='1'>
+	<param type='string' name='remotepool' optional='1'>
+	pool in remote host on which to place storage volume. Required if 
+        img_sync is true	
+	</arg>
+
+	<param type='bool' name='img_sync' optional='1'>
 	Should the volume sync to the local (remotehost) system or be an 
         iscsi-only remote mount.  Default: uses remote host\'s 
 	img_sync attribute
