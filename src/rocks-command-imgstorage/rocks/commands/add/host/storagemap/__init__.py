@@ -38,13 +38,13 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.add.command):
 	<param type='string' name='remotepool' optional='1'>
 	pool in remote host on which to place storage volume. Required if 
         img_sync is true	
-	</arg>
+	</param>
 
 	<param type='bool' name='img_sync' optional='1'>
 	Should the volume sync to the local (remotehost) system or be an 
         iscsi-only remote mount.  Default: uses remote host\'s 
 	img_sync attribute
-	</arg>
+	</param>
 
 	<example cmd='add host storagemap nas-0-0 tank vm-sdsc125-2 vm-container-0-0 35 remotepool=tank2 img_sync=yes'>
 	If it does not exist create tank/vm-sdsc125-2 on nas and map it to 
