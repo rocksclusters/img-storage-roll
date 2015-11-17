@@ -178,11 +178,11 @@ class VmDaemon:
          """return True if a particular volume is supposed to sync """
 
          with sqlite3.connect(self.SQLITE_DB) as con:
-            print 'XXX is_sync_enabled zvol is ', zvol
+            # print 'XXX is_sync_enabled zvol is ', zvol
             cur = con.cursor()
             cur.execute('SELECT sync FROM zvols WHERE zvol = ?' , [zvol])
             sync = cur.fetchone()
-            print 'XXX is_sync_enabled sync is', sync
+            # print 'XXX is_sync_enabled sync is', sync
             if sync != None and sync[0] != 0:
 		return True
          return False
@@ -191,11 +191,11 @@ class VmDaemon:
          """return True if a particular iscsi target is supposed to sync """
 
          with sqlite3.connect(self.SQLITE_DB) as con:
-            print 'XXX is_sync_enabled_target target is ', target 
+            # print 'XXX is_sync_enabled_target target is ', target 
             cur = con.cursor()
             cur.execute('SELECT sync FROM zvols WHERE iscsi_target = ?' , [target])
             sync = cur.fetchone()
-            print 'XXX is_sync_enabled sync is', sync
+            # print 'XXX is_sync_enabled sync is', sync
             if sync != None and sync[0] != 0:
 		return True
          return False
@@ -206,7 +206,7 @@ class VmDaemon:
             cur = con.cursor()
             cur.execute('SELECT zpool FROM zvols WHERE zvol = ?' , [zvol])
             row = cur.fetchone()
-            return row
+            return row[0]
 
          return None
 
@@ -219,7 +219,7 @@ class VmDaemon:
 	pool = message.get('remotepool')
 	nas = message.get('nas')
 	target = message.get('target')
-	print "XXX map_zvol(message)", message
+	# print "XXX map_zvol(message)", message
 
         try:
             self.connect_iscsi(message['target'], message['nas'])
@@ -245,6 +245,7 @@ class VmDaemon:
                     count += 1
 
             bdev = '/dev/%s' % mappings[message['target']]
+            # print 'XXX map_zvol bdev is %s' % bdev
 
             # Record information about this volume. If the subsequent
             # volume creation fails, this is just stale information.
@@ -429,8 +430,8 @@ class VmDaemon:
 
         """ Received zvol unmap_zvol command from nas """
         zvol = message['zvol']
-	print 'XXX unmap zvol(message)', message
-	print 'XXX is_sync_enabled', self.is_sync_enabled(zvol)
+	# print 'XXX unmap zvol(message)', message
+	# print 'XXX is_sync_enabled', self.is_sync_enabled(zvol)
 
         try:
             if self.is_sync_enabled(zvol):

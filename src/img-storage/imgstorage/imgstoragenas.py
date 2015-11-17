@@ -253,7 +253,7 @@ class NasDaemon:
         zvol_name = message['zvol']
 	sync = message['sync']
 
-	print "XXX map_zvol (message): ", message
+	# print "XXX map_zvol (message): ", message
         self.logger.debug('Setting zvol %s' % zvol_name)
 
         with sqlite3.connect(self.SQLITE_DB) as con:
@@ -268,10 +268,10 @@ class NasDaemon:
 
        	            """ Create a zvol, if it doesn't already exist """ 
        	            # check if volume already exists
-                    print 'XXX checking if  zvol %s exists' % volume
+                    # print 'XXX checking if  zvol %s exists' % volume
                     self.logger.debug('checking if  zvol %s exists' % volume)
                     rcode = subprocess.call(["zfs","list",volume])
-                    print 'XXX check complete (%s)' % volume
+                    # print 'XXX check complete (%s)' % volume
                     self.logger.debug('check complete (%s)' % volume)
        	            if rcode != 0:
                         # create the zfs FS
@@ -287,7 +287,7 @@ class NasDaemon:
                                 VALUES (?,?,?,?,?,?) '''
                                 , (zvol_name, zpool_name, None, None,None,False))
                     con.commit()
-                    print 'XXX Created new zvol %s' % volume
+                    # print 'XXX Created new zvol %s' % volume
                     self.logger.debug('Created new zvol %s' % volume)
 
                 cur.execute('SELECT iscsi_target FROM zvols WHERE zvol = ?'
@@ -329,7 +329,7 @@ class NasDaemon:
                         start = 'Creating new target (name='.__len__()
                         iscsi_target = line[start:line.index(',')]
 
-                print 'XXX Mapped %s to iscsi target %s' % (zvol_name, iscsi_target)
+                # print 'XXX Mapped %s to iscsi target %s' % (zvol_name, iscsi_target)
                 self.logger.debug('Mapped %s to iscsi target %s'
                                   % (zvol_name, iscsi_target))
 
@@ -340,7 +340,7 @@ class NasDaemon:
                             , (zvol_name, zpool_name, iscsi_target, remotehost, remotepool,sync))
                 con.commit()
 
-                print 'XXX iscsi target %s inserted into DB' % iscsi_target
+                # print 'XXX iscsi target %s inserted into DB' % iscsi_target
 
                 def failDeliver(
                     target,
@@ -486,7 +486,7 @@ class NasDaemon:
                     cur.execute('DELETE FROM sync_queue WHERE zvol = ?'
                                 , [zvol])
                     cur.execute('''INSERT INTO 
-                                   sync_queue(zvol,zpool,remote_host,is_sending,is_delete_remote,time,remotepool)
+                                   sync_queue(zvol,zpool,remotehost,is_sending,is_delete_remote,time,remotepool)
                                     SELECT zvol,?,?,1,1,?,remotepool 
                                     FROM zvols 
                                     WHERE iscsi_target = ? '''
@@ -513,13 +513,13 @@ class NasDaemon:
 
                 # get request destination
 
-                cur.execute('''SELECT reply_to, zpool, sync 
+                cur.execute('''SELECT reply_to, zpool, remotepool, sync 
                                 FROM zvol_calls 
                                 JOIN zvols 
                                 ON zvol_calls.zvol = zvols.zvol 
                                 WHERE zvols.zvol = ?'''
                             , [zvol])
-                [reply_to, zpool, sync] = cur.fetchone()
+                [reply_to, zpool, remotepool, sync] = cur.fetchone()
 
                 if message['status'] == 'error':
                     raise ActionError('Error detaching iSCSI target from compute node: %s'
@@ -533,9 +533,12 @@ class NasDaemon:
                     cur.execute('UPDATE sync_queue SET is_delete_remote = 1 WHERE zvol = ?'
                                 , [zvol])
                     if cur.rowcount == 0:
-                        cur.execute('INSERT INTO sync_queue VALUES(?,?,?,0,1,?)'
-                                    , [zvol, zpool, props.reply_to,
-                                    time.time()])
+                        cur.execute('''INSERT INTO 
+                            sync_queue(zvol,zpool,remotehost,remotepool,is_sending,
+                            is_delete_remote, time)  
+                            VALUES(?,?,?,?,0,1,?)''', 
+                            [zvol, zpool, props.reply_to, remotepool,
+                                time.time()])
                     con.commit()
 
                 self.queue_connector.publish_message(json.dumps({'action': 'zvol_unmapped'
@@ -660,7 +663,7 @@ class NasDaemon:
         with sqlite3.connect(self.SQLITE_DB) as con:
             try:
                 cur = con.cursor()
-                cur.execute('''SELECT zvol, zpool, remotehost 
+                cur.execute('''SELECT zvol, zpool, remotehost, remotepool 
                                 FROM zvols 
                                 WHERE iscsi_target IS NULL 
                                 and remotehost IS NOT NULL 
@@ -668,9 +671,9 @@ class NasDaemon:
                             )
                 rows = cur.fetchall()
                 for row in rows:
-                    (zvol, zpool, remotehost) = row
-                    cur.execute('INSERT or IGNORE INTO sync_queue VALUES(?,?,?,0,0,?)'
-                                , [zvol, zpool, remotehost,
+                    (zvol, zpool, remotehost, remotepool) = row
+                    cur.execute('INSERT or IGNORE INTO sync_queue VALUES(?,?,?,?,0,0,?)'
+                                , [zvol, zpool, remotehost,remotepool,
                                 time.time()])
                     con.commit()
             except Exception, ex:
