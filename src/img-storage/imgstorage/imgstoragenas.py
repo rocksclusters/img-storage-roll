@@ -602,7 +602,7 @@ class NasDaemon:
                                         , '-c',
                                         '/usr/bin/ssh %s "/sbin/zfs destroy %s/%s -r"'
                                          % (remotehost,remotepool, zvol)])
-                                cur.execute('UPDATE zvols SET remotehost = NULL, zpool = NULL where zvol = ?'
+                                cur.execute('UPDATE zvols SET remotehost = NULL, remotepool = NULL where zvol = ?'
                                         , [zvol])
                                 con.commit()
                                 self.release_zvol(zvol)
@@ -787,7 +787,7 @@ class NasDaemon:
                 cur.execute('''UPDATE zvols 
                                 SET iscsi_target = NULL, 
                                 remotehost = NULL, 
-                                zpool = NULL 
+                                remotepool = NULL 
                                 where iscsi_target = ?'''
                             , [target])
             else:
@@ -801,7 +801,7 @@ class NasDaemon:
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('''UPDATE zvols SET iscsi_target = NULL,
-                    remotehost = NULL, zpool = NULL
+                    remotehost = NULL, remotepool = NULL
                     where zvol = ?''',
                         [zvol])
             con.commit()
@@ -810,7 +810,7 @@ class NasDaemon:
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('''SELECT zvols.zvol, zvols.zpool, zvols.iscsi_target, 
-                            zvols.remotehost, sync_queue.is_sending, 
+                            zvols.remotehost, zvols.remotepool, sync_queue.is_sending, 
                             sync_queue.is_delete_remote, sync_queue.time 
                             from zvols 
                             LEFT JOIN sync_queue ON zvols.zvol = sync_queue.zvol;'''
