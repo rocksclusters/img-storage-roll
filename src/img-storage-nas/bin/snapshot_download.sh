@@ -32,9 +32,9 @@ LOCAL_LAST_SNAP_NAME=`/sbin/zfs list -Hpr -t snapshot -o name -s creation "$ZPOO
 
 /bin/su img-storage -c "/usr/bin/ssh $REMOTEHOST \"/sbin/zfs snap $REMOTEZPOOL/$ZVOL@$SNAP_NAME\""
 if [ -n "$THROTTLE" ]; then
-    /bin/su img-storage -c "/usr/bin/ssh $REMOTEHOST \"/sbin/zfs send -i $REMOTEZPOOL/$ZVOL@$LOCAL_LAST_SNAP_NAME $REMOTEZPOOL/$ZVOL@$SNAP_NAME | pv -L $THROTTLE -q \"" | /sbin/zfs receive -F "$ZPOOL/$ZVOL"
+    /bin/su img-storage -c "/usr/bin/ssh $REMOTEHOST \"/sbin/zfs send -I $REMOTEZPOOL/$ZVOL@$LOCAL_LAST_SNAP_NAME $REMOTEZPOOL/$ZVOL@$SNAP_NAME | pv -L $THROTTLE -q \"" | /sbin/zfs receive -F "$ZPOOL/$ZVOL"
 else
-    /bin/su img-storage -c "/usr/bin/ssh $REMOTEHOST \"/sbin/zfs send -i $REMOTEZPOOL/$ZVOL@$LOCAL_LAST_SNAP_NAME $REMOTEZPOOL/$ZVOL@$SNAP_NAME                      \"" | /sbin/zfs receive -F "$ZPOOL/$ZVOL"
+    /bin/su img-storage -c "/usr/bin/ssh $REMOTEHOST \"/sbin/zfs send -I $REMOTEZPOOL/$ZVOL@$LOCAL_LAST_SNAP_NAME $REMOTEZPOOL/$ZVOL@$SNAP_NAME                      \"" | /sbin/zfs receive -F "$ZPOOL/$ZVOL"
 fi
 
 #trim remote snapshots
@@ -45,4 +45,4 @@ else
 fi
 
 #trim local snapshots
-/sbin/zfs list -Hpr -t snapshot -o name -s creation "$ZPOOL/$ZVOL" | head -n "-$LOCAL_SNAPSHOTS_TRIM" | xargs -r -l1 /sbin/zfs destroy
+/sbin/zfs list -Hpr -t snapshot -o name -s creation "$ZPOOL/$ZVOL" | grep $PREFIX | head -n "-$LOCAL_SNAPSHOTS_TRIM" | xargs -r -l1 /sbin/zfs destroy
