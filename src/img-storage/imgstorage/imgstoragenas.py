@@ -58,6 +58,8 @@
 # SQLite TABLES Defined
 # 
 # zvols:  zvol | zpool | iscsi_target | remotehost | remotepool | sync
+# zvolattrs: zvol | freq | nextsync | downspeed | upspeed
+# globals: attr | value
 # sync_queue:  zvol | zpool | remotehost | remotepool | is_sending  | is_delete_remote | time
 # zvol_calls:  zvol |reply_to | time 
 #############
@@ -193,9 +195,94 @@ class NasDaemon:
         self.logger = \
             logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
 
+    def dbconnect(self):
+        """ connect to sqlite3 database, turn on foreign constraints """
+        con = sqlite3.connect(self.SQLITE_DB)
+        cur = con.cursor()
+        cur.execute('PRAGMA foreign_keys=ON')
+        return con
+
+    def getZvolAttr(self,zvol,attr=None):
+	""" Return a single named attribute for a zvol, or a dictionary of
+		attributes if attr=None """
+	rval = None
+	with self.dbconnect() as con:
+		cur = con.cursor()
+		if attr is not None:
+			cur.execute("SELECT %s FROM zvolattrs WHERE zvol='%s'" %
+				(attr, zvol))
+			row = cur.fetchone()
+			if row != None:
+				rval = row[0]
+		else:
+			cur.execute("SELECT * from zvolattrs WHERE zvol='%s'" % zvol) 
+			row = cur.fetchone()
+			if row != None:
+				rval = [dict((cur.description[i][0], value) 
+					for (i, value) in enumerate(row))] 
+
+	return rval
+
+
+    def setZvolAttr(self,zvol,attr,value=None):
+	""" Set a single named attribute for a zvol. Set to Null of value is None """
+	with self.dbconnect() as con:
+		cur = con.cursor()
+                cur.execute('SELECT count(*) FROM zvolattrs WHERE zvol = ?'
+                            , [zvol])
+                if cur.fetchone()[0] == 0:
+			cur.execute('INSERT INTO zvolattrs(zvol) VALUES(?)', [zvol])
+		if value is None:
+			setStmt = "SET %s=NULL" % attr
+		elif isinstance(value,int):
+			setStmt = "SET %s=%d" % (attr, value)
+		else:
+			setStmt = "SET %s='%s'" % (attr, value)
+		cur.execute(""" UPDATE zvolattrs %s WHERE  zvol='%s'""" %
+				(setStmt,zvol))
+		con.commit()
+
+
+    def getAttr(self,attr=None):
+	""" Return a single named global attribute or a dictionary of
+		all attributes if attr=None. All values are type string """
+	rval = None
+	with self.dbconnect() as con:
+		cur = con.cursor()
+		if attr is not None:
+			cur.execute("SELECT value FROM globals WHERE attr='%s'" %
+				(attr))
+			row = cur.fetchone()
+			if row != None:
+				rval = row[0]
+		else:
+			cur.execute("SELECT attr,value FROM globals") 
+			rval = {}
+			for row in cur.fetchall():
+				attr,value = row
+				rval[attr] = value
+	return rval
+
+
+    def setAttr(self,attr,value=None):
+	""" Set a single named attribute.Set to Null of value is None """
+	with self.dbconnect() as con:
+		if value is not None:
+			value=str(value)
+		cur = con.cursor()
+                cur.execute('''INSERT OR REPLACE INTO globals(attr,value)
+                               VALUES(?,?)''', [attr, value] ) 
+		con.commit()
+    def deleteAttr(self,attr):
+	""" delete single named attribute """
+	with self.dbconnect() as con:
+		cur = con.cursor()
+                cur.execute('''DELETE FROM globals WHERE attr="%s"''' % attr ) 
+		con.commit()
+
     def run(self):
         self.pool = ThreadPool(processes=self.SYNC_WORKERS)
-        with sqlite3.connect(self.SQLITE_DB) as con:
+        with self.dbconnect() as con:
             cur = con.cursor()
             cur.execute('''CREATE TABLE IF NOT EXISTS zvol_calls(
                           zvol TEXT PRIMARY KEY NOT NULL,
@@ -208,6 +295,14 @@ class NasDaemon:
                           remotehost TEXT,
 			  remotepool TEXT,
 			  sync BOOLEAN)''')
+            cur.execute('''CREATE TABLE IF NOT EXISTS zvolattrs(
+                          zvol,
+                          frequency INT DEFAULT NULL,
+                          nextsync INT DEFAULT NULL,
+                          downloadspeed INT DEFAULT NULL,
+			  uploadspeed INT DEFAULT NULL,
+                          FOREIGN KEY (zvol) REFERENCES  zvols(zvol)
+                          ON DELETE CASCADE ON UPDATE CASCADE)''')
             cur.execute('''CREATE TABLE IF NOT EXISTS sync_queue(
                           zvol TEXT PRIMARY KEY NOT NULL,
                           zpool TEXT NOT NULL,
@@ -216,7 +311,14 @@ class NasDaemon:
                           is_sending BOOLEAN,
                           is_delete_remote BOOLEAN,
                           time INT)''')
+            cur.execute('''CREATE TABLE IF NOT EXISTS globals(
+                          attr TEXT PRIMARY KEY NOT NULL,
+                          value TEXT)''')
             con.commit()
+            # Record all parameters in the configuration file in globals
+            for key in self.nc.DATA.keys():
+		self.setAttr(key,self.nc.DATA[key])
+
 
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage',
                 'direct', "img-storage", "img-storage",
@@ -701,8 +803,7 @@ class NasDaemon:
             'remotehost_zpool': remotepool 
             }
 
-        upload_speed = imgstorage.get_attribute('img_upload_speed',
-                remotehost, self.logger)
+        upload_speed = self.getAttr('uploadspeed')
         params['throttle'] = (' | pv -L %s -q '
                               % upload_speed if upload_speed else '')
 
@@ -729,8 +830,7 @@ class NasDaemon:
                     zvol),
             }
 
-        download_speed = imgstorage.get_attribute('img_download_speed',
-                remotehost, self.logger)
+        download_speed = self.getAttr('downloadspeed')
         params['throttle'] = (' | pv -L %s -q '
                               % download_speed if download_speed else ''
                               )
