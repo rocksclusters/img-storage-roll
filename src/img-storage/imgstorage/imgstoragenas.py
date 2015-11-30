@@ -70,6 +70,11 @@
 #	unmap_zvol:  zvol     XXX: really should have pool, too.
 #	del_zvol: zvol, zpool
 #	list_zvols: 
+#	set_zvol_attrs:
+#	get_zvol_attrs:
+# 	get_attrs:
+#	set_attrs:
+#	del_attrs:
 # Send Messages:
 #       map_zvol: nas, target, size, zvol, remotehost, remotepool, sync 
 # 	unmap_zvol: target, zvol
@@ -173,6 +178,11 @@ class NasDaemon:
             'zvol_unmapped': self.zvol_unmapped,
             'list_zvols': self.list_zvols,
             'del_zvol': self.del_zvol,
+            'get_zvol_attrs': self.get_zvol_attrs,
+            'set_zvol_attrs': self.set_zvol_attrs,
+            'get_attrs': self.get_attrs,
+            'set_attrs': self.set_attrs,
+            'del_attrs': self.del_attrs,
             'zvol_synced': self.zvol_synced,
             }
 
@@ -195,6 +205,7 @@ class NasDaemon:
         self.logger = \
             logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
 
+        self.ZVOLATTRS = [ 'frequency', 'nextsync', 'downloadspeed','uploadspeed'] 
     def dbconnect(self):
         """ connect to sqlite3 database, turn on foreign constraints """
         con = sqlite3.connect(self.SQLITE_DB)
@@ -218,8 +229,8 @@ class NasDaemon:
 			cur.execute("SELECT * from zvolattrs WHERE zvol='%s'" % zvol) 
 			row = cur.fetchone()
 			if row != None:
-				rval = [dict((cur.description[i][0], value) 
-					for (i, value) in enumerate(row))] 
+				rval = dict((cur.description[i][0], value) 
+					for (i, value) in enumerate(row)) 
 
 	return rval
 
@@ -280,6 +291,91 @@ class NasDaemon:
                 cur.execute('''DELETE FROM globals WHERE attr="%s"''' % attr ) 
 		con.commit()
 
+    ###### Attribute get/set messages
+
+    def get_zvol_attrs(self, message, props):
+    	#  input: get_zvol_attr messages
+    	#  output:  get_zvol_attr message --> requestor
+
+        zvol = message['zvol']
+	try:
+		attrs = self.getZvolAttr(zvol)
+		attrs['zvol'] = zvol
+	except Exception as err:
+		self.failAction(props.reply_to, 'get_zvol_attrs', str(err))
+		return
+        reply = json.dumps({'action': 'get_zvol_attrs', 'status': 'success',
+		'body':attrs})
+        self.queue_connector.publish_message(reply, exchange='',
+                        routing_key=props.reply_to)
+
+    def set_zvol_attrs(self, message, props):
+    	#  input: set_zvol_attr message
+    	#  output:  set_zvol_attr message --> requestor
+    	#  state updates: zvols attr table
+
+        zvol = message['zvol']
+	try:
+        	for k in message.keys():
+			if k in self.ZVOLATTRS:
+				self.setZvolAttr(zvol,k,message[k])
+	except Exception as err:
+		self.failAction(props.reply_to, 'set_zvol_attrs', str(err))
+		return
+
+        reply = json.dumps({'action': 'set_zvol_attrs', 'status': 'success'})
+        self.queue_connector.publish_message(reply, exchange='',
+                        routing_key=props.reply_to)
+
+    def get_attrs(self, message, props):
+    	#  input: get_attrs messages
+    	#  output:  get_attrs message --> requestor
+
+	try:
+		attrs = self.getAttr()
+	except Exception as err:
+		self.failAction(props.reply_to, 'get_attrs', str(err))
+		return
+        reply = json.dumps({'action': 'get_attrs', 'status': 'success',
+		'attrs':attrs})
+        self.queue_connector.publish_message(reply, exchange='',
+                        routing_key=props.reply_to)
+
+    def set_attrs(self, message, props):
+    	#  input: set_attrs message
+    	#  output:  set_attrs message --> requestor
+    	#  state updates: attrs table
+
+	try:
+		attrs = message['attrs']
+        	for k in attrs.keys():
+			self.setAttr(k,attrs[k])
+	except Exception as err:
+		self.failAction(props.reply_to, 'set_attrs', str(err))
+		return
+
+        reply = json.dumps({'action': 'set_attrs', 'status': 'success'})
+        self.queue_connector.publish_message(reply, exchange='',
+                        routing_key=props.reply_to)
+
+
+    def del_attrs(self, message, props):
+    	#  input: del_attrs message
+    	#  output:  del_attrs message --> requestor
+    	#  state updates: attrs table
+
+	try:
+		for attr in message['attrs']:
+			self.deleteAttr(attr)
+	except Exception as err:
+		self.failAction(props.reply_to, 'del_attrs', str(err))
+		return
+
+        reply = json.dumps({'action': 'del_attrs', 'status': 'success'})
+        self.queue_connector.publish_message(reply, exchange='',
+                        routing_key=props.reply_to)
+
+    ############   Main Run Method ###################
     def run(self):
         self.pool = ThreadPool(processes=self.SYNC_WORKERS)
         with self.dbconnect() as con:
@@ -920,6 +1016,7 @@ class NasDaemon:
             self.queue_connector.publish_message(json.dumps({'action': 'zvol_list'
                     , 'status': 'success', 'body': r}), exchange='',
                     routing_key=properties.reply_to)
+
 
     def process_message(self, properties, message_str, deliver):
 
