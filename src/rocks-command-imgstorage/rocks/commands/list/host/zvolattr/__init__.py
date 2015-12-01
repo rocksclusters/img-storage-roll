@@ -44,7 +44,7 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command)
 	fields = ['zvol','frequency','nextsync','uploadspeed','downloadspeed']
 	line = []
 	for f in fields:
-		line.extend([str(attrs[f])])
+		line.extend([attrs[f]])
         self.addOutput(nas, line)
         headers=['nas']
 	headers.extend(fields)
