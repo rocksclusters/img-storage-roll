@@ -200,11 +200,16 @@ class NasDaemon:
             self.SYNC_WORKERS = 5
 
         self.SYNC_CHECK_TIMEOUT = 10
-        self.SYNC_PULL_TIMEOUT = 60 * 5
+        # try once/minute to add new jobs to the sync queue
+        self.SYNC_PULL_TIMEOUT = 60
+        # the default SYNC_PULL is 5 minutes
+        self.SYNC_PULL_DEFAULT = 60 * 5
+
 
         self.logger = \
             logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
 
+        
         self.ZVOLATTRS = [ 'frequency', 'nextsync', 'downloadspeed','uploadspeed'] 
     def dbconnect(self):
         """ connect to sqlite3 database, turn on foreign constraints """
@@ -414,6 +419,8 @@ class NasDaemon:
             # Record all parameters in the configuration file in globals
             for key in self.nc.DATA.keys():
 		self.setAttr(key,self.nc.DATA[key])
+            if self.getAttr('frequency') is None:
+                self.setAttr('frequency',self.SYNC_PULL_DEFAULT)
 
 
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage',
@@ -760,7 +767,7 @@ class NasDaemon:
     @coroutine
     def schedule_next_sync(self):
         try:
-            with sqlite3.connect(self.SQLITE_DB) as con:
+            with self.dbconnect() as con:
                 cur = con.cursor()
 
                 for (zvol, job_result) in self.results.items():
@@ -861,19 +868,33 @@ class NasDaemon:
         with sqlite3.connect(self.SQLITE_DB) as con:
             try:
                 cur = con.cursor()
-                cur.execute('''SELECT zvol, zpool, remotehost, remotepool 
-                                FROM zvols 
+                now = int(time.time())
+                ## Select zvols whose time has come to sync
+                ## if a nextsync has never been set, set one 
+                cur.execute('''SELECT z.zvol, z.zpool, z.remotehost, z.remotepool,
+                               za.frequency,za.nextsync 
+                                FROM zvols z LEFT JOIN zvolattrs za ON
+                                z.zvol=za.zvol
                                 WHERE iscsi_target IS NULL 
-                                and remotehost IS NOT NULL 
-                                ORDER BY zvol DESC;'''
+                                AND remotehost IS NOT NULL 
+                                AND (nextsync is NULL  OR nextsync < %d)
+                                ORDER BY nextsync ASC, z.zvol DESC;''' % now 
                             )
                 rows = cur.fetchall()
                 for row in rows:
-                    (zvol, zpool, remotehost, remotepool) = row
+                    (zvol, zpool, remotehost, remotepool, frequency, nextsync) = row
+                    delta = self.getZvolAttr(zvol,'frequency')
+                    delta = int(self.getAttr('frequency')) if delta is None else delta
+                    delta = self.SYNC_PULL_DEFAULT if delta is None else delta
+                    
+                    # add this one to the sync queue, if it isn't already there
                     cur.execute('INSERT or IGNORE INTO sync_queue VALUES(?,?,?,?,0,0,?)'
                                 , [zvol, zpool, remotehost,remotepool,
                                 time.time()])
                     con.commit()
+                    # when we should schedule again for this zvol
+                    self.setZvolAttr(zvol,'nextsync', now + delta)
+
             except Exception, ex:
                 self.logger.exception(ex)
 
