@@ -1026,11 +1026,11 @@ class NasDaemon:
     def list_zvols(self, message, properties):
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('''SELECT zvols.zvol, zvols.zpool, zvols.iscsi_target, 
-                            zvols.remotehost, zvols.remotepool, sync_queue.is_sending, 
-                            sync_queue.is_delete_remote, sync_queue.time 
-                            from zvols 
-                            LEFT JOIN sync_queue ON zvols.zvol = sync_queue.zvol;'''
+            cur.execute('''SELECT z.zvol, z.zpool, z.iscsi_target, z.remotehost, 
+                           z.remotepool, s.is_sending, s.is_delete_remote, s.time, 
+                           za.nextsync, za.frequency FROM 
+                           zvols z LEFT JOIN zvolattrs za ON z.zvol=za.zvol 
+                           LEFT JOIN sync_queue s on z.zvol=s.zvol '''
                         )
             r = [dict((cur.description[i][0], value) for (i, value) in
                  enumerate(row)) for row in cur.fetchall()]
