@@ -27,7 +27,9 @@
 mkdir /var/log/rocks
 /sbin/chkconfig img-storage-vm on
 
-
+<eval mode="xml">
+/opt/rocks/bin/rocks report host imgstorage &hostname;
+</eval>
 
 <file name="/etc/rc.d/rocksconfig.d/post-99-restart-img-storage" perms="755">
 #!/bin/bash
@@ -49,7 +51,7 @@ rm /etc/rc.d/rocksconfig.d/post-99-restart-img-storage
 
 <post cond="img_sync">
 <file name="/etc/udev/rules.d/91-zfs-permissions.rules" perms="644">
-ACTION=="add", KERNEL=="zfs", MODE="0660", GROUP="img-storage"
+ACTION=="add", KERNEL=="zfs", MODE="0660", GROUP="&imgstorage-group;"
 </file>
 
 <file name="/etc/rc.d/rocksconfig.d/post-98-restart-udev-zfs-perm" perms="755">
@@ -57,7 +59,7 @@ ACTION=="add", KERNEL=="zfs", MODE="0660", GROUP="img-storage"
 #
 # while for the img-storage user to appear
 
-while [ ! `id -u img-storage` ];do
+while [ ! `id -u &imgstorage-user;` ];do
 	sleep 5
 done
 

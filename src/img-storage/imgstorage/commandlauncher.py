@@ -82,7 +82,9 @@ class CommandLauncher:
         zpool,
         volume,
         remotehost,
+	remotepool,
         size,
+	sync,
         ):
         message = {
             'action': 'map_zvol',
@@ -90,6 +92,8 @@ class CommandLauncher:
             'zvol': volume,
             'remotehost': remotehost,
             'size': size,
+	    'remotepool': remotepool,
+	    'sync': sync,
             }
         self.callCommand(message, nas)
         block_dev = self.ret_message['bdev']
@@ -120,6 +124,29 @@ class CommandLauncher:
         self.callCommand(message, compute)
         return {'node_type': self.ret_message['node_type'],
                 'body': self.ret_message['body']}
+
+    def callListZvolAttrs(self, nas,zvol):
+        message = {'action': 'get_zvol_attrs', 'zvol': zvol}
+        self.callCommand(message, nas)
+        return self.ret_message['body']
+
+    def callSetZvolAttrs(self, nas, zvol, attrs):
+        message = {'action': 'set_zvol_attrs', 'zvol': zvol}
+	message.update(attrs)
+        self.callCommand(message, nas)
+
+    def callListAttrs(self, nas):
+        message = {'action': 'get_attrs'}
+        self.callCommand(message, nas)
+        return self.ret_message['attrs']
+
+    def callSetAttrs(self, nas, attrs):
+        message = {'action': 'set_attrs', 'attrs': attrs}
+        self.callCommand(message, nas)
+
+    def callDelAttrs(self, nas, attrs):
+        message = {'action': 'del_attrs', 'attrs': attrs}
+        self.callCommand(message, nas)
 
     def callCommand(self, message, nas):
         credentials = pika.PlainCredentials(self.USERNAME, self.RABBITMQ_PW)
@@ -153,6 +180,7 @@ class CommandLauncher:
                         zvol_manage_queue)
                 channel.start_consuming()
                 if self.ret_message['status'] == 'error':
+                    print "XXX: ", self.ret_message
                     if 'error' in self.ret_message.keys():
                         raise CommandError(self.ret_message['error'])
                     else:

@@ -23,6 +23,14 @@
 	<package>roll-img-storage-usersguide</package>
 
 <post>
+<!-- default user names and network --> 
+/opt/rocks/bin/rocks add attr imgstorage-user img-storage
+/opt/rocks/bin/rocks add attr imgstorage-group img-storage
+/opt/rocks/bin/rocks add attr imgstorage-network local
+/usr/sbin/adduser img-storage -m
+/opt/rocks/bin/rocks sync users
+
+<!-- RabbitMQ setup to enable communication -->
 admin_pass=$(&lt; /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c26)
 /usr/sbin/rabbitmqctl add_user img-storage ${admin_pass}
 /usr/sbin/rabbitmqctl add_vhost img-storage
@@ -41,9 +49,8 @@ chmod 400 /opt/rocks/etc/rabbitmq_img-storage.conf
 # all nas installs the nas daemon
 /opt/rocks/bin/rocks set appliance attr nas img_storage_nas true
 /opt/rocks/bin/rocks set appliance attr compute vm_container_zpool tank
+/opt/rocks/bin/rocks set appliance attr vm-container vm_container_zpool tank
 
-/usr/sbin/adduser img-storage -m
-/opt/rocks/bin/rocks sync users
 </post>
 
 <post>

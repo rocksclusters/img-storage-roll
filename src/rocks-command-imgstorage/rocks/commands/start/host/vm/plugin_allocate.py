@@ -74,6 +74,8 @@ class Plugin(rocks.commands.Plugin):
 				"storage for " + node.name)
 		disk = node.vm_defs.disks[0]
 		phys = node.vm_defs.physNode.name
+		sync = self.owner.str2bool(self.db.getHostAttr(phys,'img_sync'))
+		remotepool = self.db.getHostAttr(phys,'vm_container_zpool')
 		size = str(disk.size)
 		volume = node.name + '-vol'
 		if not (disk.img_nas_server and disk.img_nas_server.server_name):
@@ -81,8 +83,9 @@ class Plugin(rocks.commands.Plugin):
 			return
 		nas_name = disk.img_nas_server.server_name
 		zpool_name = disk.img_nas_server.zpool_name
-		device = CommandLauncher().callAddHostStoragemap(nas_name, zpool_name,
-				volume, phys, size)
+        	# nas, zpool, volume, remotehost, remotepool, size, sync,
+		device = CommandLauncher().callAddHostStoragemap(
+			nas_name, zpool_name, volume, phys, remotepool, size, sync)
 		disk.vbd_type = "phy"
 		disk.prefix = os.path.dirname(device)
 		disk.name = os.path.basename(device)

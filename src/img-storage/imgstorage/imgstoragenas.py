@@ -53,9 +53,38 @@
 #
 # @Copyright@
 #
+
+#############
+# SQLite TABLES Defined
+# 
+# zvols:  zvol | zpool | iscsi_target | remotehost | remotepool | sync
+# zvolattrs: zvol | freq | nextsync | downspeed | upspeed
+# globals: attr | value
+# sync_queue:  zvol | zpool | remotehost | remotepool | is_sending  | is_delete_remote | time
+# zvol_calls:  zvol |reply_to | time 
+#############
+# msg formats
+#
+# Receive Messages:
+#       map_zvol:  zpool, zvol, remotehost, remotepoool, sync
+#       unmap_zvol:  zvol     XXX: really should have pool, too.
+#       del_zvol: zvol, zpool
+#       list_zvols: 
+#       set_zvol_attrs:
+#       get_zvol_attrs:
+#       get_attrs:
+#       set_attrs:
+#       del_attrs:
+# Send Messages:
+#       map_zvol: nas, target, size, zvol, remotehost, remotepool, sync 
+#       unmap_zvol: target, zvol
+#       zvol_deleted: 
+#       zvol_list       
+
 from rabbitmqclient import RabbitMQCommonClient
 from imgstorage import runCommand, ActionError, ZvolBusyActionError
 import logging
+import NodeConfig
 
 import traceback
 import imgstorage
@@ -135,7 +164,6 @@ class NasDaemon:
     def __init__(self):
         ## FIXME: user should be configurable at startup 
         self.imgUser = 'img-storage'    
-
         self.stdin_path = '/dev/null'
         self.stdout_path = '/tmp/out.log'
         self.stderr_path = '/tmp/err.log'
@@ -148,26 +176,208 @@ class NasDaemon:
             'zvol_unmapped': self.zvol_unmapped,
             'list_zvols': self.list_zvols,
             'del_zvol': self.del_zvol,
+            'get_zvol_attrs': self.get_zvol_attrs,
+            'set_zvol_attrs': self.set_zvol_attrs,
+            'get_attrs': self.get_attrs,
+            'set_attrs': self.set_attrs,
+            'del_attrs': self.del_attrs,
             'zvol_synced': self.zvol_synced,
             }
 
+        self.nc = NodeConfig.NodeConfig()
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
+        self.NODE_NAME = self.nc.NODE_NAME
+        self.ib_net = self.nc.SYNC_NETWORK
 
         self.sync_result = None
 
         self.results = {}
-        self.SYNC_WORKERS = 5
+        if self.nc.IMG_SYNC_WORKERS:
+            self.SYNC_WORKERS = int(self.nc.IMG_SYNC_WORKERS)
+        else:
+            self.SYNC_WORKERS = 5
 
         self.SYNC_CHECK_TIMEOUT = 10
-        self.SYNC_PULL_TIMEOUT = 60 * 5
+        # try once/minute to add new jobs to the sync queue
+        self.SYNC_PULL_TIMEOUT = 60
+        # the default SYNC_PULL is 5 minutes
+        self.SYNC_PULL_DEFAULT = 60 * 5
 
         self.logger = \
             logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
 
-        db = rocks.db.helper.DatabaseHelper() 
-        db.close()
-        db.closeSession()
+        
+        self.ZVOLATTRS = [ 'frequency', 'nextsync', 'downloadspeed','uploadspeed'] 
+    def dbconnect(self):
+        """ connect to sqlite3 database, turn on foreign constraints """
+        con = sqlite3.connect(self.SQLITE_DB)
+        cur = con.cursor()
+        cur.execute('PRAGMA foreign_keys=ON')
+        return con
 
+    def getZvolAttr(self,zvol,attr=None):
+        """ Return a single named attribute for a zvol, or a dictionary of
+                attributes if attr=None """
+        rval = None
+        with self.dbconnect() as con:
+                cur = con.cursor()
+                if attr is not None:
+                        cur.execute("SELECT %s FROM zvolattrs WHERE zvol='%s'" %
+                                (attr, zvol))
+                        row = cur.fetchone()
+                        if row != None:
+                                rval = row[0]
+                else:
+                        cur.execute("SELECT * from zvolattrs WHERE zvol='%s'" % zvol) 
+                        row = cur.fetchone()
+                        if row != None:
+                                rval = dict((cur.description[i][0], value) 
+                                        for (i, value) in enumerate(row)) 
+
+        return rval
+
+
+    def setZvolAttr(self,zvol,attr,value=None):
+        """ Set a single named attribute for a zvol. Set to Null of value is None """
+        with self.dbconnect() as con:
+                cur = con.cursor()
+                cur.execute('SELECT count(*) FROM zvolattrs WHERE zvol = ?'
+                            , [zvol])
+                if cur.fetchone()[0] == 0:
+                        cur.execute('INSERT INTO zvolattrs(zvol) VALUES(?)', [zvol])
+                if value is None:
+                        setStmt = "SET %s=NULL" % attr
+                elif isinstance(value,int):
+                        setStmt = "SET %s=%d" % (attr, value)
+                else:
+                        setStmt = "SET %s='%s'" % (attr, value)
+                cur.execute(""" UPDATE zvolattrs %s WHERE  zvol='%s'""" %
+                                (setStmt,zvol))
+                con.commit()
+
+
+    def getAttr(self,attr=None):
+        """ Return a single named global attribute or a dictionary of
+                all attributes if attr=None. All values are type string """
+        rval = None
+        with self.dbconnect() as con:
+                cur = con.cursor()
+                if attr is not None:
+                        cur.execute("SELECT value FROM globals WHERE attr='%s'" %
+                                (attr))
+                        row = cur.fetchone()
+                        if row != None:
+                                rval = row[0]
+                else:
+                        cur.execute("SELECT attr,value FROM globals") 
+                        rval = {}
+                        for row in cur.fetchall():
+                                attr,value = row
+                                rval[attr] = value
+        return rval
+
+
+    def setAttr(self,attr,value=None):
+        """ Set a single named attribute.Set to Null of value is None """
+        with self.dbconnect() as con:
+                if value is not None:
+                        value=str(value)
+                cur = con.cursor()
+                cur.execute('''INSERT OR REPLACE INTO globals(attr,value)
+                               VALUES(?,?)''', [attr, value] ) 
+                con.commit()
+    def deleteAttr(self,attr):
+        """ delete single named attribute """
+        with self.dbconnect() as con:
+                cur = con.cursor()
+                cur.execute('''DELETE FROM globals WHERE attr="%s"''' % attr ) 
+                con.commit()
+
+    ###### Attribute get/set messages
+
+    def get_zvol_attrs(self, message, props):
+        #  input: get_zvol_attr messages
+        #  output:  get_zvol_attr message --> requestor
+
+        zvol = message['zvol']
+        try:
+                attrs = self.getZvolAttr(zvol)
+                attrs['zvol'] = zvol
+        except Exception as err:
+                self.failAction(props.reply_to, 'get_zvol_attrs', str(err))
+                return
+        reply = json.dumps({'action': 'get_zvol_attrs', 'status': 'success',
+                'body':attrs})
+        self.queue_connector.publish_message(reply, exchange='',
+                        routing_key=props.reply_to)
+
+    def set_zvol_attrs(self, message, props):
+        #  input: set_zvol_attr message
+        #  output:  set_zvol_attr message --> requestor
+        #  state updates: zvols attr table
+
+        zvol = message['zvol']
+        try:
+                for k in message.keys():
+                        if k in self.ZVOLATTRS:
+                                self.setZvolAttr(zvol,k,message[k])
+        except Exception as err:
+                self.failAction(props.reply_to, 'set_zvol_attrs', str(err))
+                return
+
+        reply = json.dumps({'action': 'set_zvol_attrs', 'status': 'success'})
+        self.queue_connector.publish_message(reply, exchange='',
+                        routing_key=props.reply_to)
+
+    def get_attrs(self, message, props):
+        #  input: get_attrs messages
+        #  output:  get_attrs message --> requestor
+
+        try:
+                attrs = self.getAttr()
+        except Exception as err:
+                self.failAction(props.reply_to, 'get_attrs', str(err))
+                return
+        reply = json.dumps({'action': 'get_attrs', 'status': 'success',
+                'attrs':attrs})
+        self.queue_connector.publish_message(reply, exchange='',
+                        routing_key=props.reply_to)
+
+    def set_attrs(self, message, props):
+        #  input: set_attrs message
+        #  output:  set_attrs message --> requestor
+        #  state updates: attrs table
+
+        try:
+                attrs = message['attrs']
+                for k in attrs.keys():
+                        self.setAttr(k,attrs[k])
+        except Exception as err:
+                self.failAction(props.reply_to, 'set_attrs', str(err))
+                return
+
+        reply = json.dumps({'action': 'set_attrs', 'status': 'success'})
+        self.queue_connector.publish_message(reply, exchange='',
+                        routing_key=props.reply_to)
+
+
+    def del_attrs(self, message, props):
+        #  input: del_attrs message
+        #  output:  del_attrs message --> requestor
+        #  state updates: attrs table
+
+        try:
+                for attr in message['attrs']:
+                        self.deleteAttr(attr)
+        except Exception as err:
+                self.failAction(props.reply_to, 'del_attrs', str(err))
+                return
+
+        reply = json.dumps({'action': 'del_attrs', 'status': 'success'})
+        self.queue_connector.publish_message(reply, exchange='',
+                        routing_key=props.reply_to)
+
+    ############   Main Run Method ###################
 
     def run(self):
 
@@ -191,7 +401,7 @@ class NasDaemon:
 
 
         self.pool = ThreadPool(processes=self.SYNC_WORKERS)
-        with sqlite3.connect(self.SQLITE_DB) as con:
+        with self.dbconnect() as con:
             cur = con.cursor()
             cur.execute('''CREATE TABLE IF NOT EXISTS zvol_calls(
                           zvol TEXT PRIMARY KEY NOT NULL,
@@ -201,22 +411,41 @@ class NasDaemon:
                           zvol TEXT PRIMARY KEY NOT NULL,
                           zpool TEXT,
                           iscsi_target TEXT UNIQUE,
-                          remotehost TEXT)''')
+                          remotehost TEXT,
+                          remotepool TEXT,
+                          sync BOOLEAN)''')
+            cur.execute('''CREATE TABLE IF NOT EXISTS zvolattrs(
+                          zvol,
+                          frequency INT DEFAULT NULL,
+                          nextsync INT DEFAULT NULL,
+                          downloadspeed INT DEFAULT NULL,
+                          uploadspeed INT DEFAULT NULL,
+                          FOREIGN KEY (zvol) REFERENCES  zvols(zvol)
+                          ON DELETE CASCADE ON UPDATE CASCADE)''')
             cur.execute('''CREATE TABLE IF NOT EXISTS sync_queue(
                           zvol TEXT PRIMARY KEY NOT NULL,
                           zpool TEXT NOT NULL,
                           remotehost TEXT,
+                          remotepool TEXT,
                           is_sending BOOLEAN,
                           is_delete_remote BOOLEAN,
                           time INT)''')
-            cur.execute('''DELETE FROM sync_queue''')
+            cur.execute('''CREATE TABLE IF NOT EXISTS globals(
+                          attr TEXT PRIMARY KEY NOT NULL,
+                          value TEXT)''')
             con.commit()
+            # Record all parameters in the configuration file in globals
+            for key in self.nc.DATA.keys():
+                self.setAttr(key,self.nc.DATA[key])
+            if self.getAttr('frequency') is None:
+                self.setAttr('frequency',self.SYNC_PULL_DEFAULT)
+
 
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage',
                 'direct', "img-storage", "img-storage",
                 self.process_message, lambda a: \
                 self.startup(),
-                routing_key=self.NODE_NAME)
+                routing_key=self.nc.NODE_NAME)
         self.queue_connector.run()
 
     def failAction(
@@ -237,9 +466,17 @@ class NasDaemon:
 
     @coroutine
     def map_zvol(self, message, props):
+        #  input: map_zvol message
+        #  output:  map_zvol message --> remotehost
+        #  state updates: zvol table
+
         remotehost = message['remotehost']
+        remotepool = message['remotepool']
         zpool_name = message['zpool']
         zvol_name = message['zvol']
+        sync = message['sync']
+
+        # print "XXX map_zvol (message): ", message
         self.logger.debug('Setting zvol %s' % zvol_name)
 
         with sqlite3.connect(self.SQLITE_DB) as con:
@@ -252,29 +489,35 @@ class NasDaemon:
                 volume = "%s/%s" % (zpool_name, zvol_name)
                 if cur.fetchone()[0] == 0:
 
-       	            """ Create a zvol, if it doesn't already exist """ 
-       	            # check if volume already exists
+                    """ Create a zvol, if it doesn't already exist """ 
+                    # check if volume already exists
+                    # print 'XXX checking if  zvol %s exists' % volume
                     self.logger.debug('checking if  zvol %s exists' % volume)
                     rcode = subprocess.call(["zfs","list",volume])
+                    # print 'XXX check complete (%s)' % volume
                     self.logger.debug('check complete (%s)' % volume)
-       	            if rcode != 0:
+                    if rcode != 0:
                         # create the zfs FS
                         yield runCommandBackground(zfs_create
                             + ['-V', '%sgb' % message['size'], volume ])
                         self.logger.debug('Created new zvol %s' % volume)
-       	            else:
+                    else:
                         self.logger.debug('Vol %s exists' % volume)
-                    cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) '
-                                , (zvol_name, None, None, None))
+
+                    # Record the creation of the volume 
+                    cur.execute('''INSERT OR REPLACE INTO 
+                                zvols(zvol,zpool,iscsi_target,remotehost,remotepool,sync) 
+                                VALUES (?,?,?,?,?,?) '''
+                                , (zvol_name, zpool_name, None, None,None,False))
                     con.commit()
+                    # print 'XXX Created new zvol %s' % volume
                     self.logger.debug('Created new zvol %s' % volume)
 
                 cur.execute('SELECT remotehost FROM zvols WHERE zvol = ?'
                             , [zvol_name])
                 row = cur.fetchone()
                 if row != None and row[0] != None:  # zvol is mapped
-                    raise ActionError('Error when mapping zvol: already mapped'
-                            )
+                    raise ActionError('Error when mapping zvol: already mapped')
 
                 ip = None
                 use_ib = False
@@ -308,13 +551,19 @@ class NasDaemon:
                     if 'Creating new target' in line:
                         start = 'Creating new target (name='.__len__()
                         iscsi_target = line[start:line.index(',')]
+
+                # print 'XXX Mapped %s to iscsi target %s' % (zvol_name, iscsi_target)
                 self.logger.debug('Mapped %s to iscsi target %s'
                                   % (zvol_name, iscsi_target))
 
-                cur.execute('INSERT OR REPLACE INTO zvols VALUES (?,?,?,?) '
-                            , (zvol_name, zpool_name, iscsi_target,
-                            remotehost))
+                # Update the Zvols table with the target, remote and sync attributes
+                cur.execute('''INSERT OR REPLACE INTO 
+                            zvols(zvol,zpool,iscsi_target,remotehost, remotepool,sync) 
+                            VALUES (?,?,?,?,?,?) '''
+                            , (zvol_name, zpool_name, iscsi_target, remotehost, remotepool,sync))
                 con.commit()
+
+                # print 'XXX iscsi target %s inserted into DB' % iscsi_target
 
                 def failDeliver(
                     target,
@@ -328,6 +577,8 @@ class NasDaemon:
                                     % remotehost)
                     self.release_zvol(zvol_name)
 
+                # Send a map_zvol message to remotehost
+                # XXX: Should rename this message
                 self.queue_connector.publish_message(json.dumps({
                     'action': 'map_zvol',
                     'target': iscsi_target,
@@ -335,6 +586,9 @@ class NasDaemon:
                             self.ib_net) if use_ib else self.NODE_NAME),
                     'size': message['size'],
                     'zvol': zvol_name,
+                    'sync': sync,
+                    'remotehost': remotehost,
+                    'remotepool': remotepool,
                     }), remotehost, self.NODE_NAME, on_fail=lambda : \
                         failDeliver(iscsi_target, zvol_name,
                                     props.reply_to, remotehost))
@@ -346,6 +600,10 @@ class NasDaemon:
                 self.failAction(props.reply_to, 'zvol_mapped', str(err))
 
     def unmap_zvol(self, message, props):
+        #  input: unmap_zvol message
+        #  output:  unmap_zvol message --> remotehost 
+        #  state updates: None
+
         zvol_name = message['zvol']
         self.logger.debug('Tearing down zvol %s' % zvol_name)
 
@@ -383,6 +641,10 @@ class NasDaemon:
 
     @coroutine
     def del_zvol(self, message, props):
+        #  input: del_zvol message
+        #  output:  zvol_deleted message --> requestor
+        #  state updates: zvols table, Entry deleted 
+
         zvol_name = message['zvol']
         zpool_name = message['zpool']
         self.logger.debug('Deleting zvol %s' % zvol_name)
@@ -431,27 +693,27 @@ class NasDaemon:
             try:
                 cur = con.cursor()
                 cur.execute('''SELECT zvol_calls.reply_to,
-                        zvol_calls.zvol, zvols.zpool FROM zvol_calls
+                        zvol_calls.zvol, zvols.zpool, zvols.sync FROM zvol_calls
                         JOIN zvols ON zvol_calls.zvol = zvols.zvol
                         WHERE zvols.iscsi_target = ?''',
                             [target])
-                (reply_to, zvol, zpool) = cur.fetchone()
+                (reply_to, zvol, zpool, sync) = cur.fetchone()
 
                 if message['status'] != 'success':
                     raise ActionError('Error attaching iSCSI target to compute node: %s'
                              % message.get('error'))
 
-                if not self.is_sync_node(props.reply_to):
+                if not sync:
                     self.release_zvol(zvol)
                 else:
                     cur.execute('DELETE FROM sync_queue WHERE zvol = ?'
                                 , [zvol])
-                    cur.execute('''INSERT INTO sync_queue 
-                                    SELECT zvol,?,?,1,1,? 
+                    cur.execute('''INSERT INTO 
+                                   sync_queue(zvol,zpool,remotehost,is_sending,is_delete_remote,time,remotepool)
+                                    SELECT zvol,?,?,1,1,?,remotepool 
                                     FROM zvols 
                                     WHERE iscsi_target = ? '''
-                                , [zpool, props.reply_to, time.time(),
-                                target])
+                                , [zpool, props.reply_to, time.time(), target])
                     con.commit()
 
                 self.queue_connector.publish_message(json.dumps({'action': 'zvol_mapped'
@@ -474,19 +736,19 @@ class NasDaemon:
 
                 # get request destination
 
-                cur.execute('''SELECT reply_to, zpool 
+                cur.execute('''SELECT reply_to, zpool, remotepool, sync 
                                 FROM zvol_calls 
                                 JOIN zvols 
                                 ON zvol_calls.zvol = zvols.zvol 
                                 WHERE zvols.zvol = ?'''
                             , [zvol])
-                [reply_to, zpool] = cur.fetchone()
+                [reply_to, zpool, remotepool, sync] = cur.fetchone()
 
                 if message['status'] == 'error':
                     raise ActionError('Error detaching iSCSI target from compute node: %s'
                              % message.get('error'))
 
-                if not self.is_sync_node(props.reply_to):
+                if not sync:
                     self.detach_target(target, True)
                     self.release_zvol(zvol)
                 else:
@@ -494,9 +756,12 @@ class NasDaemon:
                     cur.execute('UPDATE sync_queue SET is_delete_remote = 1 WHERE zvol = ?'
                                 , [zvol])
                     if cur.rowcount == 0:
-                        cur.execute('INSERT INTO sync_queue VALUES(?,?,?,0,1,?)'
-                                    , [zvol, zpool, props.reply_to,
-                                    time.time()])
+                        cur.execute('''INSERT INTO 
+                            sync_queue(zvol,zpool,remotehost,remotepool,is_sending,
+                            is_delete_remote, time)  
+                            VALUES(?,?,?,?,0,1,?)''', 
+                            [zvol, zpool, props.reply_to, remotepool,
+                                time.time()])
                     con.commit()
 
                 self.queue_connector.publish_message(json.dumps({'action': 'zvol_unmapped'
@@ -520,16 +785,16 @@ class NasDaemon:
     @coroutine
     def schedule_next_sync(self):
         try:
-            with sqlite3.connect(self.SQLITE_DB) as con:
+            with self.dbconnect() as con:
                 cur = con.cursor()
 
                 for (zvol, job_result) in self.results.items():
                     if job_result.ready():
                         del self.results[zvol]
-                        cur.execute('''SELECT remotehost, is_sending, 
-                                        zvol, zpool, is_delete_remote 
-                                        FROM sync_queue 
-                                        WHERE zvol = ?'''
+                        cur.execute('''SELECT 
+                                       remotehost, is_sending, zvol, zpool, is_delete_remote,remotepool
+                                       FROM sync_queue 
+                                       WHERE zvol = ?'''
                                     , [zvol])
                         row = cur.fetchone()
 
@@ -539,7 +804,7 @@ class NasDaemon:
                                          % zvol)
 
                             (remotehost, is_sending, zvol, zpool,
-                             is_delete_remote) = row
+                             is_delete_remote,remotepool) = row
 
                             self.logger.debug('Sync %s is ready' % zvol)
 
@@ -556,7 +821,7 @@ class NasDaemon:
                                         self.logger.error('Compute node %s is unavailable to sync zvol %s'
                                          % (remotehost, zvol)))  # reply back to compute node
                             elif is_delete_remote:
-                                cur.execute('UPDATE zvols SET remotehost = NULL, zpool = NULL where zvol = ?'
+                                cur.execute('UPDATE zvols SET remotehost = NULL, remotepool = NULL where zvol = ?'
                                         , [zvol])
                                 con.commit()
                                 self.release_zvol(zvol)
@@ -571,12 +836,11 @@ class NasDaemon:
 
                 for row in \
                     cur.execute('''SELECT remotehost, is_sending, zvol, 
-                                    zpool, is_delete_remote 
+                                    zpool, is_delete_remote, remotepool 
                                     FROM sync_queue 
                                     ORDER BY time ASC'''
                                 ):
-                    (remotehost, is_sending, zvol, zpool,
-                     is_delete_remote) = row
+                    (remotehost, is_sending, zvol, zpool, is_delete_remote, remotepool) = row
                     self.logger.debug('Have sync job %s' % zvol)
 
                     if self.ib_net:
@@ -611,19 +875,33 @@ class NasDaemon:
         with sqlite3.connect(self.SQLITE_DB) as con:
             try:
                 cur = con.cursor()
-                cur.execute('''SELECT zvol, zpool, remotehost 
-                                FROM zvols 
+                now = int(time.time())
+                ## Select zvols whose time has come to sync
+                ## if a nextsync has never been set, set one 
+                cur.execute('''SELECT z.zvol, z.zpool, z.remotehost, z.remotepool,
+                               za.frequency,za.nextsync 
+                                FROM zvols z LEFT JOIN zvolattrs za ON
+                                z.zvol=za.zvol
                                 WHERE iscsi_target IS NULL 
-                                and remotehost IS NOT NULL 
-                                ORDER BY zvol DESC;'''
+                                AND remotehost IS NOT NULL 
+                                AND (nextsync is NULL  OR nextsync < %d)
+                                ORDER BY nextsync ASC, z.zvol DESC;''' % now 
                             )
                 rows = cur.fetchall()
                 for row in rows:
-                    (zvol, zpool, remotehost) = row
-                    cur.execute('INSERT or IGNORE INTO sync_queue VALUES(?,?,?,0,0,?)'
-                                , [zvol, zpool, remotehost,
+                    (zvol, zpool, remotehost, remotepool, frequency, nextsync) = row
+                    delta = self.getZvolAttr(zvol,'frequency')
+                    delta = int(self.getAttr('frequency')) if delta is None else delta
+                    delta = self.SYNC_PULL_DEFAULT if delta is None else delta
+                    
+                    # add this one to the sync queue, if it isn't already there
+                    cur.execute('INSERT or IGNORE INTO sync_queue VALUES(?,?,?,?,0,0,?)'
+                                , [zvol, zpool, remotehost,remotepool,
                                 time.time()])
                     con.commit()
+                    # when we should schedule again for this zvol
+                    self.setZvolAttr(zvol,'nextsync', now + delta)
+
             except Exception, ex:
                 self.logger.exception(ex)
 
@@ -697,7 +975,7 @@ class NasDaemon:
                 cur.execute('''UPDATE zvols 
                                 SET iscsi_target = NULL, 
                                 remotehost = NULL, 
-                                zpool = NULL 
+                                remotepool = NULL 
                                 where iscsi_target = ?'''
                             , [target])
             else:
@@ -711,7 +989,7 @@ class NasDaemon:
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
             cur.execute('''UPDATE zvols SET iscsi_target = NULL,
-                    remotehost = NULL, zpool = NULL
+                    remotehost = NULL, remotepool = NULL
                     where zvol = ?''',
                         [zvol])
             con.commit()
@@ -719,17 +997,18 @@ class NasDaemon:
     def list_zvols(self, message, properties):
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
-            cur.execute('''SELECT zvols.zvol, zvols.zpool, zvols.iscsi_target, 
-                            zvols.remotehost, sync_queue.is_sending, 
-                            sync_queue.is_delete_remote, sync_queue.time 
-                            from zvols 
-                            LEFT JOIN sync_queue ON zvols.zvol = sync_queue.zvol;'''
+            cur.execute('''SELECT z.zvol, z.zpool, z.iscsi_target, z.remotehost, 
+                           z.remotepool, s.is_sending, s.is_delete_remote, s.time, 
+                           za.nextsync, za.frequency FROM 
+                           zvols z LEFT JOIN zvolattrs za ON z.zvol=za.zvol 
+                           LEFT JOIN sync_queue s on z.zvol=s.zvol '''
                         )
             r = [dict((cur.description[i][0], value) for (i, value) in
                  enumerate(row)) for row in cur.fetchall()]
             self.queue_connector.publish_message(json.dumps({'action': 'zvol_list'
                     , 'status': 'success', 'body': r}), exchange='',
                     routing_key=properties.reply_to)
+
 
     def process_message(self, properties, message_str, deliver):
 
@@ -779,14 +1058,3 @@ class NasDaemon:
             if line.startswith('Target ') and line.split()[2] == target:
                 return (line.split()[1])[:-1]
         return None
-
-    def is_sync_node(self, remotehost):
-        """ Get information from attributes if image sync is enabled for the
-        node"""
-
-        return rocks.util.str2bool(imgstorage.get_attribute('img_sync', remotehost,
-                self.logger))
-
-    def get_node_zpool(self, remotehost):
-        return imgstorage.get_attribute('vm_container_zpool',
-                remotehost, self.logger)
