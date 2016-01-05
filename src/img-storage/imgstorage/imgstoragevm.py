@@ -87,14 +87,14 @@ from pysqlite2 import dbapi2 as sqlite3
 #
 # Receive Messages:
 #       map_zvol:  zpool, zvol, remotehost, remotepoool, sync
-#	unmap_zvol:  zvol                             
-#	list_dev: 
-#	sync_zvol
+#       unmap_zvol:  zvol                             
+#       list_dev: 
+#       sync_zvol
 #
 # Send Messages:
 #       zvol_mapped: nas, target, size, zvol, remotehost, remotepool, sync 
-# 	zvol_unmapped: target, zvol
-#	zvol_deleted: 
+#       zvol_unmapped: target, zvol
+#       zvol_deleted: 
 
 def get_blk_dev_list():
     """ Return mappings of isci targets """
@@ -145,7 +145,7 @@ class VmDaemon:
 
     def __init__(self):
         self.nc = NodeConfig.NodeConfig()
-	self.NODE_NAME = self.nc.NODE_NAME
+        self.NODE_NAME = self.nc.NODE_NAME
         self.stdin_path = '/dev/null'
         self.stdout_path = '/dev/null'
         self.stderr_path = '/tmp/err.log'
@@ -161,9 +161,9 @@ class VmDaemon:
             logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
 
-	# sync is part of the map_zvol message
+        # sync is part of the map_zvol message
         # self.sync_enabled = self.is_sync_enabled()
-	# pool to use is part of the map_zvol message
+        # pool to use is part of the map_zvol message
         # self.ZPOOL = NodeConfig.VM_CONTAINER_ZPOOL
         #if self.sync_enabled and not self.ZPOOL:
         #     raise Exception('Missing vm_container_zpool attribute')
@@ -184,9 +184,9 @@ class VmDaemon:
             sync = cur.fetchone()
             # print 'XXX is_sync_enabled sync is', sync
             if sync != None and sync[0] != 0:
-		return True
+                return True
          return False
-	
+        
     def is_sync_enabled_iscsi(self,target):
          """return True if a particular iscsi target is supposed to sync """
 
@@ -197,7 +197,7 @@ class VmDaemon:
             sync = cur.fetchone()
             # print 'XXX is_sync_enabled sync is', sync
             if sync != None and sync[0] != 0:
-		return True
+                return True
          return False
 
     def zpool(self,zvol):
@@ -212,14 +212,14 @@ class VmDaemon:
 
     @coroutine
     def map_zvol(self, message, props):
-	""" map a volume """
+        """ map a volume """
         self.logger.debug('Setting zvol %s' % message['target'])
         zvol = message.get('zvol')
-	sync = message.get('sync')
-	pool = message.get('remotepool')
-	nas = message.get('nas')
-	target = message.get('target')
-	# print "XXX map_zvol(message)", message
+        sync = message.get('sync')
+        pool = message.get('remotepool')
+        nas = message.get('nas')
+        target = message.get('target')
+        # print "XXX map_zvol(message)", message
 
         try:
             self.connect_iscsi(message['target'], message['nas'])
@@ -289,7 +289,7 @@ class VmDaemon:
                 'status': 'success',
                 }), props.reply_to, reply_to=self.NODE_NAME,
                     correlation_id=props.message_id)
-	
+        
 
             self.logger.debug('Successfully mapped %s to %s'
                               % (message['target'], bdev))
@@ -322,22 +322,22 @@ class VmDaemon:
         self.queue_connector.publish_message(json.dumps({
             'action': 'dev_list',
             'status': 'success',
-	    'node_type': 'mixed',
+            'node_type': 'mixed',
             'body': mappings,
             }), exchange='', routing_key=props.reply_to)
 
     def get_dev_list(self):
-	""" return of dictionary of information about various devices 
-	    Keys:  volume -- zvolume or generic iscsi (labeled volume<n>)
+        """ return of dictionary of information about various devices 
+            Keys:  volume -- zvolume or generic iscsi (labeled volume<n>)
                    sync -- iscsi or sync, depending on type
                    target -- iscsi target 
                    device -- local device name
                    --- following keys are only for sync-type volumes
-		   status
+                   status
                    size
                    synced
                    bdev
-	           started
+                   started
                    time
         """
         mappings = {}
@@ -360,7 +360,7 @@ class VmDaemon:
                                    'status': dev_ar[3],
                                    'size': int(dev_ar[2]) * 512 / 1024 \
                                    ** 3}
-	    mappings[zvol_name]['sync'] =  'sync'
+            mappings[zvol_name]['sync'] =  'sync'
             if dev_ar[3] != 'linear':
                 mappings[zvol_name]['synced'] = '%s %s' % (dev_ar[4],
                         dev_ar[5])
@@ -379,12 +379,12 @@ class VmDaemon:
                 mappings[zvol]['started'] = started
                 mappings[zvol]['time'] = time
 
-	## Step 2. Want what is left-over (non-synced volumes, pure iSCSI)
- 	for t in bdev_mapped:
-		try:
-			del bdev_mappings[t]
-		except:
-			pass
+        ## Step 2. Want what is left-over (non-synced volumes, pure iSCSI)
+        for t in bdev_mapped:
+                try:
+                        del bdev_mappings[t]
+                except:
+                        pass
 
         ## Step 3.  Now go through any mappings left over and add
         mapidx=0
@@ -430,8 +430,8 @@ class VmDaemon:
 
         """ Received zvol unmap_zvol command from nas """
         zvol = message['zvol']
-	# print 'XXX unmap zvol(message)', message
-	# print 'XXX is_sync_enabled', self.is_sync_enabled(zvol)
+        # print 'XXX unmap zvol(message)', message
+        # print 'XXX is_sync_enabled', self.is_sync_enabled(zvol)
 
         try:
             if self.is_sync_enabled(zvol):
@@ -639,7 +639,7 @@ class VmDaemon:
                           zpool TEXT,
                           nas TEXT,
                           iscsi_target TEXT UNIQUE,
-			  sync BOOLEAN)''')
+                          sync BOOLEAN)''')
 
             cur.execute('''CREATE TABLE IF NOT EXISTS sync_queue(
                                 zvol TEXT PRIMARY KEY NOT NULL, 
