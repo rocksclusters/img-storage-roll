@@ -639,12 +639,12 @@ class NasDaemon:
         throttle
         ):
         args = ['/opt/rocks/bin/snapshot_upload.sh', 
-                zpool, 
-                zvol, 
-                remotehost,
-                remotezpool]
+                '-p', zpool, 
+                '-v', zvol, 
+                '-r', remotehost,
+                '-y', remotezpool]
         if(throttle):
-            args.append(throttle)
+            args.extend(['-t', throttle])
         runCommand(args)
 
     def download_snapshot(
@@ -657,17 +657,16 @@ class NasDaemon:
         throttle
         ):
         args = ['/opt/rocks/bin/snapshot_download.sh', 
-                    zpool, 
-                    zvol, 
-                    remotehost,
-                    remotezpool,
-                    "%s"%is_delete_remote]
+                    '-p', zpool, 
+                    '-v', zvol, 
+                    '-r', remotehost,
+                    '-y', remotezpool]
+        if(is_delete_remote):
+            args.append('-d')
         if(throttle and not is_delete_remote):
-            args.append(throttle)
+            args.extend(['-t', throttle])
 
-        cmd = subprocess.Popen(args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE)
+        runCommand(args)
         
 
     def detach_target(self, target, is_remove_host):
