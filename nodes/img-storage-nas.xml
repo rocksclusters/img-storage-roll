@@ -31,7 +31,12 @@ mkdir /var/log/rocks
 /sbin/chkconfig iscsid on
 /sbin/chkconfig img-storage-nas on
 
+
+<eval mode="xml">
+/opt/rocks/bin/rocks report host imgstorage &hostname;
+</eval>
 <file name="/etc/rc.d/rocksconfig.d/post-99-restart-img-storage" perms="755">
+
 #!/bin/bash
 #
 # while for the config file to be ready

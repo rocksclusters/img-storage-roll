@@ -57,6 +57,7 @@ from rabbitmqclient import RabbitMQCommonClient
 from imgstorage import *
 import imgstorage
 from imgstoragedaemon import *
+import NodeConfig
 import logging
 
 import time
@@ -75,6 +76,25 @@ from tornado.gen import Task, coroutine
 
 from pysqlite2 import dbapi2 as sqlite3
 
+
+#############
+# SQLite TABLES Defined
+#
+# zvols:  zvol | zpool | iscsi_target | remotehost | remotepool | sync
+# sync_queue:  zvol | zpool | remotehost | remotepool | is_sending  | is_delete_remote | time
+#############
+# msg formats
+#
+# Receive Messages:
+#       map_zvol:  zpool, zvol, remotehost, remotepoool, sync
+#       unmap_zvol:  zvol
+#       list_dev:
+#       sync_zvol
+#
+# Send Messages:
+#       zvol_mapped: nas, target, size, zvol, remotehost, remotepool, sync
+#       zvol_unmapped: target, zvol
+#       zvol_deleted:
 
 def get_blk_dev_list():
     """ Return mappings of isci targets """
@@ -104,7 +124,7 @@ def disconnect_iscsi(iscsi_target):
         '-T',
         iscsi_target,
         '-u',
-        ])
+    ])
 
 
 def get_zfs_list():
@@ -124,6 +144,8 @@ def get_zfs_list():
 class VmDaemon:
 
     def __init__(self):
+        self.nc = NodeConfig.NodeConfig()
+        self.NODE_NAME = self.nc.NODE_NAME
         self.stdin_path = '/dev/null'
         self.stdout_path = '/dev/null'
         self.stderr_path = '/tmp/err.log'
@@ -134,7 +156,7 @@ class VmDaemon:
             'unmap_zvol': self.unmap_zvol,
             'list_dev': self.list_dev,
             'sync_zvol': self.sync_zvol,
-            }
+        }
         self.logger = \
             logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
@@ -143,35 +165,54 @@ class VmDaemon:
 
         self.SYNC_CHECK_TIMEOUT = 10
 
-        self.init_params()
+    def is_sync_enabled(self, zvol):
+        """return True if a particular volume is supposed to sync """
 
-    def init_params(self):
-        try:
-            db = rocks.db.helper.DatabaseHelper()
-            db.connect()
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            # print 'XXX is_sync_enabled zvol is ', zvol
+            cur = con.cursor()
+            cur.execute('SELECT sync FROM zvols WHERE zvol = ?', [zvol])
+            sync = cur.fetchone()
+            # print 'XXX is_sync_enabled sync is', sync
+            if sync != None and sync[0] != 0:
+                return True
+        return False
 
-            self.NODE_NAME = db.getHostname()
-            self.IB_NET = db.getHostAttr(db.getHostname(), 'IB_net')
-            self.ZPOOL = db.getHostAttr(db.getHostname(),
-                    'vm_container_zpool')
-            self.sync_enabled = rocks.util.str2bool(db.getHostAttr(db.getHostname(),
-                    'img_sync'))
-            if self.sync_enabled and not self.ZPOOL:
-                raise Exception('Missing vm_container_zpool attribute')
+    def is_sync_enabled_iscsi(self, target):
+        """return True if a particular iscsi target is supposed to sync """
 
-        except Exception, e:
-            error = 'Unable to get init attributes (%s)' \
-                % (str(e))
-            self.logger.exception(error)
-            raise ActionError(error)
-        finally:
-            db.close()
-            db.closeSession()
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            # print 'XXX is_sync_enabled_target target is ', target
+            cur = con.cursor()
+            cur.execute(
+                'SELECT sync FROM zvols WHERE iscsi_target = ?', [target])
+            sync = cur.fetchone()
+            # print 'XXX is_sync_enabled sync is', sync
+            if sync != None and sync[0] != 0:
+                return True
+        return False
+
+    def zpool(self, zvol):
+        """returns pool on which a particular volume is located """
+        with sqlite3.connect(self.SQLITE_DB) as con:
+            cur = con.cursor()
+            cur.execute('SELECT zpool FROM zvols WHERE zvol = ?', [zvol])
+            row = cur.fetchone()
+            return row[0]
+
+        return None
 
     @coroutine
     def map_zvol(self, message, props):
+        """ map a volume """
         self.logger.debug('Setting zvol %s' % message['target'])
         zvol = message.get('zvol')
+        sync = message.get('sync')
+        pool = message.get('remotepool')
+        nas = message.get('nas')
+        target = message.get('target')
+        # print "XXX map_zvol(message)", message
+
         try:
             self.connect_iscsi(message['target'], message['nas'])
 
@@ -187,7 +228,7 @@ class VmDaemon:
                 else:
                     if count == 3:
                         raise ActionError('Not found %s in targets'
-                                % message['target'])
+                                          % message['target'])
 
                     # asynchronous time.sleep(1)
 
@@ -196,28 +237,40 @@ class VmDaemon:
                     count += 1
 
             bdev = '/dev/%s' % mappings[message['target']]
+            # print 'XXX map_zvol bdev is %s' % bdev
 
-            if self.sync_enabled:
+            # Record information about this volume. If the subsequent
+            # volume creation fails, this is just stale information.
+
+            with sqlite3.connect(self.SQLITE_DB) as con:
+                cur = con.cursor()
+                cur.execute('''INSERT OR REPLACE INTO 
+                    zvols(zvol,zpool,nas,iscsi_target,sync) 
+                    VALUES (?,?,?,?,?) '''
+                            , (zvol, pool, nas, target, sync))
+                con.commit()
+
+            if sync:
                 temp_size_cur = min(self.temp_size, int(message['size'
-                                    ]) - 1)
+                                                                ]) - 1)
                 if zvol and len(zvol) > 0:  # don't want to destroy the zpool
                     try:
                         runCommand(['zfs', 'destroy', '-r', '%s/%s'
-                                   % (self.ZPOOL, zvol)])
+                                    % (pool, zvol)])
                     except:
                         pass
                 runCommand(zfs_create + ['-V', '%sgb'
-                           % message['size'], '%s/%s' % (self.ZPOOL,
-                           zvol)])
+                                         % message['size'], '%s/%s' % (pool,
+                                                                       zvol)])
                 runCommand(zfs_create + ['-V', '%sgb'
-                           % temp_size_cur, '%s/%s-temp-write'
-                           % (self.ZPOOL, zvol)])
+                                         % temp_size_cur, '%s/%s-temp-write'
+                                         % (pool, zvol)])
                 time.sleep(2)
                 runCommand(['dmsetup', 'create', '%s-snap' % zvol,
-                           '--table',
-                           '0 %s snapshot %s /dev/zvol/%s/%s-temp-write P 16'
+                            '--table',
+                            '0 %s snapshot %s /dev/zvol/%s/%s-temp-write P 16'
                             % (int(1024 ** 3 * temp_size_cur / 512),
-                           bdev, self.ZPOOL, zvol)])
+                               bdev, pool, zvol)])
                 bdev = '/dev/mapper/%s-snap' % zvol
 
             self.queue_connector.publish_message(json.dumps({
@@ -225,19 +278,20 @@ class VmDaemon:
                 'target': message['target'],
                 'bdev': bdev,
                 'status': 'success',
-                }), props.reply_to, reply_to=self.NODE_NAME,
-                    correlation_id=props.message_id)
+            }), props.reply_to, reply_to=self.NODE_NAME,
+                correlation_id=props.message_id)
 
             self.logger.debug('Successfully mapped %s to %s'
                               % (message['target'], bdev))
+
         except ActionError, msg:
             self.queue_connector.publish_message(json.dumps({
                 'action': 'zvol_mapped',
                 'target': message['target'],
                 'status': 'error',
                 'error': str(msg),
-                }), props.reply_to, reply_to=self.NODE_NAME,
-                    correlation_id=props.message_id)
+            }), props.reply_to, reply_to=self.NODE_NAME,
+                correlation_id=props.message_id)
             self.logger.exception('Error mapping %s: %s'
                                   % (message['target'], str(msg)))
         except:
@@ -249,30 +303,39 @@ class VmDaemon:
                 'zvol': zvol,
                 'status': 'error',
                 'error': 'unhandled exception in unmap_zvol',
-                }), props.reply_to, reply_to=self.NODE_NAME,
-                    correlation_id=props.message_id)
+            }), props.reply_to, reply_to=self.NODE_NAME,
+                correlation_id=props.message_id)
 
     def list_dev(self, message, props):
-        if self.sync_enabled:
-            mappings = self.get_dev_list()
-        else:
-            mappings_map = get_blk_dev_list()
-            mappings = []
-            for target in mappings_map.keys():
-                mappings.append({'target': target,
-                                'device': mappings_map[target]})
+        mappings = self.get_dev_list()
         self.logger.debug('Got mappings %s' % mappings)
         self.queue_connector.publish_message(json.dumps({
             'action': 'dev_list',
             'status': 'success',
-            'node_type': ('sync' if self.sync_enabled else 'iscsi'),
+            'node_type': 'mixed',
             'body': mappings,
-            }), exchange='', routing_key=props.reply_to)
+        }), exchange='', routing_key=props.reply_to)
 
     def get_dev_list(self):
+        """ return of dictionary of information about various devices 
+            Keys:  volume -- zvolume or generic iscsi (labeled volume<n>)
+                   sync -- iscsi or sync, depending on type
+                   target -- iscsi target 
+                   device -- local device name
+                   --- following keys are only for sync-type volumes
+                   status
+                   size
+                   synced
+                   bdev
+                   started
+                   time
+        """
         mappings = {}
         bdev_mappings = get_blk_dev_list()
+        bdev_mapped = []
 
+        # Step 1. Find all the devices that are part of dmsetup (eg. some
+        # state of sync
         try:
             out = runCommand(['dmsetup', 'status'])
         except:
@@ -283,18 +346,20 @@ class VmDaemon:
             dev_ar = line.split()
             dev_name = (dev_ar[0])[:-1]
             zvol_name = re.search(r'([\w-]*)-snap', dev_name).group(1)
-            mappings[zvol_name] = {'dev': dev_name,
+            mappings[zvol_name] = {'device': dev_name,
                                    'status': dev_ar[3],
-                                   'size': int(dev_ar[2]) * 512 / 1024 \
+                                   'size': int(dev_ar[2]) * 512 / 1024
                                    ** 3}
+            mappings[zvol_name]['sync'] = 'sync'
             if dev_ar[3] != 'linear':
                 mappings[zvol_name]['synced'] = '%s %s' % (dev_ar[4],
-                        dev_ar[5])
+                                                           dev_ar[5])
 
             for target in bdev_mappings.keys():
                 if target.endswith(zvol_name):
                     mappings[zvol_name]['target'] = target
                     mappings[zvol_name]['bdev'] = bdev_mappings[target]
+                    bdev_mapped.append(target)
 
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
@@ -304,6 +369,23 @@ class VmDaemon:
                 mappings[zvol]['started'] = started
                 mappings[zvol]['time'] = time
 
+        # Step 2. Want what is left-over (non-synced volumes, pure iSCSI)
+        for t in bdev_mapped:
+            try:
+                del bdev_mappings[t]
+            except:
+                pass
+
+        # Step 3.  Now go through any mappings left over and add
+        mapidx = 0
+        mkeys = bdev_mappings.keys()
+        mkeys.sort()
+        for target in mkeys:
+            vname = "volume%d" % mapidx
+            mappings[vname] = {'target': target,
+                               'device': bdev_mappings[target],
+                               'sync': ('sync' if self.is_sync_enabled_iscsi(target) else 'iscsi')}
+            mapidx += 1
         return mappings
 
     def connect_iscsi(self, iscsi_target, node_name):
@@ -315,7 +397,7 @@ class VmDaemon:
             'sendtargets',
             '-p',
             node_name,
-            ])
+        ])
         self.logger.debug('Looking for target in iscsiadm output')
         for line in connect_out:
             if iscsi_target in line:  # has the target
@@ -330,49 +412,50 @@ class VmDaemon:
                     '-p',
                     node_name,
                     '-l',
-                    ])
+                ])
         raise ActionError('Could not find iSCSI target %s on compute node %s'
-                           % (iscsi_target, node_name))
+                          % (iscsi_target, node_name))
 
     def unmap_zvol(self, message, props):
         """ Received zvol unmap_zvol command from nas """
-
         zvol = message['zvol']
+        # print 'XXX unmap zvol(message)', message
+        # print 'XXX is_sync_enabled', self.is_sync_enabled(zvol)
 
         try:
-            if self.sync_enabled:
+            if self.is_sync_enabled(zvol):
                 self.logger.debug('Tearing down zvol %s'
                                   % message['zvol'])
                 while True:
                     if isFileUsed('/dev/mapper/%s-snap' % zvol):
                         time.sleep(0.1)
                         self.logger.debug('/dev/mapper/%s-snap is in use'
-                                 % zvol)
+                                          % zvol)
                     else:
                         break
                 runCommand(['dmsetup', 'remove', '--retry', '%s-snap'
-                           % zvol])
+                            % zvol])
                 self.queue_connector.publish_message(json.dumps({
                     'action': 'zvol_unmapped',
                     'target': message['target'],
                     'zvol': zvol,
                     'status': 'success',
-                    }), props.reply_to, reply_to=self.NODE_NAME,
-                        correlation_id=props.message_id)
+                }), props.reply_to, reply_to=self.NODE_NAME,
+                    correlation_id=props.message_id)
             else:
 
                 self.logger.debug('Tearing down target %s'
                                   % message['target'])
                 mappings_map = get_blk_dev_list()
                 if message['target'] not in mappings_map.keys() \
-                    or disconnect_iscsi(message['target']):
+                        or disconnect_iscsi(message['target']):
                     self.queue_connector.publish_message(json.dumps({
                         'action': 'zvol_unmapped',
                         'target': message['target'],
                         'zvol': zvol,
                         'status': 'success',
-                        }), props.reply_to, reply_to=self.NODE_NAME,
-                            correlation_id=props.message_id)
+                    }), props.reply_to, reply_to=self.NODE_NAME,
+                        correlation_id=props.message_id)
         except ActionError, msg:
 
             self.queue_connector.publish_message(json.dumps({
@@ -381,8 +464,8 @@ class VmDaemon:
                 'zvol': zvol,
                 'status': 'error',
                 'error': str(msg),
-                }), props.reply_to, reply_to=self.NODE_NAME,
-                    correlation_id=props.message_id)
+            }), props.reply_to, reply_to=self.NODE_NAME,
+                correlation_id=props.message_id)
             self.logger.error('Error unmapping %s: %s'
                               % (message['target'], str(msg)))
 
@@ -396,19 +479,18 @@ class VmDaemon:
                 raise ActionError('Not found %s in targets' % target)
 
             devsize = runCommand(['blockdev', '--getsize', '/dev/%s'
-                                 % mappings[target]])[0]
+                                  % mappings[target]])[0]
 
             with sqlite3.connect(self.SQLITE_DB) as con:
                 cur = con.cursor()
-                cur.execute('INSERT INTO sync_queue VALUES(?,?,?,?,?,0,?)'
-                            , [
+                cur.execute('INSERT INTO sync_queue VALUES(?,?,?,?,?,0,?)', [
                     zvol,
                     target,
                     devsize,
                     props.reply_to,
                     props.message_id,
                     time.time(),
-                    ])
+                ])
                 self.logger.debug('Updated the db for zvol %s : %s'
                                   % (zvol, devsize))
                 con.commit()
@@ -418,10 +500,10 @@ class VmDaemon:
                 'zvol': zvol,
                 'status': 'error',
                 'error': str(msg),
-                }), props.reply_to, correlation_id=props.message_id)
+            }), props.reply_to, correlation_id=props.message_id)
 
             self.logger.exception('Error syncing %s: %s' % (zvol,
-                                  str(msg)))
+                                                            str(msg)))
 
     def run_sync(self):
         with sqlite3.connect(self.SQLITE_DB) as con:
@@ -440,87 +522,86 @@ class VmDaemon:
                     reply_to,
                     correlation_id,
                     started,
-                    ) = row
+                ) = row
 
                 try:
                     start = time.time()
                     if not started:
                         self.logger.debug('Starting new sync %s' % zvol)
                         runCommand(['dmsetup', 'suspend',
-                                   '/dev/mapper/%s-snap' % zvol])
+                                    '/dev/mapper/%s-snap' % zvol])
                         runCommand(['dmsetup', 'reload',
-                                   '/dev/mapper/%s-snap' % zvol,
-                                   '--table',
-                                   '0 %s snapshot-merge /dev/zvol/%s/%s /dev/zvol/%s/%s-temp-write P 16'
-                                    % (devsize, self.ZPOOL, zvol,
-                                   self.ZPOOL, zvol)])
+                                    '/dev/mapper/%s-snap' % zvol,
+                                    '--table',
+                                    '0 %s snapshot-merge /dev/zvol/%s/%s /dev/zvol/%s/%s-temp-write P 16'
+                                    % (devsize, self.zpool(zvol), zvol,
+                                       self.zpool(zvol), zvol)])
                         runCommand(['dmsetup', 'resume',
-                                   '/dev/mapper/%s-snap' % zvol])
-                        cur.execute('UPDATE sync_queue SET started = 1 WHERE zvol = ?'
-                                    , [zvol])
+                                    '/dev/mapper/%s-snap' % zvol])
+                        cur.execute(
+                            'UPDATE sync_queue SET started = 1 WHERE zvol = ?', [zvol])
                         con.commit()
                         self.logger.debug('Initial sync finished in %s'
-                                % (time.time() - start))
+                                          % (time.time() - start))
 
                     sync_status = runCommand(['dmsetup', 'status',
-                            '%s-snap' % zvol])
+                                              '%s-snap' % zvol])
                     stats = re.findall(r"[\w-]+", sync_status[0])
                     if not stats[3] == stats[5]:
                         self.logger.debug("Waiting for sync '%s' %s %s"
-                                % (sync_status[0], stats[3], stats[5]))
+                                          % (sync_status[0], stats[3], stats[5]))
                     else:
-                        cur.execute('DELETE FROM sync_queue WHERE zvol = ?'
-                                    , [zvol])
+                        cur.execute(
+                            'DELETE FROM sync_queue WHERE zvol = ?', [zvol])
                         con.commit()
 
                         self.logger.debug('Reloaded local storage to zvol and temp %s in %s'
-                                 % (runCommand(['dmsetup', 'status',
-                                '%s-snap' % zvol])[0], time.time()
-                                - start))
+                                          % (runCommand(['dmsetup', 'status',
+                                                         '%s-snap' % zvol])[0], time.time()
+                                             - start))
                         runCommand(['dmsetup', 'suspend',
-                                   '/dev/mapper/%s-snap' % zvol])
+                                    '/dev/mapper/%s-snap' % zvol])
                         runCommand(['dmsetup', 'reload',
-                                   '/dev/mapper/%s-snap' % zvol,
-                                   '--table',
-                                   '0 %s linear /dev/zvol/%s/%s 0'
-                                   % (devsize, self.ZPOOL, zvol)])
+                                    '/dev/mapper/%s-snap' % zvol,
+                                    '--table',
+                                    '0 %s linear /dev/zvol/%s/%s 0'
+                                    % (devsize, self.zpool(zvol), zvol)])
                         runCommand(['dmsetup', 'resume',
-                                   '/dev/mapper/%s-snap' % zvol])
+                                    '/dev/mapper/%s-snap' % zvol])
                         self.logger.debug('Synced local storage to local in %s'
-                                 % (time.time() - start))
+                                          % (time.time() - start))
                         runCommand(['zfs', 'destroy', '%s/%s-temp-write'
-                                    % (self.ZPOOL, zvol)])
+                                    % (self.zpool(zvol), zvol)])
                         disconnect_iscsi(target)
 
-                        self.queue_connector.publish_message(json.dumps({'action': 'zvol_synced'
-                                , 'zvol': zvol, 'status': 'success'}),
-                                reply_to, correlation_id=correlation_id)
+                        self.queue_connector.publish_message(json.dumps({'action': 'zvol_synced', 'zvol': zvol, 'status': 'success'}),
+                                                             reply_to, correlation_id=correlation_id)
                         self.logger.debug('Sync time: %s'
-                                % (time.time() - start))
+                                          % (time.time() - start))
                 except ActionError, msg:
-                    cur.execute('DELETE FROM sync_queue WHERE zvol = ?'
-                                , [zvol])
+                    cur.execute(
+                        'DELETE FROM sync_queue WHERE zvol = ?', [zvol])
                     con.commit()
 
                     self.logger.exception('Error syncing %s: %s'
-                            % (zvol, str(msg)))
+                                          % (zvol, str(msg)))
                     self.queue_connector.publish_message(json.dumps({
                         'action': 'zvol_synced',
                         'zvol': zvol,
                         'status': 'error',
                         'error': str(msg),
-                        }), reply_to, correlation_id=correlation_id)
+                    }), reply_to, correlation_id=correlation_id)
 
         self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT,
-                self.run_sync)
+                                                     self.run_sync)
 
     def process_message(self, props, message_str, deliver):
         message = json.loads(message_str)
         self.logger.debug('Received message %s' % message)
         if message['action'] not in self.function_dict.keys():
             self.queue_connector.publish_message(json.dumps({'status': 'error',
-                    'error': 'action_unsupported'}), exchange='',
-                    routing_key=props.reply_to)
+                                                             'error': 'action_unsupported'}), exchange='',
+                                                 routing_key=props.reply_to)
             return
 
         try:
@@ -528,17 +609,25 @@ class VmDaemon:
         except:
             self.logger.exception('Unexpected error: %s %s'
                                   % (sys.exc_info()[0],
-                                  sys.exc_info()[1]))
+                                     sys.exc_info()[1]))
             traceback.print_tb(sys.exc_info()[2])
             self.queue_connector.publish_message(json.dumps({'status': 'error',
-                    'error': sys.exc_info()[1].message}), exchange='',
-                    routing_key=props.reply_to,
-                    correlation_id=props.message_id)
+                                                             'error': sys.exc_info()[1].message}), exchange='',
+                                                 routing_key=props.reply_to,
+                                                 correlation_id=props.message_id)
 
     def run(self):
         self.logger.debug('imgstoragevm starting')
         with sqlite3.connect(self.SQLITE_DB) as con:
             cur = con.cursor()
+
+            cur.execute('''CREATE TABLE IF NOT EXISTS zvols(
+                          zvol TEXT PRIMARY KEY NOT NULL,
+                          zpool TEXT,
+                          nas TEXT,
+                          iscsi_target TEXT UNIQUE,
+                          sync BOOLEAN)''')
+
             cur.execute('''CREATE TABLE IF NOT EXISTS sync_queue(
                                 zvol TEXT PRIMARY KEY NOT NULL, 
                                 iscsi_target TEXT UNIQUE, 
@@ -549,10 +638,10 @@ class VmDaemon:
             con.commit()
 
         self.queue_connector = RabbitMQCommonClient('rocks.vm-manage',
-                'direct', "img-storage", "img-storage",
-                self.process_message, lambda a: \
-                self.run_sync(),
-                routing_key=self.NODE_NAME)
+                                                    'direct', "img-storage", "img-storage",
+                                                    self.process_message, lambda a:
+                                                    self.run_sync(),
+                                                    routing_key=self.nc.NODE_NAME)
         self.queue_connector.run()
 
     def stop(self):

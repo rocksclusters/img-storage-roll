@@ -60,13 +60,15 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command)
 
             self.addOutput(nas, (
                 d['zvol'],
-                d['remotehost'],
                 d['zpool'],
+                d['remotehost'],
+                d['remotepool'],
                 d['iscsi_target'],
                 state,
-                str(datetime.timedelta(seconds=(int(time.time()-d.get('time'))))) if d.get('time') else None
+                str(datetime.timedelta(seconds=(int(time.time()-d.get('time'))))) if d.get('time') else None,
+		time.strftime("%a %H:%M.%S", time.localtime(int(d.get('nextsync')))) if d.get('nextsync') and state == "mapped" else None
                 ))
-        headers=['nas', 'zvol', 'host', 'zpool', 'target', 'state', 'time']
+        headers=['nas', 'zvol', 'zpool', 'remotehost', 'remotepool', 'target', 'state', 'time', 'nextsync']
         self.endOutput(headers)
 
 

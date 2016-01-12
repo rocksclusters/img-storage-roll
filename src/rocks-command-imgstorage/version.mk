@@ -1,2 +1,2 @@
 NAME	= rocks-command-imgstorage
-RELEASE	= 1
+RELEASE	= 3

@@ -84,12 +84,12 @@ def runCommand(params, params2=None, shell=False):
                                     stderr=subprocess.PIPE, shell=shell)
         except OSError, e:
             raise ActionError('Command %s failed: %s' % (params2[0],
-                              str(e)))
+                                                         str(e)))
         cmd.stdout.close()
         (out, err) = cmd2.communicate()
         if cmd2.returncode:
             raise ActionError('Error executing %s: %s' % (params2[0],
-                              err))
+                                                          err))
         else:
             return out.splitlines()
     else:
@@ -97,7 +97,7 @@ def runCommand(params, params2=None, shell=False):
         (out, err) = cmd.communicate()
         if cmd.returncode:
             raise ActionError('Error executing %s: %s' % (params[0],
-                              err))
+                                                          err))
         else:
             return out.splitlines()
 
@@ -109,7 +109,8 @@ def setupLogger(logger):
     handler = logging.FileHandler('/var/log/rocks/img-storage.log')
     handler.setFormatter(formatter)
 
-    # for log_name in (logger, 'pika.channel', 'pika.connection', 'rabbit_client.RabbitMQClient'):
+    # for log_name in (logger, 'pika.channel', 'pika.connection',
+    # 'rabbit_client.RabbitMQClient'):
 
     for log_name in [logger, 'rabbit_client.RabbitMQCommonClient',
                      'tornado.application']:
@@ -128,7 +129,7 @@ def get_attribute(attr_names, hostname, logger=None):
         db.connect()
         hostname = str(db.getHostname(hostname))
         if(isinstance(attr_names, list)):
-            return [ db.getHostAttr(hostname, attr) for attr in attr_names ]
+            return [db.getHostAttr(hostname, attr) for attr in attr_names]
         else:
             return db.getHostAttr(hostname, attr_names)
     except Exception, e:
@@ -155,3 +156,14 @@ def isFileUsed(file):
 
         return True
 
+
+class NodeConfigRocks:
+    db = rocks.db.helper.DatabaseHelper()
+    db.connect()
+    NODE_NAME = db.getHostname()
+    IB_NET = db.getHostAttr(NODE_NAME, 'IB_net')
+    VM_CONTAINER_ZPOOL = db.getHostAttr(NODE_NAME,
+                                        'vm_container_zpool')
+    IMG_SYNC_WORKERS = db.getHostAttr(NODE_NAME,
+                                      'img_sync_workers')
+    db.close()
