@@ -84,7 +84,7 @@ fi
 
 
 #trim remote snapshots
-if [ $IS_DELETE_REMOTE ]; then
+if $IS_DELETE_REMOTE ; then
     OUT=$((/bin/su $IMGUSER -c "/usr/bin/ssh $REMOTEHOST \"/sbin/zfs destroy -r $REMOTEZPOOL/$ZVOL\"") 2>&1)
 else
     OUT=$((/bin/su $IMGUSER -c "/usr/bin/ssh $REMOTEHOST \"/sbin/zfs list -Hpr -t snapshot -o name -s creation $REMOTEZPOOL/$ZVOL | grep $PREFIX | head -n -$REMOTE_SNAPSHOTS_TRIM | xargs -r -l1 /sbin/zfs destroy\"") 2>&1)

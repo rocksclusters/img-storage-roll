@@ -161,8 +161,6 @@ class VmDaemon:
             logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
 
-        self.temp_size = 35
-
         self.SYNC_CHECK_TIMEOUT = 10
 
     def is_sync_enabled(self, zvol):
@@ -251,8 +249,7 @@ class VmDaemon:
                 con.commit()
 
             if sync:
-                temp_size_cur = min(self.temp_size, int(message['size'
-                                                                ]) - 1)
+                temp_size_cur = int(message['size'])
                 if zvol and len(zvol) > 0:  # don't want to destroy the zpool
                     try:
                         runCommand(['zfs', 'destroy', '-r', '%s/%s'

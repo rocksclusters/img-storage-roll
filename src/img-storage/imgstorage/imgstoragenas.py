@@ -410,6 +410,7 @@ class NasDaemon:
             cur.execute('''CREATE TABLE IF NOT EXISTS globals(
                           attr TEXT PRIMARY KEY NOT NULL,
                           value TEXT)''')
+            cur.execute('DELETE FROM sync_queue')
             con.commit()
             # Record all parameters in the configuration file in globals
             for key in self.nc.DATA.keys():
@@ -830,7 +831,7 @@ class NasDaemon:
                         else:
                             self.results[zvol] = \
                                 self.pool.apply_async(self.download_snapshot,
-                                                      [zpool, zvol, remotehost,  remotezpool, is_delete_remote])
+                                                      [zpool, zvol, remotehost,  remotepool, is_delete_remote])
 
                 self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT,
                                                              self.schedule_next_sync)
@@ -893,7 +894,7 @@ class NasDaemon:
                 '-u', self.imgUser]
         upload_speed = self.getAttr('uploadspeed')
         if(upload_speed):
-            args.extend(['-t', throttle])
+            args.extend(['-t', upload_speed])
         runCommand(args)
 
     def download_snapshot(
