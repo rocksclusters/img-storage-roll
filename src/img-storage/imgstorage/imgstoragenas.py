@@ -892,7 +892,9 @@ class NasDaemon:
                 '-r', remotehost,
                 '-y', remotezpool,
                 '-u', self.imgUser]
-        upload_speed = self.getAttr('uploadspeed')
+        upload_speed = self.getZvolAttr(zvol,'uploadspeed')
+        if(not upload_speed):
+            upload_speed = self.getAttr('uploadspeed')
         if(upload_speed):
             args.extend(['-t', upload_speed])
         runCommand(args)
@@ -914,7 +916,9 @@ class NasDaemon:
         if(is_delete_remote):
             args.append('-d')
 
-        download_speed = self.getAttr('downloadspeed')
+        download_speed = self.getZvolAttr(zvol,'downloadspeed')
+        if(not download_speed):
+            download_speed = self.getAttr('downloadspeed')
         if(download_speed and not is_delete_remote):
             args.extend(['-t', download_speed])
 
