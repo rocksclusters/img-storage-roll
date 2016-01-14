@@ -13,7 +13,7 @@ PREFIX="IMG-STORAGE-"
 
 LOCAL_SNAPSHOTS_TRIM=10
 
-TEMP=`getopt -o p:v:r:y:t:h --long zpool:,zvol:,remotehost:,remotezpool:,throttle:,help -n 'snapshot_upload' -- "$@"`
+TEMP=`getopt -o p:v:r:y:u:t:h --long zpool:,zvol:,remotehost:,remotezpool:,user:,throttle:,help -n 'snapshot_upload' -- "$@"`
 
 [ "$?" != "0" ] &&  logger "$0 - Called with wrong parameters" && exit 1 || :
 
@@ -26,6 +26,7 @@ Usage: $0 [-h|--help] PARAMETERS [OPTIONAL PARAMETERS]
  -v, --zvol=ZVOL                Required, zvol name 
  -r, --remotehost=REMOTEHOST    Required, compute host name
  -y, --remotezpool=REMOTEZPOOL  Required, remote zpool name
+ -u, --user=IMGUSER             Required, username to access zfs with
  -t, --throttle=THROTTLE        Optional, limit the transfer to a maximum of RATE bytes per second.
                                           A suffix of "k", "m", "g", or "t" can be added  to  denote  kilobytes (*1024), 
                                           megabytes, and so on.
@@ -40,6 +41,7 @@ ZVOL=
 REMOTEHOST=
 REMOTEZPOOL=
 THROTTLE=
+IMGUSER=
 
 while true; do
   case "$1" in
@@ -47,6 +49,7 @@ while true; do
     -v|--zvol ) ZVOL="$2"; shift 2;;
     -r|--remotehost ) REMOTEHOST="$2"; shift 2;;
     -y|--remotezpool ) REMOTEZPOOL="$2"; shift 2;;
+    -u|--user ) IMGUSER="$2"; shift 2;;
     -t|--throttle ) THROTTLE="$2"; shift 2;;
     -h|--help ) help_message; exit 0; shift ;;
     -- ) shift; break ;;
@@ -58,6 +61,7 @@ if [ -z "$ZPOOL" ]; then echo "zpool parameter is required"; help_message; exit 
 if [ -z "$ZVOL" ]; then echo "zvol parameter is required"; help_message; exit 1; fi
 if [ -z "$REMOTEHOST" ]; then echo "remotehost parameter is required"; help_message; exit 1; fi
 if [ -z "$REMOTEZPOOL" ]; then echo "remotezpool parameter is required"; help_message; exit 1; fi
+if [ -z "$IMGUSER" ]; then echo "user parameter is required"; help_message; exit 1; fi
 
 SNAP_NAME=$PREFIX`/usr/bin/uuidgen`
 
@@ -65,9 +69,9 @@ OUT=$((/sbin/zfs snap "$ZPOOL/$ZVOL@$SNAP_NAME") 2>&1)
 [ "$?" != "0" ] &&  logger "$0 - Error creating local snapshot $ZPOOL/$ZVOL@$SNAP_NAME ${OUT//$'\n'/ }" && exit 1 || :
 
 if [ -n "$THROTTLE" ]; then
-    OUT=$((/sbin/zfs send "$ZPOOL/$ZVOL@$SNAP_NAME" | pv -L "$THROTTLE" -q | su img-storage -c "ssh $REMOTEHOST \"/sbin/zfs receive -F $REMOTEZPOOL/$ZVOL\"")2>&1)
+    OUT=$((/sbin/zfs send "$ZPOOL/$ZVOL@$SNAP_NAME" | pv -L "$THROTTLE" -q | su $IMGUSER -c "ssh $REMOTEHOST \"/sbin/zfs receive -F $REMOTEZPOOL/$ZVOL\"")2>&1)
 else
-    OUT=$((/sbin/zfs send "$ZPOOL/$ZVOL@$SNAP_NAME" |                        su img-storage -c "ssh $REMOTEHOST \"/sbin/zfs receive -F $REMOTEZPOOL/$ZVOL\"") 2>&1)
+    OUT=$((/sbin/zfs send "$ZPOOL/$ZVOL@$SNAP_NAME" |                        su $IMGUSER -c "ssh $REMOTEHOST \"/sbin/zfs receive -F $REMOTEZPOOL/$ZVOL\"") 2>&1)
 fi
 [ "$?" != "0" ] &&  logger "$0 - Error uploading snapshot $REMOTEHOST:$ZPOOL/$ZVOL ${OUT//$'\n'/ }" && exit 1 || :
 

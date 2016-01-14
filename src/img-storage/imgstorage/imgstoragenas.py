@@ -100,7 +100,6 @@ import sys
 import signal
 import pika
 import socket
-import rocks.db.helper
 import rocks.util
 import uuid
 
@@ -378,25 +377,6 @@ class NasDaemon:
     ############   Main Run Method ###################
 
     def run(self):
-
-        try:
-            db = rocks.db.helper.DatabaseHelper()
-            db.connect()
-            self.NODE_NAME = db.getHostname()
-            self.ib_net = db.getHostAttr(db.getHostname(), 'IB_net')
-            IMG_SYNC_WORKERS = db.getHostAttr(db.getHostname(),
-                                              'img_sync_workers')
-            if IMG_SYNC_WORKERS:
-                self.SYNC_WORKERS = int(IMG_SYNC_WORKERS)
-        except Exception, e:
-            error = 'Unable to get init attributes (%s)' \
-                % (str(e))
-            self.logger.exception(error)
-            raise ActionError(error)
-        finally:
-            db.close()
-            db.closeSession()
-
         self.pool = ThreadPool(processes=self.SYNC_WORKERS)
         with self.dbconnect() as con:
             cur = con.cursor()
@@ -844,17 +824,13 @@ class NasDaemon:
                             < self.SYNC_WORKERS:
                         self.logger.debug('Starting new sync %s' % zvol)
                         if is_sending:
-                            remotezpool, throttle = imgstorage.get_attribute(['vm_container_zpool', 'img_upload_speed'],
-                                                                             remotehost, self.logger)
                             self.results[zvol] = \
                                 self.pool.apply_async(self.upload_snapshot,
-                                                      [zpool, zvol, remotehost, remotezpool, throttle])
+                                                      [zpool, zvol, remotehost, remotepool])
                         else:
-                            remotezpool, throttle = imgstorage.get_attribute(['vm_container_zpool', 'img_download_speed'],
-                                                                             remotehost, self.logger)
                             self.results[zvol] = \
                                 self.pool.apply_async(self.download_snapshot,
-                                                      [zpool, zvol, remotehost,  remotezpool, is_delete_remote, throttle])
+                                                      [zpool, zvol, remotehost,  remotezpool, is_delete_remote])
 
                 self.queue_connector._connection.add_timeout(self.SYNC_CHECK_TIMEOUT,
                                                              self.schedule_next_sync)
@@ -908,14 +884,15 @@ class NasDaemon:
         zvol,
         remotehost,
         remotezpool,
-        throttle
         ):
         args = ['/opt/rocks/bin/snapshot_upload.sh', 
                 '-p', zpool, 
                 '-v', zvol, 
                 '-r', remotehost,
-                '-y', remotezpool]
-        if(throttle):
+                '-y', remotezpool,
+                '-u', self.imgUser]
+        upload_speed = self.getAttr('uploadspeed')
+        if(upload_speed):
             args.extend(['-t', throttle])
         runCommand(args)
 
@@ -926,21 +903,22 @@ class NasDaemon:
         remotehost,
         remotezpool,
         is_delete_remote,
-        throttle
         ):
         args = ['/opt/rocks/bin/snapshot_download.sh', 
                     '-p', zpool, 
                     '-v', zvol, 
                     '-r', remotehost,
-                    '-y', remotezpool]
+                    '-y', remotezpool,
+                    '-u', self.imgUser]
         if(is_delete_remote):
             args.append('-d')
-        if(throttle and not is_delete_remote):
-            args.extend(['-t', throttle])
+
+        download_speed = self.getAttr('downloadspeed')
+        if(download_speed and not is_delete_remote):
+            args.extend(['-t', download_speed])
 
         runCommand(args)
         
-
     def detach_target(self, target, is_remove_host):
         if target:
             tgt_num = self.find_iscsi_target_num(target)

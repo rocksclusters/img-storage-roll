@@ -94,7 +94,7 @@ def main(argv):
                 linenum = 0
                 rows = cur.fetchall()
                 for row in rows:
-                    print linenum, ' '.join([(x if x is not None else '') for x in row])
+                    print linenum, ' '.join([(str(x) if x is not None else '') for x in row])
                     linenum+=1
                 ans = raw_input("Which zvol? (name) ")
                 if(ans):
