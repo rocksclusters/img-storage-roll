@@ -392,13 +392,11 @@ class NasDaemon:
                           remotepool TEXT,
                           sync BOOLEAN)''')
             cur.execute('''CREATE TABLE IF NOT EXISTS zvolattrs(
-                          zvol,
+                          zvol TEXT PRIMARY KEY NOT NULL,
                           frequency INT DEFAULT NULL,
                           nextsync INT DEFAULT NULL,
                           downloadspeed INT DEFAULT NULL,
-                          uploadspeed INT DEFAULT NULL,
-                          FOREIGN KEY (zvol) REFERENCES  zvols(zvol)
-                          ON DELETE CASCADE ON UPDATE CASCADE)''')
+                          uploadspeed INT DEFAULT NULL)''')
             cur.execute('''CREATE TABLE IF NOT EXISTS sync_queue(
                           zvol TEXT PRIMARY KEY NOT NULL,
                           zpool TEXT NOT NULL,
@@ -646,6 +644,8 @@ class NasDaemon:
                                             % (zpool_name, zvol_name), '-r'])
                 self.logger.debug('zfs destroy success %s' % zvol_name)
 
+                cur.execute('DELETE FROM zvolattrs WHERE zvol = ?',
+                            [zvol_name])
                 cur.execute('DELETE FROM zvols WHERE zvol = ?',
                             [zvol_name])
                 con.commit()
