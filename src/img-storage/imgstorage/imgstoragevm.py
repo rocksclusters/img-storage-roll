@@ -260,7 +260,7 @@ class VmDaemon:
                                          % message['size'], '%s/%s' % (pool,
                                                                        zvol)])
                 runCommand(zfs_create + ['-V', '%sgb'
-                                         % temp_size_cur, '%s/%s-temp-write'
+                                         % temp_size_cur, '-s', '%s/%s-temp-write'
                                          % (pool, zvol)])
                 time.sleep(2)
                 runCommand(['dmsetup', 'create', '%s-snap' % zvol,
