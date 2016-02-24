@@ -67,8 +67,9 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.list.command)
                 state,
                 str(datetime.timedelta(seconds=(int(time.time()-d.get('time'))))) if d.get('time') else None,
 		time.strftime("%a %H:%M.%S", time.localtime(int(d.get('nextsync')))) if d.get('nextsync') and state == "mapped" else None
+                True if d['locked'] else None
                 ))
-        headers=['nas', 'zvol', 'zpool', 'remotehost', 'remotepool', 'target', 'state', 'time', 'nextsync']
+        headers=['nas', 'zvol', 'zpool', 'remotehost', 'remotepool', 'target', 'state', 'time', 'nextsync', 'locked']
         self.endOutput(headers)
 
 

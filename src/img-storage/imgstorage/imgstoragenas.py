@@ -975,9 +975,10 @@ class NasDaemon:
             cur = con.cursor()
             cur.execute('''SELECT z.zvol, z.zpool, z.iscsi_target, z.remotehost, 
                            z.remotepool, s.is_sending, s.is_delete_remote, s.time, 
-                           za.nextsync, za.frequency FROM 
+                           za.nextsync, za.frequency, zc.zvol as locked FROM 
                            zvols z LEFT JOIN zvolattrs za ON z.zvol=za.zvol 
-                           LEFT JOIN sync_queue s on z.zvol=s.zvol '''
+                           LEFT JOIN sync_queue s on z.zvol=s.zvol 
+                           JOIN zvol_calls zc ON z.zvol=zc.zvol'''
                         )
             r = [dict((cur.description[i][0], value) for (i, value) in
                       enumerate(row)) for row in cur.fetchall()]
