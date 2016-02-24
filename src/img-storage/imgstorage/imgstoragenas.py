@@ -978,7 +978,7 @@ class NasDaemon:
                            za.nextsync, za.frequency, zc.zvol as locked FROM 
                            zvols z LEFT JOIN zvolattrs za ON z.zvol=za.zvol 
                            LEFT JOIN sync_queue s on z.zvol=s.zvol 
-                           JOIN zvol_calls zc ON z.zvol=zc.zvol'''
+                           LEFT JOIN zvol_calls zc ON z.zvol=zc.zvol'''
                         )
             r = [dict((cur.description[i][0], value) for (i, value) in
                       enumerate(row)) for row in cur.fetchall()]
