@@ -78,11 +78,12 @@ def main(argv):
             for line in targets:
                 if line.startswith('Target '):
                     print line
-            ans = raw_input("Which target number would you like to delete? (number) ")
-            if(ans):
-                iscsi_target = targets[int(ans)].split(' ')[1]
-                logger.debug('Removing target %s'%iscsi_target)
-                runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', ans, '--force'])
+            ans_arr = raw_input("Which target number would you like to delete? (number) ").split()
+            if(ans_arr):
+                for ans in ans_arr:
+                    iscsi_target = targets[int(ans)].split(' ')[1]
+                    logger.debug('Removing target %s'%iscsi_target)
+                    runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', ans, '--force'])
         except ActionError, e: logger.exception(e)
 
 
@@ -96,11 +97,12 @@ def main(argv):
                 for row in rows:
                     print linenum, ' '.join([(str(x) if x is not None else '') for x in row])
                     linenum+=1
-                ans = raw_input("Which zvol? (name) ")
-                if(ans):
-                    cur.execute('UPDATE zvols SET iscsi_target = NULL, remotehost = NULL, zpool = NULL WHERE zvol = ?',[rows[int(ans)][0]])
-                    con.commit()
-                    print "Done"
+                ans_arr = raw_input("Which zvol? (name) ").split()
+                if(ans_arr):
+                    for ans in ans_arr:
+                        cur.execute('UPDATE zvols SET iscsi_target = NULL, remotehost = NULL, zpool = NULL WHERE zvol = ?',[rows[int(ans)][0]])
+                        con.commit()
+                        print "Done"
             except ActionError, e: logger.exception(e)
 
     if(confirm('Unbusy the zvol?', True)):
@@ -113,10 +115,11 @@ def main(argv):
                 for row in rows:
                     print linenum, ' '.join([(str(x) if x is not None else '') for x in row])
                     linenum+=1
-                ans = raw_input("Which zvol? (number) ")
-                if(ans):
-                    cur.execute('DELETE FROM zvol_calls WHERE zvol = ?',[rows[int(ans)][0]])
-                    con.commit()
+                ans_arr = raw_input("Which zvol? (number) ").split()
+                if(ans_arr):
+                    for ans in ans_arr:
+                        cur.execute('DELETE FROM zvol_calls WHERE zvol = ?',[rows[int(ans)][0]])
+                        con.commit()
             except ActionError, e: logger.exception(e)
 
 
