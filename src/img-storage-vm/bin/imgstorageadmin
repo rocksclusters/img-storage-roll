@@ -70,6 +70,7 @@ import getopt
 
 def main(argv):
     logger = logging.getLogger(__name__)
+    SQLITE_DB = '/opt/rocks/var/img_storage.db'
 
     if(confirm('Unmap iSCSI target?', True)):
         rhost = raw_input("From which NAS? (Don't forget .ibnet if used) ")
@@ -85,6 +86,14 @@ def main(argv):
                     iscsi_target = iscsi_targets[int(ans)].split(' ')[1]
                     logger.debug('Removing target %s'%iscsi_target)
                     runCommand(['iscsiadm', '-m', 'node', '-T', iscsi_target, '-p', rhost, '-u'])
+
+                    with sqlite3.connect(SQLITE_DB) as con:
+                        cur = con.cursor()
+                        logger.debug('Removing target from DB %s'%iscsi_target)
+                        cur.execute('DELETE FROM sync_queue WHERE iscsi_target = ?',[iscsi_target])
+                        cur.execute('DELETE FROM zvols WHERE iscsi_target = ?',[iscsi_target])
+                        con.commit()
+
             except ActionError, e: logger.exception(e)
         print '===================================='
 
@@ -116,6 +125,14 @@ def main(argv):
                 zvol = zvols[int(ans)]
                 logger.debug('Removing zvol %s'%zvol)
                 runCommand(['zfs', 'destroy', '-r', zvol])
+
+                with sqlite3.connect(SQLITE_DB) as con:
+                    cur = con.cursor()
+                    logger.debug('Removing zvol from DB %s'%zvol)
+                    cur.execute('DELETE FROM sync_queue WHERE zvol = ?',[zvol])
+                    cur.execute('DELETE FROM zvols WHERE zvol = ?',[zvol])
+                    con.commit()
+
         except ActionError, e: logger.exception(e)
         print '===================================='
 
