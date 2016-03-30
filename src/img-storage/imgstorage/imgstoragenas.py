@@ -781,7 +781,7 @@ class NasDaemon:
                             (remotehost, is_sending, zvol, zpool,
                              is_delete_remote, remotepool) = row
 
-                            self.logger.debug('Sync %s is ready' % zvol)
+                            #self.logger.debug('Sync %s is ready' % zvol)
 
                             job_result.get()  # will raise exception is there was one during job execution
                             if is_sending:
@@ -816,14 +816,14 @@ class NasDaemon:
                                 ):
                     (remotehost, is_sending, zvol, zpool,
                      is_delete_remote, remotepool) = row
-                    self.logger.debug('Have sync job %s' % zvol)
+                    #self.logger.debug('Have sync job %s' % zvol)
 
                     if self.ib_net:
                         remotehost += '.%s' % self.ib_net
 
                     if not self.results.get(zvol) and len(self.results) \
                             < self.SYNC_WORKERS:
-                        self.logger.debug('Starting new sync %s' % zvol)
+                        #self.logger.debug('Starting new sync %s' % zvol)
                         if is_sending:
                             self.results[zvol] = \
                                 self.pool.apply_async(self.upload_snapshot,
