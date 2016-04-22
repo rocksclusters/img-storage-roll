@@ -75,6 +75,9 @@ class Plugin(rocks.commands.Plugin):
 		disk = node.vm_defs.disks[0]
 		phys = node.vm_defs.physNode.name
 		sync = self.owner.str2bool(self.db.getHostAttr(phys,'img_sync'))
+		sync_virt = self.db.getHostAttr(node.name, 'img_sync')
+		if(sync_virt is not None):
+			sync = sync and self.owner.str2bool(sync_virt)
 		remotepool = self.db.getHostAttr(phys,'vm_container_zpool')
 		size = str(disk.size)
 		volume = node.name + '-vol'
