@@ -161,6 +161,12 @@ class VmDaemon:
             logging.getLogger('imgstorage.imgstoragevm.VmDaemon')
         self.SQLITE_DB = '/opt/rocks/var/img_storage.db'
 
+        self.ssl_options = nc.DATA.get("ssl_options", False)
+        if(self.ssl_options):
+            self.ssl_options = json.loads(self.ssl_options)
+        self.use_encryption = nc.DATA.get("use_encryption", False)
+        self.secur_server = nc.DATA.get("secur_server", False)
+
         self.SYNC_CHECK_TIMEOUT = 10
 
     def is_sync_enabled(self, zvol):
@@ -638,7 +644,11 @@ class VmDaemon:
                                                     'direct', "img-storage", "img-storage",
                                                     self.process_message, lambda a:
                                                     self.run_sync(),
-                                                    routing_key=self.nc.NODE_NAME)
+                                                    routing_key=self.nc.NODE_NAME,
+                                                    ssl = True,
+                                                    ssl_options = self.ssl_options,
+                                                    encryption = self.use_encryption,
+                                                    secur_server = self.secur_server)
         self.queue_connector.run()
 
     def stop(self):
