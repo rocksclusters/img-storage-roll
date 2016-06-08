@@ -155,15 +155,3 @@ def isFileUsed(file):
         # fuser fails if the file is unused
 
         return True
-
-
-class NodeConfigRocks:
-    db = rocks.db.helper.DatabaseHelper()
-    db.connect()
-    NODE_NAME = db.getHostname()
-    IB_NET = db.getHostAttr(NODE_NAME, 'IB_net')
-    VM_CONTAINER_ZPOOL = db.getHostAttr(NODE_NAME,
-                                        'vm_container_zpool')
-    IMG_SYNC_WORKERS = db.getHostAttr(NODE_NAME,
-                                      'img_sync_workers')
-    db.close()

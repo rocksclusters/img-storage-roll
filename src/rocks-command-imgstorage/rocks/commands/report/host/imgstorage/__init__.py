@@ -122,6 +122,7 @@ class Command(rocks.commands.HostArgumentProcessor,
 			self.addOutput(host, '<file name="/etc/imgstorage.conf">')
 			self.addOutput(host, '[ {')
 			self.addOutput(host, '"name" : "%s",' % host)
+			self.addOutput(host, '"frontend_name" : "%s",' % self.db.getFrontendName())
 			self.addOutput(host, '"network" : "%s",' % network)
 			self.addOutput(host, '"default_pool" : "%s",' % default_pool)
 			self.addOutput(host, '"img_sync_workers" : "%s"' % sync_workers)

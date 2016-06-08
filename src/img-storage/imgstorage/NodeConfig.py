@@ -8,6 +8,7 @@ class NodeConfig:
 		with open(self.CONFFILE) as conf:
 			data = json.load(conf)[0]
 			self.NODE_NAME = data['name']
+			self.FRONTEND_NAME = data['frontend_name']
 			self.SYNC_NETWORK = data['network']
 			self.VM_CONTAINER_ZPOOL = data['default_pool']
 			self.IMG_SYNC_WORKERS = data['img_sync_workers']

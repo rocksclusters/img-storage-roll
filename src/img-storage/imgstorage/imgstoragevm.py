@@ -648,6 +648,7 @@ class VmDaemon:
                                                     ssl = True,
                                                     ssl_options = self.ssl_options,
                                                     encryption = self.use_encryption,
+                                                    frontend = self.nc.FRONTEND_NAME,
                                                     secur_server = self.secur_server)
         self.queue_connector.run()
 
