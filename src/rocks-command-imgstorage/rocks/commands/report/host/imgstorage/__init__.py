@@ -100,6 +100,11 @@ class Command(rocks.commands.HostArgumentProcessor,
 			('workers', None)
 			])
 
+		dbh = rocks.db.helper.DatabaseHelper()
+		dbh.connect()
+		FRONTEND_NAME = dbh.getFrontendName()
+		dbh.close()
+
 		self.beginOutput()
 		for host in self.getHostnames(args):
 			private = self.command('list.network', 
@@ -122,9 +127,11 @@ class Command(rocks.commands.HostArgumentProcessor,
 			self.addOutput(host, '<file name="/etc/imgstorage.conf">')
 			self.addOutput(host, '[ {')
 			self.addOutput(host, '"name" : "%s",' % host)
-			self.addOutput(host, '"frontend_name" : "%s",' % self.db.getFrontendName())
+			self.addOutput(host, '"frontend_name" : "%s",' % FRONTEND_NAME)
 			self.addOutput(host, '"network" : "%s",' % network)
 			self.addOutput(host, '"default_pool" : "%s",' % default_pool)
+			if(FRONTEND_NAME == host):
+				self.addOutput(host, '"secur_server" : "True",')
 			self.addOutput(host, '"img_sync_workers" : "%s"' % sync_workers)
 			self.addOutput(host, '} ]')
 			self.addOutput(host,'</file>')
