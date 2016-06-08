@@ -70,11 +70,14 @@ logging.basicConfig()
 class CommandLauncher:
 
     def __init__(self):
+        self.nc = NodeConfig.NodeConfig()
         self.USERNAME = "img-storage"
-        loc = RabbitMQLocator(self.USERNAME)
-        self.RABBITMQ_PW = loc.RABBITMQ_PW
+        loc = RabbitMQLocator(self.USERNAME, read_pw = False)
         self.RABBITMQ_URL = loc.RABBITMQ_URL
         self.ret_message = None
+        self.ssl_options = nc.DATA.get("ssl_options", False)
+        if(self.ssl_options):
+            self.ssl_options = json.loads(self.ssl_options)
 
     def callAddHostStoragemap(
         self,
@@ -149,11 +152,14 @@ class CommandLauncher:
         self.callCommand(message, nas)
 
     def callCommand(self, message, nas):
-        credentials = pika.PlainCredentials(self.USERNAME, self.RABBITMQ_PW)
+        credentials = pika.credentials.ExternalCredentials()
         parameters = pika.ConnectionParameters(self.RABBITMQ_URL,
                                                        5672,
                                                        self.USERNAME,
-                                                       credentials)
+                                                       credentials,
+                                                       ssl=True,
+                                                       ssl_options=self.ssl_options,
+                                                       )
         connection = \
             pika.BlockingConnection(parameters)
 
