@@ -131,7 +131,7 @@ class Command(rocks.commands.HostArgumentProcessor,
 			self.addOutput(host, '"network" : "%s",' % network)
 			self.addOutput(host, '"default_pool" : "%s",' % default_pool)
 			if(FRONTEND_NAME == host):
-				self.addOutput(host, '"secur_server" : "True",')
+				self.addOutput(host, '"secur_server" : true,')
 			self.addOutput(host, '"img_sync_workers" : "%s"' % sync_workers)
 			self.addOutput(host, '} ]')
 			self.addOutput(host,'</file>')
