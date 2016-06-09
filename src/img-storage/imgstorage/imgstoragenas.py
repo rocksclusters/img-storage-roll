@@ -512,8 +512,7 @@ class NasDaemon:
 
                 if self.ib_net:
                     try:
-                        ip = socket.gethostbyname('%s.%s'
-                                                  % (remotehost, self.ib_net))
+                        ip = socket.gethostbyname(nodenameToDomain(remotehost, self.ib_net))
                         use_ib = True
                     except:
                         pass
@@ -572,7 +571,7 @@ class NasDaemon:
                 self.queue_connector.publish_message(json.dumps({
                     'action': 'map_zvol',
                     'target': iscsi_target,
-                    'nas': ('%s.%s' % (self.NODE_NAME,
+                    'nas': (nodenameToDomain(self.NODE_NAME,
                                        self.ib_net) if use_ib else self.NODE_NAME),
                     'size': message['size'],
                     'zvol': zvol_name,

@@ -155,3 +155,7 @@ def isFileUsed(file):
         # fuser fails if the file is unused
 
         return True
+
+def nodenameToDomain(full_nodename, domain):
+    nodename = full_nodename.split(".")[0]
+    return "%s.%s"%(nodename, domain)
