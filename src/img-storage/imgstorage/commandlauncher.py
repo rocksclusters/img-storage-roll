@@ -63,6 +63,7 @@ import uuid
 from rocks.util import CommandError
 import logging
 from rabbitmqclient import RabbitMQLocator
+import NodeConfig
 
 logging.basicConfig()
 
@@ -75,7 +76,7 @@ class CommandLauncher:
         loc = RabbitMQLocator(self.USERNAME, read_pw = False)
         self.RABBITMQ_URL = loc.RABBITMQ_URL
         self.ret_message = None
-        self.ssl_options = nc.DATA.get("ssl_options", False)
+        self.ssl_options = self.nc.DATA.get("ssl_options", False)
         if(self.ssl_options):
             self.ssl_options = json.loads(self.ssl_options)
 
@@ -154,11 +155,11 @@ class CommandLauncher:
     def callCommand(self, message, nas):
         credentials = pika.credentials.ExternalCredentials()
         parameters = pika.ConnectionParameters(self.RABBITMQ_URL,
-                                                       5672,
+                                                       5671,
                                                        self.USERNAME,
                                                        credentials,
                                                        ssl=True,
-                                                       ssl_options=self.ssl_options,
+                                                       ssl_options=self.ssl_options
                                                        )
         connection = \
             pika.BlockingConnection(parameters)

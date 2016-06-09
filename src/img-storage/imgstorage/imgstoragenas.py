@@ -202,11 +202,11 @@ class NasDaemon:
         # the default SYNC_PULL is 5 minutes
         self.SYNC_PULL_DEFAULT = 60 * 5
 
-        self.ssl_options = nc.DATA.get("ssl_options", False)
+        self.ssl_options = self.nc.DATA.get("ssl_options", False)
         if(self.ssl_options):
             self.ssl_options = json.loads(self.ssl_options)
-        self.use_encryption = nc.DATA.get("use_encryption", False)
-        self.secur_server = nc.DATA.get("secur_server", False)
+        self.use_encryption = self.nc.DATA.get("use_encryption", False)
+        self.secur_server = self.nc.DATA.get("secur_server", False)
 
         self.logger = \
             logging.getLogger('imgstorage.imgstoragenas.NasDaemon')
