@@ -45,11 +45,11 @@ chmod 400 /opt/rocks/etc/rabbitmq_img-storage.conf
 
 # setting default attribute to install daemon
 # all vm-container run the vm daemon
-/opt/rocks/bin/rocks set appliance attr vm-container img_storage_vm true
+/opt/rocks/bin/rocks add appliance attr vm-container img_storage_vm true
 # all nas installs the nas daemon
-/opt/rocks/bin/rocks set appliance attr nas img_storage_nas true
-/opt/rocks/bin/rocks set appliance attr compute vm_container_zpool tank
-/opt/rocks/bin/rocks set appliance attr vm-container vm_container_zpool tank
+/opt/rocks/bin/rocks add appliance attr nas img_storage_nas true
+/opt/rocks/bin/rocks add appliance attr compute vm_container_zpool tank
+/opt/rocks/bin/rocks add appliance attr vm-container vm_container_zpool tank
 
 </post>
 
