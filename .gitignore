@@ -4,8 +4,4 @@ SRPMS
 log
 *.db
 *.swp
-
-
-# ignore binary files
-src/tornado/tornado-4.0.2.tar.gz
-src/backports/backports.ssl_match_hostname-3.4.0.2.tar.gz
+!RPMS/x86_64/pv-*
