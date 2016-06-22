@@ -263,7 +263,7 @@ class VmDaemon:
                     except:
                         pass
                 runCommand(zfs_create + ['-V', '%sgb'
-                                         % message['size'], '%s/%s' % (pool,
+                                         % message['size'], '-s', '%s/%s' % (pool,
                                                                        zvol)])
                 runCommand(zfs_create + ['-V', '%sgb'
                                          % temp_size_cur, '-s', '%s/%s-temp-write'
