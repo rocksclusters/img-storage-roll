@@ -35,7 +35,7 @@ mkdir /var/log/rocks
 <eval mode="xml">
 /opt/rocks/bin/rocks report host imgstorage &hostname;
 </eval>
-<file name="/etc/rc.d/rocksconfig.d/post-99-restart-img-storage" perms="755">
+<file name="/etc/rc.d/rocksconfig.d/post-55-restart-img-storage" perms="755">
 
 #!/bin/bash
 #
@@ -49,7 +49,7 @@ done
 
 # we need this only the first boot after the installation
 # after that the file will be there
-rm /etc/rc.d/rocksconfig.d/post-99-restart-img-storage
+rm /etc/rc.d/rocksconfig.d/post-55-restart-img-storage
 </file>
 
 </post>

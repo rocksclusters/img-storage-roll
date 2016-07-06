@@ -20,7 +20,7 @@ All rights reserved. Rocks(r) v5.5/v6.0 www.rocksclusters.org
 echo -e 'n\np\n2\n\n\nw\n' | /sbin/fdisk /dev/sda
 echo -e 'n\np\n2\n\n\nw\n' | /sbin/fdisk /dev/sdb
 
-<file name="/etc/rc.d/rocksconfig.d/post-99-create-zfs" perms="755">
+<file name="/etc/rc.d/rocksconfig.d/post-30-create-zfs" perms="755">
 #!/bin/bash
 #
 
@@ -32,7 +32,7 @@ else
 	/sbin/zpool create -f &vm_container_zpool; /dev/sda2
 fi
 
-rm /etc/rc.d/rocksconfig.d/post-99-create-zfs
+rm /etc/rc.d/rocksconfig.d/post-30-create-zfs
 </file>
 
 </post>
