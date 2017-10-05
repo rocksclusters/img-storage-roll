@@ -1,2 +1,21 @@
 NAME	= rocks-command-imgstorage
 RELEASE	= 3
+RPM.FILES = \
+$(PY.ROCKS)/rocks/commands/add/host/* \n \
+$(PY.ROCKS)/rocks/commands/clean \n \
+$(PY.ROCKS)/rocks/commands/dump/host/vm/nas \n \
+$(PY.ROCKS)/rocks/commands/dump/plugin* \n \
+$(PY.ROCKS)/rocks/commands/list/host/storage* \n \
+$(PY.ROCKS)/rocks/commands/list/host/vm/nas \n \
+$(PY.ROCKS)/rocks/commands/list/host/zvolattr \n \
+$(PY.ROCKS)/rocks/commands/remove/host/plugin* \n \
+$(PY.ROCKS)/rocks/commands/remove/host/vm/nas \n \
+$(PY.ROCKS)/rocks/commands/remove/host/storage* \n \
+$(PY.ROCKS)/rocks/commands/report/host/imgstorage \n \
+$(PY.ROCKS)/rocks/commands/set/host/storageattr \n \
+$(PY.ROCKS)/rocks/commands/set/host/vm/nas \n \
+$(PY.ROCKS)/rocks/commands/set/host/zvolattr \n \
+$(PY.ROCKS)/rocks/commands/start/host/vm/plugin* \n \
+$(PY.ROCKS)/rocks/commands/stop/host/vm/plugin* \n \
+$(PY.ROCKS)/rocks/db/mappings/* \n \
+$(PY.ROCKS)/*egg-info

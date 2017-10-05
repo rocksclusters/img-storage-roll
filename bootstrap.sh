@@ -1,4 +1,8 @@
-# $Id$
+#!/bin/sh
+#
+# This file should remain OS independent
+#
+# $Id: bootstrap.sh,v 1.3 2012/11/27 00:49:07 phil Exp $
 #
 # @Copyright@
 # 
@@ -53,19 +57,6 @@
 # 
 # @Copyright@
 #
-# $Log$
 
-REDHAT.ROOT = $(CURDIR)/../../
-
--include $(ROCKSROOT)/etc/Rules.mk
-include Rules.mk
-
-build:
-	echo Nothing to build	
-
-install::
-	mkdir -p $(ROOT)/$(PLUGINDIR)
-	install $(PLUGIN) $(ROOT)/$(PLUGINDIR)
-	
-clean::
-	-rm -rf $(NAME)-$(VERSION)
+. $ROLLSROOT/etc/bootstrap-functions.sh
+/usr/bin/yum -y  install texlive-titlesec texlive-framed texlive-threeparttable texlive-wrapfig texlive-multirow
