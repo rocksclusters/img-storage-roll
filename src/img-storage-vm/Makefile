@@ -90,8 +90,7 @@ install:: build
 	#  $(myenv) $(PY.PATH) setup.py install --root=/
 	$(myenv) $(PY.PATH) setup.py install --root=$(ROOT)
 	install -m 755 init.d/img-storage-vm $(ROOT)/etc/rc.d/init.d/img-storage-vm -D
-
-
+	install -m 644 img-storage-client.service $(ROOT)/etc/systemd/system/img-storage-client.service -D
 clean::
 	rm -rf build
 	rm -rf dist

@@ -1,0 +1,11 @@
+[Unit]
+Descriptions=Image Storage Client Service
+After=network.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/rocks/bin/img-storage-vm start
+ExecStop=/opt/rocks/bin/img-storage-vm stop
+
+[Install]
+WantedBy=multi-user.target

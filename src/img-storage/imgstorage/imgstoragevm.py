@@ -89,6 +89,7 @@ from pysqlite2 import dbapi2 as sqlite3
 #       map_zvol:  zpool, zvol, remotehost, remotepoool, sync
 #       unmap_zvol:  zvol
 #       list_dev:
+#       list_initiator:
 #       sync_zvol
 #
 # Send Messages:
@@ -104,12 +105,10 @@ def get_blk_dev_list():
         cur_target = None
         for line in out:
             if 'Target: ' in line:
-                cur_target = re.search(r'Target: ([\w\-\.]*)', line,
-                                       re.M).group(1)
+                cur_target = line.split()[1]
             if 'Attached scsi disk ' in line:
-                blockdev = re.search(r'Attached scsi disk (\w*)', line,
-                                     re.M)
-                mappings[cur_target] = blockdev.group(1)
+                blockdev = line.split()[3] 
+                mappings[cur_target] = blockdev
     except:
         return {}
 
@@ -154,6 +153,7 @@ class VmDaemon:
         self.function_dict = {
             'map_zvol': self.map_zvol,
             'unmap_zvol': self.unmap_zvol,
+            'list_initiator': self.list_initiator,
             'list_dev': self.list_dev,
             'sync_zvol': self.sync_zvol,
         }
@@ -303,6 +303,21 @@ class VmDaemon:
             }), props.reply_to, reply_to=self.NODE_NAME,
                 correlation_id=props.message_id)
 
+    def list_initiator(self, message, properties):
+        try:
+            f = open("/etc/iscsi/initiatorname.iscsi")
+            lines = filter(lambda x: 'InitiatorName' in x, 
+                        [l.strip() for l in f.readlines()])
+            name = lines[0].split('=')[-1] 
+            self.queue_connector.publish_message(
+                json.dumps({'action': 'zvol_list', 'status': 'success', 
+                    'body': name}), 
+                exchange='', routing_key=properties.reply_to)
+        except:
+            self.queue_connector.publish_message(
+                json.dumps({'status': 'error', 'error': 'no initiator name'}), 
+                exchange='', routing_key=properties.reply_to)
+            
     def list_dev(self, message, props):
         mappings = self.get_dev_list()
         self.logger.debug('Got mappings %s' % mappings)
@@ -396,11 +411,15 @@ class VmDaemon:
             node_name,
         ])
         self.logger.debug('Looking for target in iscsiadm output')
+	cmdoutput = None
         for line in connect_out:
-            if iscsi_target in line:  # has the target
-                self.logger.debug('Found iscsi target in iscsiadm output'
-                                  )
-                return runCommand([
+            parts = line.strip().split()
+            self.logger.debug('discovery target: "%s"' % iscsi_target)
+            self.logger.debug('discovery output: %s' % str(parts))
+            self.logger.debug('discovery test: %s' % str(iscsi_target in parts))
+            if iscsi_target in parts:  # has the target
+                self.logger.debug('Found iscsi target in iscsiadm output')
+                cmdoutput = runCommand([
                     'iscsiadm',
                     '-m',
                     'node',
@@ -408,10 +427,14 @@ class VmDaemon:
                     iscsi_target,
                     '-p',
                     node_name,
-                    '-l',
-                ])
-        raise ActionError('Could not find iSCSI target %s on compute node %s'
-                          % (iscsi_target, node_name))
+                    '-l'])
+                self.logger.debug('iscsi login: %s' % str(cmdoutput))
+                break
+        if cmdoutput is None: 
+            raise ActionError('Could not find iSCSI target %s on server %s'
+                        % (iscsi_target, node_name))
+        else:
+            return cmdoutput
 
     def unmap_zvol(self, message, props):
         """ Received zvol unmap_zvol command from nas """

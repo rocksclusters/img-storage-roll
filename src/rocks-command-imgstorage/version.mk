@@ -1,5 +1,5 @@
 NAME	= rocks-command-imgstorage
-RELEASE	= 3
+RELEASE	= 4
 RPM.FILES = \
 $(PY.ROCKS)/rocks/commands/add/host/* \n \
 $(PY.ROCKS)/rocks/commands/clean \n \

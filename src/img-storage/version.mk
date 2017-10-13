@@ -1,5 +1,5 @@
 NAME = img-storage
-RELEASE = 3
+RELEASE = 5
 RPM.ARCH	= noarch
 ifeq ($(ROCKS_VERSION_MAJOR),"6")
 PV_RPM 6/$(ARCH)/pv-1.1.4-3.el6.x86_64.rpm

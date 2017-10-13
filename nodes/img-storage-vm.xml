@@ -23,9 +23,16 @@
 	<package>foundation-python-lockfile</package>
 	<package>img-storage-vm</package>
 	<package>iscsi-initiator-utils</package>
+
+<post cond="rocks_version_major == 6">
+/sbin/chkconfig img-storage-vm on
+</post>
+<post cond="rocks_version_major == 7">
+/usr/bin/systemctl enable img-storage-clien
+</post>
+
 <post>
 mkdir /var/log/rocks
-/sbin/chkconfig img-storage-vm on
 
 <eval mode="xml">
 /opt/rocks/bin/rocks report host imgstorage &hostname;

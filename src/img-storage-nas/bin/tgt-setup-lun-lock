@@ -61,14 +61,49 @@
 
 
 (
+  # Process command line params
+  while (( "$#")); do
+	case $1 in
+		"-d")   shift;
+			DEV=$1;
+			;;
+		"-n")   shift;
+			NAME=$1;
+			;;
+		  *)	INITIATOR=$1;
+			;;
+	esac
+	shift
+  done
+
   # Wait for lock on /var/lock/.tgt-setup-lun-lock.exclusivelock
   flock 200 || exit 1
 
   # lock acquired
   echo "lock acquired" >> /tmp/locklog
   echo "running: ${@}" >> /tmp/locklog
-  tgt-setup-lun "${@}"
-  
+  # tgt-setup-lun "${@}"
+  BSTORE=$(targetcli backstores/block create $NAME $DEV 2>&1)
+  TGOUTPUT=$(targetcli iscsi/ create | grep -i "created target" | awk '{print $NF}')
+  TARGET=${TGOUTPUT::-1}
+  if [ "x$TARGET" != x ]; then
+     LUN=$(targetcli iscsi/$TARGET/tpg1/luns create /backstores/block/$NAME 2>&1)
+     if [ $? != 0 ]; then
+        >&2 echo $LUN 
+        exit -1
+     fi
+     ACL=$(targetcli iscsi/$TARGET/tpg1/acls create $INITIATOR 2>&1)
+     if [ $? == 0 ]; then
+        echo "Target Created $TARGET"
+     else 
+        >&2 echo $LUN 
+        exit -1
+     fi
+  else
+     >&2 echo "error creating target: $TGOUTPUT"  
+     exit -1
+  fi
+      
 
 ) 200>/var/lock/.tgt-setup-lun-lock.exclusivelock
 

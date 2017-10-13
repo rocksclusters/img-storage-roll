@@ -91,6 +91,7 @@ install:: build
 	$(myenv) $(PY.PATH) setup.py install --root=$(ROOT)
 	install -m 755 init.d/img-storage-nas $(ROOT)/etc/rc.d/init.d/img-storage-nas -D
 	install -m 755 bin/tgt-setup-lun-lock $(ROOT)$(PKGROOT)/bin/tgt-setup-lun-lock -D
+	install -m 644 img-storage-nas.service $(ROOT)/etc/systemd/system/img-storage-nas.service -D
 
 clean::
 	rm -rf build

@@ -85,6 +85,7 @@ class CommandLauncher:
 	remotepool,
         size,
 	sync,
+	initiator,
         ):
         message = {
             'action': 'map_zvol',
@@ -94,6 +95,7 @@ class CommandLauncher:
             'size': size,
 	    'remotepool': remotepool,
 	    'sync': sync,
+	    'initiator': initiator,
             }
         self.callCommand(message, nas)
         block_dev = self.ret_message['bdev']
@@ -134,6 +136,11 @@ class CommandLauncher:
         message = {'action': 'set_zvol_attrs', 'zvol': zvol}
 	message.update(attrs)
         self.callCommand(message, nas)
+
+    def callListInitiator(self, host):
+        message = {'action': 'list_initiator'}
+        self.callCommand(message, host)
+        return self.ret_message['body']
 
     def callListAttrs(self, nas):
         message = {'action': 'get_attrs'}

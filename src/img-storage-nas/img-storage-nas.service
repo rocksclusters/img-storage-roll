@@ -1,0 +1,11 @@
+[Unit]
+Descriptions=Image Storage NAS Service
+After=network.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/rocks/bin/img-storage-nas start
+ExecStop=/opt/rocks/bin/img-storage-nas stop
+
+[Install]
+WantedBy=multi-user.target

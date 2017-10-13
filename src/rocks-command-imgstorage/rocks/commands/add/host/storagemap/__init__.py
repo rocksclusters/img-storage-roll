@@ -78,7 +78,9 @@ class Command(rocks.commands.HostArgumentProcessor, rocks.commands.add.command):
 		# debugging output
 		print "mapping ", nas, ":", zpool, "/", volume, " on ", remotehost
 
-		device = CommandLauncher().callAddHostStoragemap(nas, zpool, volume, remotehost, remotepool, size, sync) 
+		launcher = CommandLauncher()
+		initiator = launcher.callListInitiator(remotehost) 
+		device = launcher.callAddHostStoragemap(nas, zpool, volume, remotehost, remotepool, size, sync,initiator) 
 		self.beginOutput()
 		self.addOutput(nas, device)
 		self.endOutput(padChar='')
