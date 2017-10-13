@@ -946,7 +946,7 @@ class NasDaemon:
         runCommand(args)
         
     def delete_target(self,target):
-        all_targets = self.get_iscsi_targets()
+        all_targets = get_iscsi_targets()
         if target in all_targets:
             runCommand(['targetcli','iscsi/','delete', target])
             

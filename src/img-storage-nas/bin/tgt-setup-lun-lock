@@ -94,7 +94,7 @@
      fi
      ACL=$(targetcli iscsi/$TARGET/tpg1/acls create $INITIATOR 2>&1)
      if [ $? == 0 ]; then
-        echo "Target Created $TARGET"
+        echo "Created Target $TARGET"
      else 
         >&2 echo $LUN 
         exit -1
