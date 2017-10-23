@@ -3,7 +3,7 @@ Descriptions=Image Storage NAS Service
 After=network.service
 
 [Service]
-Type=oneshot
+Type=Daemon
 ExecStart=/opt/rocks/bin/img-storage-nas start
 ExecStop=/opt/rocks/bin/img-storage-nas stop
 

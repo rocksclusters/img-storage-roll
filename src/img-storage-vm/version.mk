@@ -1,5 +1,5 @@
 NAME = img-storage-vm
-RELEASE = 2
+RELEASE = 3
 RPM.ARCH	= noarch
 RPM.FILES = \
 /etc/rc.d/init.d/* \n \

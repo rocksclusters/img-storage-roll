@@ -3,7 +3,7 @@ Descriptions=Image Storage Client Service
 After=network.service
 
 [Service]
-Type=oneshot
+Type=Daemon
 ExecStart=/opt/rocks/bin/img-storage-vm start
 ExecStop=/opt/rocks/bin/img-storage-vm stop
 
