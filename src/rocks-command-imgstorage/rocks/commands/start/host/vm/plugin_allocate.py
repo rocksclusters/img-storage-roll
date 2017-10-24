@@ -84,13 +84,13 @@ class Plugin(rocks.commands.Plugin):
 		nas_name = disk.img_nas_server.server_name
 		zpool_name = disk.img_nas_server.zpool_name
         	# nas, zpool, volume, remotehost, remotepool, size, sync,
-		device = CommandLauncher().callAddHostStoragemap(
-			nas_name, zpool_name, volume, phys, remotepool, size, sync)
+                launcher = CommandLauncher()
+                initiator = launcher.callListInitiator(phys)
+                device = launcher.callAddHostStoragemap(nas_name, zpool_name, volume, phys, remotepool, size, sync,initiator)
+
 		disk.vbd_type = "phy"
 		disk.prefix = os.path.dirname(device)
 		disk.name = os.path.basename(device)
 		print nas_name + ":" + volume + " mapped to " + phys + ":" + device
 		return
 
-
-RollName = "img-storage"
