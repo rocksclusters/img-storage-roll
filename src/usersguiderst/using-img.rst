@@ -18,7 +18,7 @@ restared by the service command. The tree main services are:
    frontend. It is just a standard ``Rabbit MQ Server``.
 
 2. *img-storage-vm* this is the python daemon which is in charge of
-   managing the iSCSI mapping on the hosting machine (the machine that
+   managing the iSCSI mapping on the hosting/client (the machine that
    will run the virtual machine), creating the local ZFS volumes, and
    converting these to local lvms. img-storage-vm is installed by default
    on all VM Container appliances but it can be installed on other nodes
@@ -37,6 +37,14 @@ restared by the service command. The tree main services are:
    order to install zfs). img-storage-nas allocates virtual disks on a
    zpool(s) set by frontend configuration, which should be created manually by the
    administrator before any virtual machine can be used.
+
+4. Zpool privileges for the img-storage user.  This roll creates a 
+   standard "img-storage" to handle snapshot creation, upload, and download 
+   between NAS and client. To make this work, ZFS privileges must be given to 
+   this user. The privileges are: 
+   create,destroy,hold,mount,receive,send,snapshot. We leave this up to the
+   administrator to execute. A sample command is:
+   *zfs allow img-storage create,destroy,hold,mount,receive,send,snapshot tank*
 
 For example, to run virtual machine on a standard compute node it is
 necessary to set:
