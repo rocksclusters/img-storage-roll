@@ -74,16 +74,20 @@ def main(argv):
 
     if(confirm('Unmap iSCSI target?', True)):
         try:
-            targets = runCommand(['tgtadm', '--op', 'show', '--mode', 'target']) 
+            cliOutput= runCommand(['targetcli', 'iscsi/', 'ls']) 
+            tgts = filter(lambda x: "TPG" in x, cliOutput) 
+            targets=map(lambda x: x.split()[1],tgts)
+            idx=0
             for line in targets:
-                if line.startswith('Target '):
-                    print line
+                print idx, line
+                idx += 1
             ans_arr = raw_input("Which target number would you like to delete? (number) ").split()
             if(ans_arr):
                 for ans in ans_arr:
-                    iscsi_target = targets[int(ans)].split(' ')[1]
-                    logger.debug('Removing target %s'%iscsi_target)
-                    runCommand(['tgtadm', '--lld', 'iscsi', '--op', 'delete', '--mode', 'target', '--tid', ans, '--force'])
+                    if ans in range(0,len(targets)):
+                        iscsi_target = targets[int(ans)]
+                        logger.debug('Removing target %s'%iscsi_target)
+                        runCommand(['targetcli', 'iscsi/', 'delete', ans])
         except ActionError, e: logger.exception(e)
 
 
