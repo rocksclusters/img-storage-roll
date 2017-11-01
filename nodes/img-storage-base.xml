@@ -16,5 +16,4 @@
 	<package>rocks-command-imgstorage</package>
 	<package>img-storage</package>
 	<package>pv</package>
-	<package>backports.ssl_match_hostname</package>
 </kickstart>

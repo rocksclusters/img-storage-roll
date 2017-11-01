@@ -10,7 +10,7 @@ It includes:
 - pythondaemon, lockfile - should be provided by base roll
 - rocks-command-imagestorage - set of rocks commands
 - img-storage-nas - the NAS daemon
-- img-storage-vm - the Compute node daemon
+- img-storage-vm - the Client node daemon
 - img-storage - the common library containing the code for all daemons
 
 For more information you can read the user guide at:
