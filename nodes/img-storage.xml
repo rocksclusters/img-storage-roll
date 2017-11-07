@@ -18,7 +18,6 @@
 	</changelog>
 
 	<package>img-storage-pw-plugin</package>
-	<package>pika</package>
 	<package>rocks-command-imgstorage</package>
 	<package>roll-img-storage-usersguide</package>
 
