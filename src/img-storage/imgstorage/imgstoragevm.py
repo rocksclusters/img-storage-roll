@@ -342,7 +342,10 @@ class VmDaemon:
         for line in out:
             dev_ar = line.split()
             dev_name = (dev_ar[0])[:-1]
-            zvol_name = re.search(r'([\w-]*)-snap', dev_name).group(1)
+            zvol_name_re = re.search(r'([\w-]*)-snap', dev_name)
+            if(zvol_name_re is None):
+                continue
+            zvol_name = zvol_name_re.group(1)
             mappings[zvol_name] = {'device': dev_name,
                                    'status': dev_ar[3],
                                    'size': int(dev_ar[2]) * 512 / 1024
